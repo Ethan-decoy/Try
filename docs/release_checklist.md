@@ -5,8 +5,8 @@
 | 平台 | 分发文件 | 范围 |
 | --- | --- | --- |
 | Windows x64 | `try.exe` | 单文件便携版，运行后在旁边创建 `data/` |
-| macOS arm64 | `try_macos_arm64_0.1.0.zip` | 实验性，当前源码待同源构建与实机验收 |
-| Linux x64 | `try_linux_x64_0.1.0.AppImage` | 实验性，当前源码待同源构建与实机验收 |
+| macOS arm64 | `try_macos_arm64_0.1.0.zip` | 实验性，已通过同源构建与隔离启动检查，待完整桌面验收 |
+| Linux x64 | `try_linux_x64_0.1.0.AppImage` | 实验性，已通过同源构建与隔离启动检查，待完整桌面验收 |
 
 macOS 仅支持 arm64，尚未完成 Developer ID 签名与公证。Linux 的托盘、Wayland、FUSE 挂载和登录自启需要在实际桌面环境验收。缺少当前源码的验证包时，不以历史附件代替。
 
@@ -38,4 +38,4 @@ Windows 的分发命令为：
 - 公开下载前确认 README／下载页的 Made with Slint badge 可见。[许可说明](licensing.md)
 - 仓库公开与 Release 发布分别由维护者决定；提交组织与首次公开前的历史审阅按 [开发约定](development.md#提交规范) 执行。
 
-当前 Actions 工作流按用户决定暂停，公开仓库后再决定启用。源码和私有草稿可继续整理。
+公开仓库的 GitHub Actions 已启用，检查 `main` 和 Pull Request，也可从固定版本标签手动启动三平台构建。构建产物先校验并整理到 Release 草稿，正式发布另行确认。
