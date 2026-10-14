@@ -34,6 +34,7 @@ Windows 的分发命令为：
 ## 发布条件
 
 - 先通过相关功能检查，再从干净源码构建，完成包、架构、声明与隔离启动校验。
+- 发布新版本时同步中英文 README 的版本页和平台下载链接。预发布版使用明确的版本链接；正式版可使用 GitHub 的 [`releases/latest` 入口](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases)。
 - 软件包只包含程序与必要分发内容，个人题库、设置、学习记录和日志留在本地。
 - 公开下载前确认 README／下载页的 Made with Slint badge 可见。[许可说明](licensing.md)
 - 仓库公开与 Release 发布分别由维护者决定；提交组织与首次公开前的历史审阅按 [开发约定](development.md#提交规范) 执行。

@@ -10,13 +10,13 @@ Answer one short question at your chosen interval, using typed answers, multiple
 
 ## Download
 
-Get the file for your platform from [Releases](https://github.com/Ethan-decoy/Try/releases). See the release attachments for available builds.
+Download the file for your platform from the [latest version (v0.1.0 prerelease)](https://github.com/Ethan-decoy/Try/releases/tag/v0.1.0).
 
 | Platform | Download | Status |
 | --- | --- | --- |
-| Windows x64 | `try.exe` | Portable |
-| macOS arm64 | `try_macos_arm64_0.1.0.zip` | Experimental |
-| Linux x64 | `try_linux_x64_0.1.0.AppImage` | Experimental |
+| Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v0.1.0/try.exe) | Portable |
+| macOS arm64 | [try_macos_arm64_0.1.0.zip](https://github.com/Ethan-decoy/Try/releases/download/v0.1.0/try_macos_arm64_0.1.0.zip) | Experimental |
+| Linux x64 | [try_linux_x64_0.1.0.AppImage](https://github.com/Ethan-decoy/Try/releases/download/v0.1.0/try_linux_x64_0.1.0.AppImage) | Experimental |
 
 On Windows, put `try.exe` in a writable folder and open it. Closing the main window returns to the tray. First launch creates an adjacent `data/` folder; quit before updating, replace the executable and keep that folder.
 
