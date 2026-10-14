@@ -1,0 +1,91 @@
+{
+  "format": "try",
+  "schema_version": 1,
+  "id": "programming_recall",
+  "name": "编程 · Rust / C++",
+  "tag": "编程",
+  "description": "引用、智能指针与常量表达式。T 表示类型。",
+  "cards": [
+    {
+      "id": "rust_shared_reference",
+      "prompt": "Rust：共享引用",
+      "answer": "&T",
+      "aliases": [
+        "& T"
+      ],
+      "distractors": [
+        {
+          "text": "&mut T"
+        },
+        {
+          "text": "*mut T"
+        }
+      ],
+      "true_false": {
+        "statement": "Rust：&T 是共享引用",
+        "is_true": true,
+        "correction": "✓"
+      }
+    },
+    {
+      "id": "rust_mutable_reference",
+      "prompt": "Rust：可变引用",
+      "answer": "&mut T",
+      "aliases": [
+        "& mut T"
+      ],
+      "distractors": [
+        {
+          "text": "&T"
+        },
+        {
+          "text": "*const T"
+        }
+      ],
+      "true_false": {
+        "statement": "Rust：&T 是可变引用",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "cpp_unique_pointer",
+      "prompt": "C++：独占所有权的标准智能指针",
+      "answer": "std::unique_ptr",
+      "aliases": [
+        "unique_ptr"
+      ],
+      "distractors": [
+        {
+          "text": "std::shared_ptr"
+        },
+        {
+          "text": "std::weak_ptr"
+        }
+      ],
+      "true_false": {
+        "statement": "C++：std::unique_ptr 具有独占所有权",
+        "is_true": true,
+        "correction": "✓"
+      }
+    },
+    {
+      "id": "cpp_constexpr",
+      "prompt": "C++：常量表达式说明符",
+      "answer": "constexpr",
+      "distractors": [
+        {
+          "text": "volatile"
+        },
+        {
+          "text": "mutable"
+        }
+      ],
+      "true_false": {
+        "statement": "C++：volatile 是常量表达式说明符",
+        "is_true": false,
+        "correction": "✕"
+      }
+    }
+  ]
+}

@@ -1,0 +1,168 @@
+{
+  "format": "try",
+  "schema_version": 1,
+  "id": "calculus_template",
+  "name": "微积分",
+  "tag": "公式",
+  "description": "常用求导、积分与极限公式。变量取实数，n 为实常数，三角函数使用弧度；u、v、f、g 在所需区间可微。求原函数时保留任意常数 C；分部积分按两侧不定积分的恒等关系书写。",
+  "cards": [
+    {
+      "id": "power_derivative",
+      "prompt": "(xⁿ)′ = ?（x > 0）",
+      "answer": "nx^(n-1)",
+      "prompt_latex": "\\frac{d}{dx}x^{n}=?\\quad(x>0)",
+      "answer_latex": "nx^{n-1}",
+      "aliases": [
+        "n*x^(n-1)"
+      ]
+    },
+    {
+      "id": "product_rule",
+      "prompt": "(uv)′ = ?",
+      "answer": "u'v+uv'",
+      "prompt_latex": "(uv)'=?",
+      "answer_latex": "u'v+uv'",
+      "aliases": [
+        "u'*v+u*v'",
+        "uv'+u'v"
+      ]
+    },
+    {
+      "id": "quotient_rule",
+      "prompt": "(u/v)′ = ?（v ≠ 0）",
+      "answer": "(u'v-uv')/v^2",
+      "prompt_latex": "\\left(\\frac{u}{v}\\right)'=?\\quad(v\\ne0)",
+      "answer_latex": "\\frac{u'v-uv'}{v^{2}}",
+      "aliases": [
+        "(u'*v-u*v')/v^2"
+      ]
+    },
+    {
+      "id": "chain_rule",
+      "prompt": "(f(g(x)))′ = ?",
+      "answer": "f'(g(x))g'(x)",
+      "prompt_latex": "\\frac{d}{dx}f(g(x))=?",
+      "answer_latex": "f'(g(x))g'(x)",
+      "aliases": [
+        "f'(g(x))*g'(x)"
+      ]
+    },
+    {
+      "id": "log_absolute_derivative",
+      "prompt": "(ln|x|)′ = ?（x ≠ 0）",
+      "answer": "1/x",
+      "prompt_latex": "\\frac{d}{dx}\\ln\\left|x\\right|=?\\quad(x\\ne0)",
+      "answer_latex": "\\frac{1}{x}",
+      "distractors": [
+        {
+          "text": "1/|x|",
+          "latex": "\\frac{1}{\\left|x\\right|}"
+        },
+        {
+          "text": "x",
+          "latex": "x"
+        }
+      ],
+      "true_false": {
+        "statement": "x ≠ 0 时，(ln|x|)′ = 1/|x|",
+        "statement_latex": "\\frac{d}{dx}\\ln\\left|x\\right|=\\frac{1}{\\left|x\\right|}\\quad(x\\ne0)",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "arcsine_derivative",
+      "prompt": "(arcsin x)′ = ?（|x| < 1）",
+      "answer": "1/sqrt(1-x^2)",
+      "prompt_latex": "\\frac{d}{dx}\\arcsin(x)=?\\quad(\\left|x\\right|<1)",
+      "answer_latex": "\\frac{1}{\\sqrt{1-x^{2}}}",
+      "distractors": [
+        {
+          "text": "−1/sqrt(1-x^2)",
+          "latex": "-\\frac{1}{\\sqrt{1-x^{2}}}"
+        },
+        {
+          "text": "1/(1+x^2)",
+          "latex": "\\frac{1}{1+x^{2}}"
+        }
+      ],
+      "true_false": {
+        "statement": "|x| < 1 时，(arcsin x)′ = 1/√(1-x²)",
+        "statement_latex": "\\frac{d}{dx}\\arcsin(x)=\\frac{1}{\\sqrt{1-x^{2}}}\\quad(\\left|x\\right|<1)",
+        "is_true": true,
+        "correction": "✓"
+      }
+    },
+    {
+      "id": "arctangent_derivative",
+      "prompt": "(arctan x)′ = ?",
+      "answer": "1/(1+x^2)",
+      "prompt_latex": "\\frac{d}{dx}\\arctan(x)=?",
+      "answer_latex": "\\frac{1}{1+x^{2}}"
+    },
+    {
+      "id": "power_antiderivative",
+      "prompt": "∫ xⁿ dx = ?（n ≠ −1，x > 0）",
+      "answer": "x^(n+1)/(n+1)+C",
+      "prompt_latex": "\\int x^{n}\\,dx=?\\quad(n\\ne-1,\\ x>0)",
+      "answer_latex": "\\frac{x^{n+1}}{n+1}+C",
+      "aliases": [
+        "x^(n+1)/(n+1)+c"
+      ]
+    },
+    {
+      "id": "reciprocal_antiderivative",
+      "prompt": "∫ 1/x dx = ?（x ≠ 0）",
+      "answer": "ln|x|+C",
+      "prompt_latex": "\\int\\frac{1}{x}\\,dx=?\\quad(x\\ne0)",
+      "answer_latex": "\\ln\\left|x\\right|+C",
+      "aliases": [
+        "ln(abs(x))+C",
+        "ln|x|+c",
+        "ln(abs(x))+c"
+      ]
+    },
+    {
+      "id": "integration_by_parts",
+      "prompt": "∫ u dv = ?",
+      "answer": "uv-∫ v du",
+      "prompt_latex": "\\int u\\,dv=?",
+      "answer_latex": "uv-\\int v\\,du",
+      "aliases": [
+        "uv-∫vdu",
+        "uv-∫ v du+C",
+        "uv-∫vdu+C"
+      ]
+    },
+    {
+      "id": "fundamental_theorem_derivative",
+      "prompt": "f 连续，(∫ₐˣ f(t) dt)′ = ?",
+      "answer": "f(x)",
+      "prompt_latex": "\\text{f 连续：}\\frac{d}{dx}\\int_{a}^{x}f(t)\\,dt=?",
+      "answer_latex": "f(x)"
+    },
+    {
+      "id": "sine_limit",
+      "prompt": "lim(x→0) sin(x)/x = ?",
+      "answer": "1",
+      "prompt_latex": "\\lim_{x\\to0}\\frac{\\sin(x)}{x}=?",
+      "answer_latex": "1",
+      "distractors": [
+        {
+          "text": "0",
+          "latex": "0"
+        },
+        {
+          "text": "∞",
+          "latex": "\\infty"
+        }
+      ],
+      "true_false": {
+        "statement": "lim(x→0) sin(x)/x = 0",
+        "statement_latex": "\\lim_{x\\to0}\\frac{\\sin(x)}{x}=0",
+        "is_true": false,
+        "correction": "✕"
+      }
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows_x64
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+          - platform: macos_arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+          - platform: linux_x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_BUILD_JOBS: 2
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: CI dependency cache directory
+        shell: pwsh
+        run: |
+          # Keep downloaded dependencies outside the workspace for rust-cache.
+          $taskCargoCache = Join-Path $env:RUNNER_TEMP 'try_cargo_home'
+          New-Item -ItemType Directory -Path $taskCargoCache -Force | Out-Null
+          "CARGO_HOME=$taskCargoCache" >> $env:GITHUB_ENV
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          workspaces: . -> local_artifacts/target
+          key: ${{ matrix.platform }}
+          cache-on-failure: true
+          cache-bin: false
+      - name: Linux build and smoke-check libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb-shape0-dev libxcb-xfixes0-dev libdbus-1-dev libxcursor1 libxrandr2 libxi6 xvfb xauth
+      - name: Formatting
+        run: cargo fmt --all -- --check
+      - name: Complete embedded notices
+        shell: pwsh
+        run: |
+          ./scripts/prepare_third_party.ps1 -FetchUpstream -Targets '${{ matrix.target }}'
+          ./scripts/prepare_embedded_notices.ps1 -Target '${{ matrix.target }}'
+      - name: Windows tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build_windows.ps1 -Action test -Distribution
+      - name: Windows lint
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build_windows.ps1 -Action clippy -Distribution
+      - name: Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/build_windows.ps1 -Action build -Distribution
+          ./scripts/prepare_windows_release.ps1 -OutputDirectory local_artifacts/releases/windows_x64
+      - name: Tests
+        if: runner.os != 'Windows'
+        run: cargo test --release --locked --features distribution
+      - name: Lint
+        if: runner.os != 'Windows'
+        run: cargo clippy --release --locked --all-targets --features distribution -- -D warnings
+      - name: Release
+        if: runner.os != 'Windows'
+        run: cargo build --release --locked --features distribution
+      - name: macOS application bundle and checks
+        if: runner.os == 'macOS'
+        run: bash scripts/package_macos.sh '${{ matrix.platform }}'
+      - name: Linux AppImage and checks
+        if: runner.os == 'Linux'
+        run: bash scripts/package_linux.sh
+      - name: Upload downloadable package
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: try_${{ matrix.platform }}
+          path: local_artifacts/releases/${{ matrix.platform }}/download/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Windows executable
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: try_windows_x64
+          path: |
+            local_artifacts/releases/windows_x64/try.exe
+            local_artifacts/releases/windows_x64/try.exe.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload AppImage runtime sources
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sources_linux_x64
+          path: local_artifacts/releases/linux_x64/sources_download/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload check records
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: checks_${{ matrix.platform }}
+          path: |
+            local_artifacts/releases/*.json
+            local_artifacts/releases/${{ matrix.platform }}/*.json
+            local_artifacts/unix_checks/**
+          if-no-files-found: ignore
+          retention-days: 14

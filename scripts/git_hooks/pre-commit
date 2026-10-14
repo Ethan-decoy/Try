@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+git diff --cached --check
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -Eq '(^|/)(Cargo\.toml|[^/]+\.rs)$'; then
+    # Support this Windows workspace's relocated Rust toolchain.
+    if ! command -v cargo >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1 && [ -n "${RUSTUP_HOME:-}" ]; then
+        rust_bin="$(cygpath -u "$RUSTUP_HOME")/toolchains/stable-x86_64-pc-windows-msvc/bin"
+        if [ -x "$rust_bin/cargo.exe" ]; then
+            PATH="$rust_bin:$PATH"
+            export PATH
+        fi
+    fi
+    if ! command -v cargo >/dev/null 2>&1; then
+        printf '%s\n' '提交 Rust 代码前需要安装 Rust 工具链并使 cargo 可用。' >&2
+        exit 1
+    fi
+    cargo fmt --all -- --check
+fi

@@ -1,0 +1,167 @@
+{
+  "format": "try",
+  "schema_version": 1,
+  "id": "vocabulary_template",
+  "name": "英语",
+  "tag": "词汇",
+  "description": "进阶词汇与简短中文词义。",
+  "cards": [
+    {
+      "id": "ubiquitous_translation",
+      "prompt": "ubiquitous",
+      "answer": "无处不在",
+      "aliases": [
+        "无处不在的",
+        "普遍存在",
+        "普遍存在的"
+      ]
+    },
+    {
+      "id": "meticulous_translation",
+      "prompt": "meticulous",
+      "answer": "一丝不苟",
+      "aliases": [
+        "一丝不苟的",
+        "严谨",
+        "严谨的",
+        "细致",
+        "细致的"
+      ]
+    },
+    {
+      "id": "tacit_translation",
+      "prompt": "tacit",
+      "answer": "心照不宣",
+      "aliases": [
+        "心照不宣的",
+        "默示",
+        "默示的",
+        "不明言",
+        "不明言的"
+      ]
+    },
+    {
+      "id": "cogent_translation",
+      "prompt": "cogent",
+      "answer": "令人信服",
+      "aliases": [
+        "令人信服的",
+        "有说服力",
+        "有说服力的"
+      ]
+    },
+    {
+      "id": "pragmatic_translation",
+      "prompt": "pragmatic",
+      "answer": "务实",
+      "aliases": [
+        "务实的",
+        "实事求是",
+        "实事求是的"
+      ]
+    },
+    {
+      "id": "exacerbate_translation",
+      "prompt": "exacerbate",
+      "answer": "加剧",
+      "aliases": [
+        "使恶化",
+        "恶化"
+      ],
+      "distractors": [
+        {
+          "text": "缓解"
+        },
+        {
+          "text": "证实"
+        }
+      ],
+      "true_false": {
+        "statement": "exacerbate → 缓解",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "mitigate_translation",
+      "prompt": "mitigate",
+      "answer": "减轻",
+      "aliases": [
+        "缓解",
+        "缓和",
+        "使缓和"
+      ],
+      "distractors": [
+        {
+          "text": "加剧"
+        },
+        {
+          "text": "规避"
+        }
+      ],
+      "true_false": {
+        "statement": "mitigate → 减轻",
+        "is_true": true,
+        "correction": "✓"
+      }
+    },
+    {
+      "id": "scrutinize_translation",
+      "prompt": "scrutinize",
+      "answer": "仔细审查",
+      "aliases": [
+        "细看",
+        "细察",
+        "细审"
+      ]
+    },
+    {
+      "id": "circumvent_translation",
+      "prompt": "circumvent",
+      "answer": "规避",
+      "aliases": [
+        "绕过",
+        "逃避"
+      ]
+    },
+    {
+      "id": "substantiate_translation",
+      "prompt": "substantiate",
+      "answer": "证实",
+      "aliases": [
+        "用事实支持",
+        "证明"
+      ],
+      "distractors": [
+        {
+          "text": "反驳"
+        },
+        {
+          "text": "推测"
+        }
+      ],
+      "true_false": {
+        "statement": "substantiate → 推测",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "ostensibly_translation",
+      "prompt": "ostensibly",
+      "answer": "表面上",
+      "aliases": [
+        "表面地"
+      ]
+    },
+    {
+      "id": "discrepancy_translation",
+      "prompt": "discrepancy",
+      "answer": "不一致",
+      "aliases": [
+        "差异",
+        "出入"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "format": "try",
+  "schema_version": 1,
+  "id": "general_recall",
+  "name": "常识 · 单位与时间",
+  "tag": "常识",
+  "description": "常用单位与时间概念。",
+  "cards": [
+    {
+      "id": "nautical_mile",
+      "prompt": "1 海里（米）",
+      "answer": "1852",
+      "aliases": [
+        "1852米",
+        "1852 米",
+        "1852m",
+        "1852 m"
+      ],
+      "distractors": [
+        {
+          "text": "1609.344"
+        },
+        {
+          "text": "1850"
+        }
+      ],
+      "true_false": {
+        "statement": "1 海里 = 1852 米",
+        "is_true": true,
+        "correction": "✓"
+      }
+    },
+    {
+      "id": "standard_atmosphere",
+      "prompt": "1 atm（Pa）",
+      "answer": "101325",
+      "aliases": [
+        "101325Pa",
+        "101325 Pa",
+        "101325帕"
+      ],
+      "distractors": [
+        {
+          "text": "100000"
+        },
+        {
+          "text": "1013.25"
+        }
+      ],
+      "true_false": {
+        "statement": "1 atm = 100000 Pa",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "light_year",
+      "prompt": "光年",
+      "answer": "长度单位",
+      "aliases": [
+        "距离单位",
+        "距离",
+        "长度"
+      ],
+      "distractors": [
+        {
+          "text": "时间单位"
+        },
+        {
+          "text": "质量单位"
+        }
+      ],
+      "true_false": {
+        "statement": "光年是时间单位",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "utc",
+      "prompt": "UTC",
+      "answer": "协调世界时",
+      "aliases": [
+        "世界协调时",
+        "Coordinated Universal Time"
+      ],
+      "distractors": [
+        {
+          "text": "北京时间"
+        },
+        {
+          "text": "国际原子时"
+        }
+      ],
+      "true_false": {
+        "statement": "UTC 是协调世界时",
+        "is_true": true,
+        "correction": "✓"
+      }
+    }
+  ]
+}

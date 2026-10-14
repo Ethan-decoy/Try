@@ -1,0 +1,117 @@
+import { Theme } from "theme.slint";
+// Isolate the byte-offset bridge for the pinned Slint 1.18.1 here. Both editors
+// keep their real text range when a tool is activated.
+export struct FormulaPosition { anchor: int, caret: int, bytes: int, revision: int }
+export struct FormulaNavigation { previous: bool, next: bool, parent: bool, exit: bool, up: bool, down: bool, enter: bool, container: bool }
+
+export component FormulaInput inherits Rectangle {
+    in property <string> input;
+    in property <bool> text-mode;
+    in property <bool> enabled: true;
+    in property <length> font-size: 14px;
+    in property <brush> foreground: Theme.ink;
+    in property <TextHorizontalAlignment> alignment: left;
+    in property <FormulaPosition> position;
+    in property <FormulaNavigation> navigation;
+    in property <bool> structural-navigation;
+    in property <bool> shared-history: true;
+    in property <bool> rendered;
+    callback edited(string);
+    callback position-changed(string, int, int);
+    callback command(string);
+    callback move-caret(int, bool);
+    callback accepted();
+    out property <bool> has-focus: input-area.has-focus;
+    forward-focus: input-area;
+    private property <length> scroll-x;
+    private property <int> selection-revision: root.position.revision;
+    private property <bool> restoring-selection;
+    clip: true;
+    public function restore-selection() {
+        root.restoring-selection = true;
+        input-area.text = root.input;
+        input-area.set-selection-offsets(root.position.anchor, root.position.caret);
+        root.restoring-selection = false;
+    }
+    // Native edits write TextInput.text. Keep external changes connected even
+    // after that write removes its initial one-way property binding.
+    changed input => {
+        root.restoring-selection = true;
+        input-area.text = root.input;
+        root.restoring-selection = false;
+    }
+    changed selection-revision => { root.restore-selection(); }
+    init => { root.restore-selection(); }
+    input-area := TextInput {
+        x: root.scroll-x;
+        width: root.width;
+        height: root.height;
+        text: root.input;
+        enabled: root.enabled;
+        single-line: !root.text-mode;
+        wrap: root.text-mode ? word-wrap : no-wrap;
+        color: root.rendered ? transparent : root.foreground;
+        text-cursor-width: root.rendered ? 0px : 1px;
+        font-size: root.font-size;
+        horizontal-alignment: root.alignment;
+        vertical-alignment: center;
+        selection-background-color: root.rendered ? transparent : Theme.primary;
+        selection-foreground-color: root.rendered ? transparent : Theme.primary-ink;
+        accessible-label: root.text-mode ? @tr("文字") : @tr("表达式");
+        edited => {
+            root.edited(self.text);
+            if !root.restoring-selection { root.position-changed(self.text, self.anchor-position-byte-offset, self.cursor-position-byte-offset); }
+        }
+        cursor-position-changed(position) => {
+            if !root.restoring-selection { root.position-changed(self.text, self.anchor-position-byte-offset, self.cursor-position-byte-offset); }
+            if !root.text-mode && !root.rendered {
+                if position.x + root.scroll-x < 0px { root.scroll-x = -position.x; }
+                else if position.x + root.scroll-x > root.width - self.text-cursor-width {
+                    root.scroll-x = root.width - position.x - self.text-cursor-width;
+                }
+                if root.scroll-x > 0px { root.scroll-x = 0px; }
+            }
+        }
+        accepted => { root.accepted(); }
+        key-pressed(event) => {
+            if root.rendered && !event.modifiers.control && !event.modifiers.meta {
+                if event.text == Key.LeftArrow { root.move-caret(0, event.modifiers.shift); return accept; }
+                if event.text == Key.RightArrow { root.move-caret(1, event.modifiers.shift); return accept; }
+                if event.text == Key.UpArrow { root.move-caret(2, event.modifiers.shift); return accept; }
+                if event.text == Key.DownArrow { root.move-caret(3, event.modifiers.shift); return accept; }
+                if event.text == Key.Home { root.move-caret(4, event.modifiers.shift); return accept; }
+                if event.text == Key.End { root.move-caret(5, event.modifiers.shift); return accept; }
+            }
+            if root.shared-history && (event.modifiers.control || event.modifiers.meta) {
+                if event.text == "z" || event.text == "Z" {
+                    root.command(event.modifiers.shift ? "redo" : "undo"); return accept;
+                }
+                if event.text == "y" || event.text == "Y" { root.command("redo"); return accept; }
+            }
+            if root.structural-navigation && !root.text-mode && event.text == Key.Backspace && !event.modifiers.control && !event.modifiers.meta {
+                root.command("backspace"); return accept;
+            }
+            if root.structural-navigation && !root.text-mode && !event.modifiers.shift && !event.modifiers.control && !event.modifiers.meta {
+                if event.text == Key.UpArrow && root.navigation.up { root.command("up"); return accept; }
+                if event.text == Key.DownArrow && root.navigation.down { root.command("down"); return accept; }
+                if self.anchor-position-byte-offset == self.cursor-position-byte-offset {
+                    if event.text == Key.LeftArrow && self.cursor-position-byte-offset >= root.position.bytes && root.navigation.enter {
+                        root.command("previous"); return accept;
+                    }
+                    if event.text == Key.LeftArrow && self.cursor-position-byte-offset == 0 && root.navigation.previous {
+                        root.command("previous"); return accept;
+                    }
+                    if event.text == Key.RightArrow && self.cursor-position-byte-offset >= root.position.bytes {
+                        if root.navigation.container {
+                            if root.navigation.exit { root.command("exit"); return accept; }
+                            return reject;
+                        }
+                        if root.navigation.next { root.command("next"); return accept; }
+                        if root.navigation.exit { root.command("exit"); return accept; }
+                    }
+                }
+            }
+            return reject;
+        }
+    }
+}

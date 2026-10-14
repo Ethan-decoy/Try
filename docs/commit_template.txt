@@ -1,0 +1,9 @@
+# type(scope): 中文描述
+#
+# type: feat / fix / docs / style / refactor / perf / test / build / ci / chore / revert
+# scope 可省略；如使用，写小写英文或 snake_case：ui、logging、git、storage。
+# 示例：feat(logging): 增加本地轮转日志与崩溃记录
+#
+# 正文与标题空一行，按需说明修改原因、行为变化和验证结果，使用中文。
+# 不兼容变化使用 type(scope)!: 中文描述，或在页脚写：
+# BREAKING CHANGE: 中文说明

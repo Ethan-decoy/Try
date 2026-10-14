@@ -1,0 +1,156 @@
+{
+  "format": "try",
+  "schema_version": 1,
+  "id": "rust_template",
+  "name": "Rust",
+  "tag": "编程",
+  "description": "稳定标准库的常用方法、错误传播与所有权工具。方法题填写方法名。",
+  "cards": [
+    {
+      "id": "option_as_ref",
+      "prompt": "Rust：&Option<T> → Option<&T>（方法）",
+      "answer": "as_ref",
+      "aliases": [
+        "as_ref()",
+        ".as_ref()",
+        "Option::as_ref"
+      ],
+      "distractors": [
+        {
+          "text": "as_mut"
+        },
+        {
+          "text": "take"
+        }
+      ],
+      "true_false": {
+        "statement": "Rust：Option::as_ref 借用内部值，不移走它",
+        "is_true": true,
+        "correction": "✓"
+      }
+    },
+    {
+      "id": "option_as_mut",
+      "prompt": "Rust：&mut Option<T> → Option<&mut T>（方法）",
+      "answer": "as_mut",
+      "aliases": [
+        "as_mut()",
+        ".as_mut()",
+        "Option::as_mut"
+      ]
+    },
+    {
+      "id": "option_take",
+      "prompt": "Rust：取走 Option 内部值，原处留下 None（方法）",
+      "answer": "take",
+      "aliases": [
+        "take()",
+        ".take()",
+        "Option::take"
+      ]
+    },
+    {
+      "id": "option_transpose",
+      "prompt": "Rust：Option<Result<T,E>> → Result<Option<T>,E>（方法）",
+      "answer": "transpose",
+      "aliases": [
+        "transpose()",
+        ".transpose()",
+        "Option::transpose"
+      ]
+    },
+    {
+      "id": "option_unwrap_or_else",
+      "prompt": "Rust：取 Option 值，仅在 None 时调用默认值闭包（方法）",
+      "answer": "unwrap_or_else",
+      "aliases": [
+        "Option::unwrap_or_else"
+      ]
+    },
+    {
+      "id": "result_map_err",
+      "prompt": "Rust：变换 Result 的 Err，保留 Ok（方法）",
+      "answer": "map_err",
+      "aliases": [
+        "Result::map_err"
+      ]
+    },
+    {
+      "id": "result_error_propagation",
+      "prompt": "Rust：Result 遇 Err 时提前返回的运算符",
+      "answer": "?"
+    },
+    {
+      "id": "iterator_filter_map",
+      "prompt": "Rust：迭代映射，只保留闭包返回的 Some 值（方法）",
+      "answer": "filter_map",
+      "aliases": [
+        "Iterator::filter_map"
+      ],
+      "distractors": [
+        {
+          "text": "map"
+        },
+        {
+          "text": "filter"
+        }
+      ],
+      "true_false": {
+        "statement": "Rust：filter_map 会保留闭包返回的 None",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "iterator_fold",
+      "prompt": "Rust：迭代器从初始值逐项累积（方法）",
+      "answer": "fold",
+      "aliases": [
+        "Iterator::fold"
+      ]
+    },
+    {
+      "id": "iterator_collect_result",
+      "prompt": "Rust：Result 迭代器汇集为 Result<Vec<_>, _>（方法）",
+      "answer": "collect",
+      "aliases": [
+        "collect()",
+        ".collect()",
+        "Iterator::collect"
+      ]
+    },
+    {
+      "id": "arc_shared_ownership",
+      "prompt": "Rust：原子引用计数的共享所有权指针",
+      "answer": "Arc<T>",
+      "aliases": [
+        "Arc",
+        "std::sync::Arc",
+        "std::sync::Arc<T>"
+      ],
+      "distractors": [
+        {
+          "text": "Rc<T>"
+        },
+        {
+          "text": "Box<T>"
+        }
+      ],
+      "true_false": {
+        "statement": "Rust：Arc<T> 会让任意 T 自动具有 Send + Sync",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "refcell_interior_mutability",
+      "prompt": "Rust：单线程内部可变性，运行时检查借用",
+      "answer": "RefCell<T>",
+      "aliases": [
+        "RefCell",
+        "std::cell::RefCell",
+        "std::cell::RefCell<T>"
+      ]
+    }
+  ]
+}

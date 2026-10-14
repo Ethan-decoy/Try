@@ -1,0 +1,104 @@
+{
+  "format": "try",
+  "schema_version": 1,
+  "id": "chemistry_recall",
+  "name": "化学 · 结构与热力学",
+  "tag": "化学",
+  "description": "杂化、芳香电子与吉布斯能。",
+  "cards": [
+    {
+      "id": "methane_hybridization",
+      "prompt": "CH₄：C 杂化",
+      "answer": "sp³",
+      "aliases": [
+        "sp3",
+        "sp^3"
+      ],
+      "answer_latex": "\\mathrm{sp}^{3}",
+      "distractors": [
+        {
+          "text": "sp²"
+        },
+        {
+          "text": "sp"
+        }
+      ],
+      "true_false": {
+        "statement": "CH₄ 中 C 为 sp³ 杂化",
+        "is_true": true,
+        "correction": "✓"
+      }
+    },
+    {
+      "id": "boron_trifluoride_hybridization",
+      "prompt": "BF₃：B 杂化",
+      "answer": "sp²",
+      "aliases": [
+        "sp2",
+        "sp^2"
+      ],
+      "answer_latex": "\\mathrm{sp}^{2}",
+      "distractors": [
+        {
+          "text": "sp³"
+        },
+        {
+          "text": "sp"
+        }
+      ],
+      "true_false": {
+        "statement": "BF₃ 中 B 为 sp³ 杂化",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "benzene_pi_electrons",
+      "prompt": "苯：π 电子数",
+      "answer": "6",
+      "aliases": [
+        "6个",
+        "6 个"
+      ],
+      "distractors": [
+        {
+          "text": "4"
+        },
+        {
+          "text": "8"
+        }
+      ],
+      "true_false": {
+        "statement": "苯有 8 个 π 电子",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "gibbs_energy_change",
+      "prompt": "ΔG（恒温）= ?",
+      "answer": "ΔH − TΔS",
+      "prompt_latex": "\\Delta G\\;(T=\\mathrm{const})=?",
+      "answer_latex": "\\Delta H-T\\Delta S",
+      "distractors": [
+        {
+          "text": "ΔH + TΔS",
+          "latex": "\\Delta H+T\\Delta S"
+        },
+        {
+          "text": "TΔS − ΔH",
+          "latex": "T\\Delta S-\\Delta H"
+        }
+      ],
+      "true_false": {
+        "statement": "ΔG（恒温）= ΔH − TΔS",
+        "is_true": true,
+        "correction": "✓",
+        "statement_latex": "\\Delta G\\;(T=\\mathrm{const})=\\Delta H-T\\Delta S"
+      },
+      "aliases": [
+        "ΔH-TΔS"
+      ]
+    }
+  ]
+}

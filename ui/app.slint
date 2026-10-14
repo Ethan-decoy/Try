@@ -1,0 +1,1326 @@
+import { Theme } from "theme.slint";
+import { Button, LineEdit, ListView, Palette, ScrollView, TextEdit } from "std-widgets.slint";
+export { Palette } from "std-widgets.slint";
+import { AnswerOption, ContentForm, FormulaLabel, MathRegion, NativeText, ToolButton } from "content.slint";
+import { AnswerPad } from "answer_pad.slint";
+import { InlineFormulaInput } from "inline_formula_input.slint";
+import { FormulaNavigation, FormulaPosition } from "content.slint";
+export { FormulaNavigation, FormulaPosition } from "content.slint";
+export { AnswerOption, MathRegion, NativeText } from "content.slint";
+import { Disclosure, IconButton, MatrixCell, ParticipationSwitch, TextLink } from "controls.slint";
+import { SettingsPage } from "settings.slint";
+import { QuickAnswer } from "quick_answer.slint";
+import { MathTool } from "math_palette.slint";
+export { MathTool } from "math_palette.slint";
+import { ThirdPartyNotices } from "licenses.slint";
+
+export struct PackRow {
+    id: string,
+    name: string,
+    tag: string,
+    detail: string,
+    participating: bool,
+    has-cards: bool,
+}
+
+export struct CardRow {
+    id: string,
+    pack-id: string,
+    prompt: string,
+    enabled: bool,
+    answer-mode: int,
+    choice-available: bool,
+    judgment-available: bool,
+    answer: string,
+    answer-formula-source: string,
+    answer-preview: AnswerOption,
+    quick-answer: string,
+    truth: bool,
+    formula-source: string,
+    rendered: bool,
+    formula-scale: float,
+    preview: AnswerOption,
+}
+
+component ModeTab inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    in property <bool> enabled: true;
+    callback activated();
+    forward-focus: segment-focus;
+    min-width: 0px;
+    preferred-width: 0px;
+    horizontal-stretch: 1;
+    height: 36px;
+    border-radius: 5px;
+    background: root.selected ? Theme.primary : segment-touch.has-hover && root.enabled ? Theme.soft : transparent;
+    border-width: segment-focus.has-focus ? 1px : 0px;
+    border-color: root.selected ? Theme.primary-ink : Theme.focus;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.activated(); } }
+    Text {
+        text: root.label;
+        color: !root.enabled ? Theme.disabled : root.selected ? Theme.primary-ink : Theme.muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    segment-focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; }
+            return reject;
+        }
+    }
+    segment-touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { segment-focus.focus(); root.activated(); }
+    }
+}
+
+// Never shown: this root observes the application palette, independently of tray colors.
+export component SystemAppearance inherits Window {
+    out property <bool> dark: Palette.background.to-oklch().lightness < 0.5;
+    changed dark => { root.system-theme-changed(); }
+    callback system-theme-changed();
+}
+
+export component TryTray inherits SystemTrayIcon {
+    in property <image> tray-icon;
+    in property <bool> reminders-enabled: true;
+    in property <bool> can-practice: true;
+    in property <bool> practice-menu-visible;
+    in property <int> pause-minutes;
+    in property <string> pause-title: @tr("暂离");
+    in property <bool> settings-available: true;
+    callback open-main();
+    callback open-settings(bool);
+    callback open-about();
+    callback set-pause(int);
+    callback practice-now();
+    callback quit-app();
+
+    icon: root.tray-icon;
+    tooltip: root.reminders-enabled ? @tr("Try · 随手一练") : @tr("Try · 已暂停");
+    clicked => { root.practice-now(); }
+    Menu {
+        if root.practice-menu-visible : MenuItem { title: @tr("练习"); enabled: root.can-practice; activated => { root.practice-now(); } }
+        MenuItem { title: @tr("打开"); activated => { root.open-main(); } }
+        MenuItem { title: @tr("设置"); enabled: root.settings-available; activated => { root.open-settings(false); } }
+        MenuSeparator {}
+        Menu {
+            title: root.pause-title;
+            MenuItem { title: (root.pause-minutes == 60 ? "✓ " : "") + @tr("1 小时"); activated => { root.set-pause(60); } }
+            MenuItem { title: (root.pause-minutes == 120 ? "✓ " : "") + @tr("2 小时"); activated => { root.set-pause(120); } }
+            MenuItem { title: (root.pause-minutes == 180 ? "✓ " : "") + @tr("3 小时"); activated => { root.set-pause(180); } }
+            MenuItem { title: (root.pause-minutes > 0 && root.pause-minutes != 60 && root.pause-minutes != 120 && root.pause-minutes != 180 ? "✓ " : "") + @tr("自定…"); enabled: root.settings-available; activated => { root.open-settings(true); } }
+        }
+        if root.pause-minutes == 0 : MenuItem { title: @tr("暂停"); activated => { root.set-pause(-1); } }
+        if root.pause-minutes != 0 : MenuItem { title: @tr("恢复"); activated => { root.set-pause(0); } }
+        MenuSeparator {}
+        MenuItem { title: @tr("关于"); activated => { root.open-about(); } }
+        MenuItem { title: @tr("退出"); activated => { root.quit-app(); } }
+    }
+}
+
+component QuestionButton inherits Rectangle {
+    in property <string> label;
+    in property <AnswerOption> preview;
+    in property <bool> enabled: true;
+    callback activated();
+    forward-focus: question-focus;
+    horizontal-stretch: 1;
+    out property <length> natural-height: max(52px, prompt-label.preferred-height + 16px);
+    height: root.natural-height;
+    background: question-touch.has-hover && root.enabled ? Theme.soft : transparent;
+    border-radius: 6px;
+    accessible-role: button;
+    accessible-label: @tr("编辑题目：") + root.label;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.activated(); } }
+    VerticalLayout {
+        padding: 8px; padding-left: 10px; padding-right: 10px; spacing: 6px;
+        prompt-label := FormulaLabel { fallback: root.label; formula: root.preview.formula; formula-width: root.preview.formula-width; formula-height: root.preview.formula-height; texts: root.preview.texts; font-size: 14px; align-left: true; }
+    }
+    if question-focus.has-focus : Rectangle {
+        x: 10px; y: parent.height - 4px; width: 18px; height: 2px;
+        border-radius: 1px; background: Theme.focus;
+    }
+    question-focus := FocusScope {
+        enabled: root.enabled;
+        width: 0px;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; }
+            return reject;
+        }
+    }
+    question-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.activated(); } }
+}
+
+export component MainWindow inherits Window {
+    in property <bool> dark-theme: true;
+    in property <int> appearance: 2;
+    private property <length> workspace-margin: 16px;
+    private property <bool> matrix-visible: root.current-tab == 0 && !root.editor-visible && root.has-selection;
+    // ListView includes its viewport in content-height. Copy measurements from
+    // change notifications to avoid a cyclic panel/viewport size binding.
+    private property <length> measured-list-height: 0px;
+    private property <length> list-height: question-list.content-height;
+    private property <int> card-count: root.cards.length;
+    changed list-height => { root.measured-list-height = root.list-height; }
+    changed card-count => { root.measured-list-height = root.card-count * 52px; }
+    changed selected-index => { root.measured-list-height = root.cards.length * 52px; }
+    changed matrix-visible => { if root.matrix-visible { root.measured-list-height = root.cards.length * 52px; } }
+    in property <image> app-icon;
+    in property <string> app-version;
+    in property <int> update-state;
+    in property <string> update-status;
+    in property <bool> update-download;
+    out property <length> about-left: 24px;
+    out property <length> about-top: root.height - root.about-height - 72px;
+    // Reserve the result row so checking cannot resize or move the popup.
+    out property <length> about-height: 208px;
+    private property <length> version-width: version-measure.preferred-width;
+    out property <length> check-link-left: root.about-left + 64px + root.version-width + 4px;
+    out property <length> check-link-top: root.about-top + 44px;
+    out property <length> home-link-left: root.about-left + 64px;
+    out property <length> home-link-top: root.about-top + 116px;
+    private property <length> mit-width: mit-measure.preferred-width;
+    out property <length> notices-link-left: root.home-link-left + root.mit-width + 18px;
+    out property <length> notices-link-top: root.home-link-top + 36px;
+    out property <length> notices-top: root.height - 280px - 72px;
+    callback check-updates();
+    callback update-check-finished();
+    callback open-update-download();
+    callback open-project-home();
+    callback open-notices();
+    callback return-to-about();
+    icon: root.app-icon;
+    title: "Try";
+    preferred-width: 820px;
+    preferred-height: 560px;
+    min-width: 720px;
+    min-height: 480px;
+    background: Theme.canvas;
+    default-font-size: 14px;
+    init => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
+    changed dark-theme => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
+    changed width => { root.workspace-margin = root.width < 780px ? 12px : 16px; root.hide-about(); root.hide-notices(); }
+    changed height => { root.hide-about(); root.hide-notices(); }
+
+    in property <[PackRow]> packs;
+    in property <string> participation-summary;
+    in property <int> selected-index: 0;
+    in property <string> selected-name;
+    in property <bool> selected-enabled;
+    in property <bool> selection-partial;
+    in property <string> selected-card-count;
+    in property <[CardRow]> cards;
+    in-out property <length> question-scroll-y: 0px;
+    in-out property <length> editor-scroll-y: 0px;
+    in property <[string]> answer-mode-labels: [@tr("填空"), @tr("选择"), @tr("判断")];
+    in property <int> uniform-answer-mode: -1;
+    in property <bool> all-choice-available;
+    in property <bool> all-judgment-available;
+    in property <bool> knowledge-only;
+    in property <string> selected-description;
+    in property <string> selected-tag;
+    in-out property <bool> description-expanded;
+    in-out property <bool> name-editing;
+    in-out property <bool> description-editing;
+    in-out property <bool> tag-editing;
+    in-out property <string> name-draft;
+    in-out property <string> description-draft;
+    in-out property <string> tag-draft;
+    in-out property <string> metadata-error;
+    private property <bool> editing: root.editor-visible || root.name-editing || root.description-editing || root.tag-editing;
+    private property <bool> action-pending: root.import-pending || root.delete-pending || root.card-delete-pending;
+    out property <bool> tray-settings-available: !root.editing && !root.action-pending;
+    changed tray-settings-available => { root.tray-navigation-changed(); }
+    private property <length> participation-column: 48px;
+    private property <length> mode-column: 44px;
+    private property <length> answer-column: clamp(100px, question-list.visible-width * 0.26, 140px);
+    in property <[AnswerOption]> quick-options;
+    in property <bool> has-selection;
+    in property <int> interval-minutes: 30;
+    in property <[string]> interval-options;
+    in property <int> interval-selection;
+    in property <int> feedback-seconds: 8;
+    in property <[string]> feedback-options;
+    in property <int> feedback-selection;
+    in property <int> pause-minutes;
+    in property <[string]> pause-options;
+    in property <int> pause-selection;
+    in property <string> pause-detail;
+    in property <bool> autostart-enabled;
+    in property <bool> autostart-available: true;
+    in property <string> autostart-error;
+    in property <bool> quiet-hours-enabled;
+    in-out property <string> quiet-start: "22:00";
+    in-out property <string> quiet-end: "08:00";
+    in property <string> quiet-summary;
+    in property <string> quiet-time-error;
+    in property <int> popup-corner: 0;
+    in property <bool> remember-position: true;
+    in property <bool> show-pack-tags: true;
+    in property <bool> focus-on-reminder: true;
+    in property <bool> auto-check-updates: true;
+    in property <bool> has-saved-position;
+    in property <int> interface-language;
+    in property <string> practice-summary;
+    in property <string> message;
+    in property <bool> message-is-error;
+    in property <bool> import-pending;
+    in property <string> import-description;
+    in property <bool> delete-pending;
+    in property <string> delete-description;
+    in-out property <int> current-tab: 0;
+    in property <bool> editor-visible;
+    in property <bool> editor-new-pack;
+    in property <bool> editor-can-delete;
+    in property <bool> card-delete-pending;
+    in property <string> card-delete-prompt;
+    in property <string> editor-title;
+    in-out property <int> editor-answer-mode;
+    in-out property <int> editor-correct-choice;
+    in-out property <int> editor-truth-choice: -1;
+    in property <string> editor-error;
+    in property <string> editor-preview-error;
+    in property <AnswerOption> editor-prompt-preview;
+    in property <AnswerOption> editor-answer-preview;
+    in property <[AnswerOption]> editor-fields;
+    in property <int> math-active-field: -1;
+    in property <AnswerOption> math-preview;
+    in property <[MathRegion]> math-regions;
+    in property <MathRegion> math-selection;
+    in property <FormulaPosition> math-position;
+    in property <FormulaNavigation> math-navigation;
+    in property <bool> math-text-mode;
+    in property <bool> math-has-formula;
+    in property <[MathTool]> math-functions;
+    in property <[MathTool]> math-symbols;
+    in-out property <string> math-input;
+    in property <string> math-error;
+    in property <bool> math-can-undo;
+    in property <bool> math-can-redo;
+    in property <bool> math-can-move-out;
+    in property <bool> math-can-unwrap;
+    in property <int> math-grid-rows;
+    in property <int> math-grid-columns;
+    in-out property <float> math-canvas-left;
+    in-out property <float> math-canvas-top;
+    in-out property <float> math-canvas-scale: 1;
+    in-out property <string> editor-pack-name;
+    in-out property <string> editor-prompt;
+    in-out property <string> editor-answer;
+    in-out property <string> editor-aliases;
+    in-out property <string> editor-prompt-latex;
+    in-out property <string> editor-answer-latex;
+    in-out property <string> editor-choice-one;
+    in-out property <string> editor-choice-two;
+    in-out property <string> editor-choice-one-latex;
+    in-out property <string> editor-choice-two-latex;
+    in-out property <string> editor-statement;
+    in-out property <string> editor-statement-latex;
+    in-out property <bool> editor-is-true;
+    in-out property <string> editor-correction;
+    in-out property <string> editor-correction-latex;
+    in-out property <bool> editor-extra;
+    out property <float> pixel-scale: 1px / 1phx;
+    out property <length> question-area-height: content-area.height;
+    out property <length> question-area-top: content-area.absolute-position.y;
+    out property <length> question-area-left: content-area.absolute-position.x;
+    out property <length> matrix-area-top: matrix-area.absolute-position.y;
+    out property <length> matrix-area-left: matrix-area.absolute-position.x;
+    out property <length> matrix-area-width: question-list.visible-width;
+    out property <length> matrix-mode-width: root.mode-column;
+    out property <length> matrix-answer-width: root.answer-column;
+    out property <length> participation-width: root.participation-column;
+    out property <length> pack-list-top: pack-list.absolute-position.y;
+    out property <length> pack-toggle-center-x: sidebar.absolute-position.x + sidebar.width - 34px;
+    out property <length> pack-row-height: 54px;
+    out property <length> pack-row-stride: 58px;
+    out property <length> delete-button-center-x: delete-pack-button.absolute-position.x + delete-pack-button.width / 2;
+    out property <length> delete-button-center-y: delete-pack-button.absolute-position.y + delete-pack-button.height / 2;
+    out property <length> editor-cancel-center-x: editor-cancel.absolute-position.x + editor-cancel.width / 2;
+    out property <length> editor-cancel-center-y: editor-cancel.absolute-position.y + editor-cancel.height / 2;
+    out property <length> card-delete-center-x: delete-card-button.absolute-position.x + delete-card-button.width / 2;
+    out property <length> card-delete-center-y: delete-card-button.absolute-position.y + delete-card-button.height / 2;
+    out property <length> card-confirm-center-x: card-delete-confirm.absolute-position.x + card-delete-confirm.width / 2;
+    out property <length> card-confirm-center-y: card-delete-confirm.absolute-position.y + card-delete-confirm.height / 2;
+    out property <length> card-cancel-center-x: card-delete-cancel.absolute-position.x + card-delete-cancel.width / 2;
+    out property <length> card-cancel-center-y: card-delete-cancel.absolute-position.y + card-delete-cancel.height / 2;
+    out property <length> delete-confirm-center-x: delete-confirm.absolute-position.x + delete-confirm.width / 2;
+    out property <length> delete-confirm-center-y: delete-confirm.absolute-position.y + delete-confirm.height / 2;
+    out property <length> settings-left: settings-page.absolute-position.x;
+    out property <length> settings-top: settings-page.absolute-position.y;
+    out property <length> settings-width: settings-page.width;
+    out property <string> interval-display: settings-page.interval-display;
+    out property <string> feedback-display: settings-page.feedback-display;
+    out property <string> pause-display: settings-page.pause-display;
+    out property <length> language-left: settings-page.language-left;
+    out property <length> language-top: settings-page.language-top;
+    out property <length> appearance-left: settings-page.appearance-left;
+    out property <length> appearance-top: settings-page.appearance-top;
+    out property <length> reminder-focus-left: settings-page.reminder-focus-left;
+    out property <length> reminder-focus-top: settings-page.reminder-focus-top;
+    out property <length> automatic-update-left: settings-page.automatic-update-left;
+    out property <length> automatic-update-top: settings-page.automatic-update-top;
+    changed pixel-scale => { if root.editor-visible { root.preview-editor(); } }
+
+    callback select-pack(int);
+    callback toggle-pack(string, bool);
+    callback toggle-all-cards(bool);
+    callback toggle-card(int, bool);
+    callback edit-card(int);
+    callback add-card();
+    callback create-pack();
+    callback save-editor();
+    callback cancel-editor();
+    callback delete-card();
+    callback confirm-card-delete();
+    callback cancel-card-delete();
+    callback preview-editor();
+    callback request-row-formula(int);
+    callback save-quick-answer(string, string, string) -> string;
+    callback prepare-quick-options(string, string);
+    callback choose-quick-answer(string, string, int, int) -> string;
+    callback activate-content(int);
+    callback select-math-region(int);
+    callback edit-math-input(string);
+    callback math-position-changed(string, int, int);
+    callback math-tool(string);
+    callback math-parent();
+    callback undo-math(bool);
+    callback resize-math-grid(int, int);
+    callback set-all-answer-modes(int);
+    callback toggle-knowledge-mode();
+    callback save-pack-name();
+    callback save-pack-description();
+    callback save-pack-tag();
+    callback set-card-answer-mode(int, int);
+    callback set-editor-answer-mode(int);
+    callback import-pack();
+    callback export-pack();
+    callback delete-pack();
+    callback confirm-delete();
+    callback cancel-delete();
+    callback confirm-import();
+    callback cancel-import();
+    callback choose-interval(int);
+    callback choose-feedback(int);
+    callback choose-pause(int);
+    callback choose-language(int);
+    callback choose-appearance(int);
+    callback set-pause(int);
+    callback set-interval(int);
+    callback set-feedback(int);
+    callback set-autostart(bool);
+    callback set-quiet-enabled(bool);
+    callback set-quiet-range(string, string);
+    callback set-corner(int);
+    callback set-remember-position(bool);
+    callback set-show-pack-tags(bool);
+    callback set-focus-on-reminder(bool);
+    callback set-auto-check-updates(bool);
+    callback go-background();
+    callback tray-navigation-changed();
+    callback quit-app();
+
+    public function show-about() { notices-popup.close(); about-popup.show(); }
+    public function hide-about() { about-popup.close(); }
+    public function show-notices() { about-popup.close(); notices-popup.show(); }
+    public function hide-notices() { notices-popup.close(); }
+    public function show-pause-details() { root.current-tab = 1; settings-page.show-pause-details(); }
+    public function reset-editor-scroll() { root.editor-scroll-y = 0px; }
+    public function reset-overview() { root.description-expanded = false; root.name-editing = false; root.description-editing = false; root.tag-editing = false; }
+    public function begin-rename() { root.metadata-error = ""; root.name-draft = root.selected-name; root.name-editing = true; }
+    public function begin-description-edit() { root.metadata-error = ""; root.description-draft = root.selected-description; root.description-expanded = true; root.description-editing = true; }
+    public function begin-tag-edit() { root.metadata-error = ""; root.tag-draft = root.selected-tag; root.description-expanded = true; root.tag-editing = true; }
+    public function select-truth(value: bool) { root.editor-is-true = value; root.editor-truth-choice = value ? 0 : 1; }
+
+    HorizontalLayout {
+        spacing: 0px;
+        sidebar := Rectangle {
+            width: 216px;
+            background: Theme.sidebar;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 2px;
+                    Text { text: @tr("知识包"); color: Theme.muted; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                    IconButton { glyph: @image-url("../assets/add.svg"); label: @tr("新建知识包"); enabled: !root.editing && !root.action-pending; activated => { root.current-tab = 0; root.create-pack(); } }
+                    IconButton { glyph: @image-url("../assets/import_pack.svg"); label: @tr("导入知识包"); enabled: !root.editing && !root.action-pending; activated => { root.import-pack(); } }
+                    IconButton { glyph: @image-url("../assets/export_pack.svg"); label: @tr("导出选中知识包"); enabled: root.has-selection && !root.editing; activated => { root.export-pack(); } }
+                }
+                Rectangle { height: 1px; background: Theme.hover; }
+                pack-list := ScrollView {
+                    vertical-stretch: 1;
+                    horizontal-scrollbar-policy: always-off;
+                    content-width: self.visible-width;
+                    VerticalLayout {
+                        spacing: root.pack-row-stride - root.pack-row-height;
+                        for pack[index] in root.packs : Rectangle {
+                            height: root.pack-row-height;
+                            border-radius: 6px;
+                            background: root.current-tab == 0 && root.selected-index == index ? Theme.soft : pack-touch.has-hover ? Theme.hover : transparent;
+                            Rectangle { visible: root.current-tab == 0 && root.selected-index == index; x: 0px; y: 12px; width: 2px; height: 30px; background: Theme.primary; }
+                            pack-view := Rectangle {
+                                x: 0px; y: 0px;
+                                width: parent.width - 42px;
+                                height: parent.height;
+                                VerticalLayout {
+                                    padding: 8px;
+                                    padding-right: 4px;
+                                    padding-left: 14px;
+                                    spacing: 4px;
+                                    HorizontalLayout {
+                                        height: 20px; spacing: 6px;
+                                        if root.show-pack-tags && pack.tag != "" : Rectangle {
+                                            width: min(64px, sidebar-tag-measure.preferred-width + 12px); height: 20px;
+                                            sidebar-tag-measure := Text { visible: false; text: pack.tag; font-size: 11px; }
+                                            Rectangle {
+                                                width: parent.width; y: 1px; height: 18px;
+                                                border-radius: 4px; border-width: 1px; border-color: Theme.border; background: Theme.panel;
+                                                Text { x: 6px; width: parent.width - 12px; height: parent.height; text: pack.tag; font-size: 11px; color: Theme.muted; vertical-alignment: center; overflow: elide; }
+                                                Tooltip { text: @markdown("\{pack.tag}"); }
+                                            }
+                                        }
+                                        Text { text: pack.name; color: Theme.ink; overflow: elide; min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; vertical-alignment: center; Tooltip { text: @markdown("\{pack.name}"); } }
+                                    }
+                                    Text { text: pack.detail; color: Theme.muted; font-size: 12px; }
+                                }
+                                pack-touch := TouchArea { enabled: !root.editing && !root.action-pending; mouse-cursor: pointer; clicked => { root.current-tab = 0; root.question-scroll-y = 0px; root.select-pack(index); } }
+                            }
+                            ParticipationSwitch {
+                                x: parent.width - 40px; y: (parent.height - self.height) / 2;
+                                width: 36px; height: 36px; borderless: true;
+                                checked: pack.participating;
+                                label: pack.participating ? @tr("停止参与：") + pack.name : @tr("参与练习：") + pack.name;
+                                enabled: pack.has-cards && !root.editing && !root.action-pending;
+                                toggled(value) => { root.toggle-pack(pack.id, value); }
+                            }
+                        }
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                    }
+                }
+                Text { text: root.participation-summary; color: Theme.muted; font-size: 11px; height: 24px; vertical-alignment: center; }
+                Rectangle { height: 1px; background: Theme.hover; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    IconButton { glyph: @image-url("../assets/settings.svg"); label: @tr("全局设置"); borderless: true; ink: root.current-tab == 1 ? Theme.ink : Theme.muted; enabled: !root.editing && !root.action-pending; activated => { root.current-tab = 1; } }
+                    IconButton { glyph: root.knowledge-only ? @image-url("../assets/logo_outline.svg") : @image-url("../assets/logo.svg"); glyph-size: 20px; tint: false; borderless: true; checkable: true; checked: root.knowledge-only; label: root.knowledge-only ? @tr("只看知识点 · 点击恢复答题") : @tr("答题 · 点击只看知识点"); activated => { root.toggle-knowledge-mode(); } }
+                    IconButton { glyph: @image-url("../assets/info.svg"); label: @tr("关于 Try"); borderless: true; ink: Theme.muted; activated => { root.show-about(); } }
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                }
+            }
+        }
+        Rectangle { width: 1px; background: Theme.border; }
+        VerticalLayout {
+            padding: root.workspace-margin;
+            padding-bottom: 12px;
+            spacing: 8px;
+            overview := VerticalLayout {
+                vertical-stretch: 0;
+                spacing: 8px;
+                HorizontalLayout {
+                    height: 36px; spacing: 8px;
+                    if root.current-tab == 0 && !root.editor-visible && root.has-selection : HorizontalLayout {
+                        spacing: 4px; horizontal-stretch: 1;
+                        Rectangle {
+                            min-width: 0px;
+                            preferred-width: max(title-measure.preferred-width, root.name-editing ? draft-measure.preferred-width : 0px) + 30px;
+                            horizontal-stretch: 0; height: 36px;
+                            background: transparent;
+                            title-measure := Text {
+                                visible: false;
+                                text: root.selected-name;
+                                font-size: 20px; font-weight: 600;
+                            }
+                            draft-measure := Text {
+                                visible: false;
+                                text: root.name-draft;
+                                font-size: 20px; font-weight: 600;
+                            }
+                            if !root.name-editing : Disclosure {
+                                width: parent.width;
+                                label: root.selected-name; expanded: root.description-expanded;
+                                font-size: 20px; font-weight: 600;
+                                activated => { if !root.editing && !root.action-pending { root.description-expanded = !root.description-expanded; } }
+                            }
+                            if root.name-editing : FocusScope {
+                                width: parent.width; height: parent.height;
+                                forward-focus: rename-input;
+                                init => { rename-input.focus(); }
+                                capture-key-pressed(event) => { if event.text == Key.Escape { root.name-editing = false; return accept; } return reject; }
+                                rename-input := TextInput {
+                                    x: 0px; y: 0px; width: max(0px, parent.width - 30px); height: parent.height;
+                                    text <=> root.name-draft;
+                                    single-line: true;
+                                    font-size: 20px; font-weight: 600;
+                                    color: Theme.ink;
+                                    vertical-alignment: center;
+                                    selection-background-color: Theme.hover;
+                                    selection-foreground-color: Theme.ink;
+                                    accessible-label: @tr("知识包名称");
+                                    accepted => { root.save-pack-name(); }
+                                }
+                                Rectangle {
+                                    x: rename-input.x; y: parent.height - 2px;
+                                    width: rename-input.width; height: 1px;
+                                    background: Theme.control-border;
+                                }
+                            }
+                        }
+                        IconButton {
+                            glyph: root.name-editing ? @image-url("../assets/check_mark.svg") : @image-url("../assets/edit.svg");
+                            label: root.name-editing ? @tr("保存知识包名称") : @tr("修改知识包名称");
+                            borderless: true;
+                            enabled: root.has-selection && !root.description-editing && !root.tag-editing && !root.action-pending;
+                            activated => { if root.name-editing { root.save-pack-name(); } else { root.begin-rename(); } }
+                        }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                    }
+                    if root.current-tab == 1 || root.editor-visible : Text { text: root.current-tab == 1 ? @tr("设置") : root.editor-title; font-size: 20px; font-weight: 600; color: Theme.ink; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                    if root.current-tab == 0 && !root.editor-visible && !root.has-selection : Text { text: @tr("知识包"); font-size: 20px; font-weight: 600; color: Theme.ink; vertical-alignment: center; horizontal-stretch: 1; }
+                    if root.current-tab == 0 && !root.editor-visible && root.has-selection : Text { text: root.selected-card-count; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                    if root.current-tab == 0 && !root.editor-visible && root.has-selection : IconButton { glyph: @image-url("../assets/add.svg"); label: @tr("新增题目"); enabled: !root.editing && !root.action-pending; activated => { root.add-card(); } }
+                    delete-pack-button := IconButton { visible: root.current-tab == 0 && !root.editor-visible && root.has-selection; width: self.visible ? 36px : 0px; height: self.visible ? 36px : 0px; glyph: @image-url("../assets/delete_pack.svg"); label: @tr("删除选中知识包"); borderless: true; ink: Theme.muted; enabled: self.visible && !root.editing && !root.action-pending; activated => { root.delete-pack(); } }
+                    delete-card-button := IconButton { visible: root.editor-visible && root.editor-can-delete; width: self.visible ? 36px : 0px; height: self.visible ? 36px : 0px; glyph: @image-url("../assets/delete_pack.svg"); label: @tr("删除这道题"); borderless: true; ink: Theme.muted; enabled: self.visible && !root.action-pending; activated => { root.delete-card(); } }
+                }
+                if root.editor-visible : HorizontalLayout {
+                    height: 36px; spacing: 4px;
+                    for label[index] in root.answer-mode-labels : ModeTab { label: label; selected: root.editor-answer-mode == index; enabled: !root.card-delete-pending; activated => { root.set-editor-answer-mode(index); } }
+                }
+                if root.current-tab == 0 && !root.editor-visible && root.description-expanded : VerticalLayout {
+                    spacing: 6px;
+                    HorizontalLayout {
+                        height: 36px; spacing: 8px;
+                        Text { text: @tr("标签"); color: Theme.muted; font-size: 13px; width: 36px; vertical-alignment: center; }
+                        Rectangle {
+                            horizontal-stretch: 1; min-width: 0px; preferred-width: 0px;
+                            if !root.tag-editing : Text { width: parent.width; height: parent.height; text: root.selected-tag == "" ? @tr("未设置") : root.selected-tag; color: root.selected-tag == "" ? Theme.muted : Theme.ink; font-size: 13px; overflow: elide; vertical-alignment: center; }
+                            if root.tag-editing : FocusScope {
+                                width: parent.width; height: parent.height;
+                                forward-focus: tag-input;
+                                init => { tag-input.focus(); }
+                                capture-key-pressed(event) => { if event.text == Key.Escape { root.tag-editing = false; root.metadata-error = ""; return accept; } return reject; }
+                                tag-input := LineEdit { width: parent.width; height: parent.height; text <=> root.tag-draft; placeholder-text: @tr("留空不显示"); accessible-label: @tr("知识包标签"); accepted => { root.save-pack-tag(); } }
+                            }
+                        }
+                        if root.tag-editing : IconButton { glyph: @image-url("../assets/cross_mark.svg"); label: @tr("取消标签编辑"); borderless: true; activated => { root.tag-editing = false; root.metadata-error = ""; } }
+                        IconButton {
+                            glyph: root.tag-editing ? @image-url("../assets/check_mark.svg") : @image-url("../assets/edit.svg");
+                            label: root.tag-editing ? @tr("保存知识包标签") : @tr("编辑知识包标签"); borderless: true;
+                            enabled: !root.name-editing && !root.description-editing && !root.action-pending;
+                            activated => { if root.tag-editing { root.save-pack-tag(); } else { root.begin-tag-edit(); } }
+                        }
+                    }
+                    if !root.description-editing : HorizontalLayout {
+                        spacing: 8px;
+                        ScrollView {
+                            horizontal-stretch: 1;
+                            min-width: 0px; preferred-width: 0px;
+                            height: min(132px, max(36px, description-text.preferred-height + 6px));
+                            horizontal-scrollbar-policy: always-off; content-width: self.visible-width;
+                            description-text := Text { x: 0px; y: 0px; width: parent.width; text: root.selected-description; color: Theme.muted; font-size: 13px; horizontal-alignment: left; wrap: word-wrap; }
+                        }
+                        IconButton { glyph: @image-url("../assets/edit.svg"); label: root.selected-description == "" ? @tr("添加知识包介绍") : @tr("编辑知识包介绍"); enabled: !root.name-editing && !root.tag-editing && !root.action-pending; activated => { root.begin-description-edit(); } }
+                    }
+                    description-focus := FocusScope {
+                        visible: root.description-editing;
+                        height: root.description-editing ? 96px : 0px;
+                        forward-focus: description-input;
+                        init => { if self.visible { description-input.focus(); } }
+                        changed visible => { if self.visible { description-input.focus(); } }
+                        capture-key-pressed(event) => {
+                            if event.text == Key.Escape { root.description-editing = false; return accept; }
+                            if event.text == Key.Return && event.modifiers.control { root.save-pack-description(); return accept; }
+                            return reject;
+                        }
+                        description-input := TextEdit { text <=> root.description-draft; accessible-label: @tr("知识包介绍"); }
+                    }
+                    if root.description-editing : HorizontalLayout {
+                        height: 36px; spacing: 4px;
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                        IconButton { glyph: @image-url("../assets/cross_mark.svg"); label: @tr("取消介绍编辑"); activated => { root.description-editing = false; } }
+                        IconButton { glyph: @image-url("../assets/check_mark.svg"); label: @tr("保存知识包介绍"); activated => { root.save-pack-description(); } }
+                    }
+                }
+                if root.metadata-error != "" && (root.name-editing || root.description-editing) : Text { text: root.metadata-error; color: Theme.wrong-ink; font-size: 12px; wrap: word-wrap; }
+            }
+            workspace := Rectangle {
+                vertical-stretch: 1;
+                min-height: 0px;
+                background: transparent;
+                workspace-panel := Rectangle {
+                    x: 0px; y: 0px;
+                    width: parent.width;
+                    height: root.matrix-visible ? min(parent.height, max(172px, root.measured-list-height + 92px)) : parent.height;
+                    background: root.matrix-visible || root.editor-visible ? Theme.panel : transparent;
+                    border-radius: 16px;
+                    border-width: root.matrix-visible || root.editor-visible ? 1px : 0px;
+                    border-color: Theme.border;
+                    VerticalLayout {
+                        padding-left: root.matrix-visible || root.editor-visible ? 12px : 0px;
+                        padding-right: root.matrix-visible || root.editor-visible ? 12px : 0px;
+                        padding-top: root.matrix-visible || root.editor-visible ? 8px : 0px;
+                        padding-bottom: root.matrix-visible || root.editor-visible ? 8px : 0px;
+                        spacing: 0px;
+                        matrix-area := Rectangle {
+                            visible: root.matrix-visible;
+                            height: self.visible ? 76px : 0px;
+                            min-width: 0px; preferred-width: 0px;
+                            if root.current-tab == 0 && !root.editor-visible && root.has-selection : VerticalLayout {
+                                width: question-list.visible-width;
+                                min-width: 0px; preferred-width: 0px;
+                                spacing: 0px;
+                                HorizontalLayout {
+                                    height: 32px; spacing: 0px;
+                                    Text { width: root.participation-column; text: @tr("参与"); font-size: 12px; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+                                    Rectangle { horizontal-stretch: 1; Text { x: 10px; width: parent.width - 10px; height: parent.height; text: @tr("题目"); font-size: 12px; color: Theme.muted; vertical-alignment: center; } }
+                                    Rectangle { width: root.answer-column; Text { x: 17px; width: parent.width - 17px; height: parent.height; text: @tr("答案"); font-size: 12px; color: Theme.muted; vertical-alignment: center; } }
+                                    for label in root.answer-mode-labels : Text { width: root.mode-column; text: label; font-size: 12px; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+                                }
+                                HorizontalLayout {
+                                    height: 43px; spacing: 0px;
+                                    Rectangle {
+                                        width: root.participation-column;
+                                        ParticipationSwitch { y: (parent.height - self.height) / 2; width: parent.width; checked: root.selected-enabled; partial: root.selection-partial; label: root.selected-enabled ? @tr("全部停止参与") : root.selection-partial ? @tr("部分参与 · 点击全部参与") : @tr("全部参与"); enabled: root.has-selection && root.cards.length > 0 && !root.editing && !root.action-pending; toggled(value) => { root.toggle-all-cards(value); } }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; Text { x: 10px; width: parent.width - 10px; height: parent.height; text: @tr("全部"); color: Theme.muted; font-size: 13px; vertical-alignment: center; } }
+                                    Rectangle { width: root.answer-column; }
+                                    for label[index] in root.answer-mode-labels : Rectangle {
+                                        width: root.mode-column;
+                                        MatrixCell { y: (parent.height - self.height) / 2; width: parent.width; selected: root.uniform-answer-mode == index; enabled: root.has-selection && root.cards.length > 0 && !root.editing && !root.action-pending; label: @tr("全部设为") + label; activated => { root.set-all-answer-modes(index); } }
+                                    }
+                                }
+                                Rectangle { height: 1px; background: Theme.border; }
+                            }
+                        }
+                        content-area := Rectangle {
+                            vertical-stretch: 1;
+                            min-height: 0px;
+                            background: transparent;
+                            border-radius: 0px;
+                            question-list := ListView {
+                                visible: root.current-tab == 0 && !root.editor-visible && root.has-selection;
+                                width: parent.width; height: parent.height;
+                                horizontal-scrollbar-policy: always-off;
+                                vertical-scrollbar-policy: self.content-height > self.visible-height + 1px ? as-needed : always-off;
+                                content-width: self.visible-width;
+                                content-y <=> root.question-scroll-y;
+                                changed height => { if root.matrix-visible { root.measured-list-height = self.content-height; } }
+                                for card[index] in root.cards : Rectangle {
+                                    private property <string> source: card.formula-source;
+                                    private property <string> answer-source: card.answer-formula-source;
+                                    private property <bool> rendered: card.rendered;
+                                    private property <float> scale: root.pixel-scale;
+                                    private property <bool> in-view: self.absolute-position.y + self.height > content-area.absolute-position.y && self.absolute-position.y < content-area.absolute-position.y + content-area.height && content-area.height > 0px && question-list.visible;
+                                    height: max(52px, question-button.natural-height, quick-answer.preferred-height + 12px);
+                                    init => { if self.in-view { root.request-row-formula(index); } }
+                                    changed source => { if self.in-view { root.request-row-formula(index); } }
+                                    changed answer-source => { if self.in-view { root.request-row-formula(index); } }
+                                    changed rendered => { if self.in-view && !self.rendered { root.request-row-formula(index); } }
+                                    changed scale => { if self.in-view { root.request-row-formula(index); } }
+                                    changed in-view => { if self.in-view { root.request-row-formula(index); } }
+                                    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.hover; }
+                                    HorizontalLayout {
+                                        height: parent.height; spacing: 0px;
+                                        Rectangle {
+                                            width: root.participation-column;
+                                            ParticipationSwitch { y: (parent.height - self.height) / 2; width: parent.width; checked: card.enabled; label: (card.enabled ? @tr("停止参与：") : @tr("参与练习：")) + card.prompt; enabled: !root.editing && !root.action-pending; toggled(value) => { root.toggle-card(index, value); } }
+                                        }
+                                        question-button := QuestionButton { height: parent.height; label: card.prompt; preview: card.preview; opacity: card.enabled ? 1 : 0.65; enabled: !root.editing && !root.action-pending; activated => { root.edit-card(index); } }
+                                        Rectangle {
+                                            width: root.answer-column;
+                                            quick-answer := QuickAnswer {
+                                                y: (parent.height - self.height) / 2; width: parent.width;
+                                                height: self.preferred-height;
+                                                identity: card.pack-id + "/" + card.id;
+                                                mode: card.answer-mode; value: card.quick-answer; preview: card.answer-preview;
+                                                truth: card.truth; options: root.quick-options; label: card.prompt;
+                                                enabled: !root.editing && !root.action-pending;
+                                                save(input) => { return root.save-quick-answer(card.pack-id, card.id, input); }
+                                                prepare-options => { root.prepare-quick-options(card.pack-id, card.id); }
+                                                choose(option) => { return root.choose-quick-answer(card.pack-id, card.id, card.answer-mode, option); }
+                                            }
+                                        }
+                                        for label[mode] in root.answer-mode-labels : Rectangle {
+                                            width: root.mode-column;
+                                            MatrixCell { y: (parent.height - self.height) / 2; width: parent.width; selected: card.answer-mode == mode; enabled: !root.editing && !root.action-pending && (mode == 0 || (mode == 1 ? card.choice-available : card.judgment-available)); label: (mode == 1 && !card.choice-available ? @tr("缺少选择选项 · 点击题目补齐") : mode == 2 && !card.judgment-available ? @tr("缺少判断陈述 · 点击题目补齐") : @tr("设为") + label) + "：" + card.prompt; activated => { root.set-card-answer-mode(index, mode); } }
+                                        }
+                                    }
+                                }
+                            }
+                            if root.current-tab == 0 && !root.editor-visible && !root.has-selection : Text {
+                                x: 24px; y: (parent.height - self.height) / 2;
+                                width: max(0px, parent.width - 48px);
+                                text: @tr("还没有知识包，从左上角新建或导入。");
+                                color: Theme.muted; wrap: word-wrap; horizontal-alignment: center;
+                            }
+                            if root.current-tab == 0 && !root.editor-visible && root.has-selection && root.cards.length == 0 : Text {
+                                text: @tr("这个知识包还没有题目，点击上方加号添加。");
+                                color: Theme.muted; font-size: 14px; wrap: word-wrap;
+                            }
+                            if root.card-delete-pending : Text {
+                                text: root.card-delete-prompt; color: Theme.ink; font-size: 16px;
+                                x: 12px; y: 12px; width: parent.width - 24px; height: 36px; overflow: elide;
+                            }
+                            if root.current-tab == 0 && root.editor-visible && !root.card-delete-pending : ScrollView {
+                                width: parent.width; height: parent.height;
+                                horizontal-scrollbar-policy: always-off;
+                                content-width: self.visible-width;
+                                content-y <=> root.editor-scroll-y;
+                                VerticalLayout {
+                                    width: parent.width;
+                                    padding-right: 12px;
+                                    spacing: 14px;
+                                    if root.editor-new-pack : Text { text: @tr("知识包名称"); color: Theme.muted; font-size: 12px; }
+                                    if root.editor-new-pack : LineEdit { text <=> root.editor-pack-name; }
+                                    ContentForm {
+                                        functions: root.math-functions;
+                                        symbols: root.math-symbols;
+                                        fields: root.editor-fields;
+                                        answer-mode: root.editor-answer-mode;
+                                        correct-choice: root.editor-correct-choice;
+                                        truth-choice: root.editor-truth-choice;
+                                        choice-changed(index) => { root.editor-correct-choice = index; }
+                                        truth-changed(value) => { root.select-truth(value); }
+                                        active-field: root.math-active-field;
+                                        active-preview: root.math-preview;
+                                        regions: root.math-regions;
+                                        selection: root.math-selection;
+                                        position: root.math-position;
+                                        navigation: root.math-navigation;
+                                        text-mode: root.math-text-mode;
+                                        has-formula: root.math-has-formula;
+                                        input <=> root.math-input;
+                                        error: root.math-error;
+                                        can-undo: root.math-can-undo;
+                                        can-redo: root.math-can-redo;
+                                        can-move-out: root.math-can-move-out;
+                                        can-unwrap: root.math-can-unwrap;
+                                        grid-rows: root.math-grid-rows;
+                                        grid-columns: root.math-grid-columns;
+                                        activate-field(field) => { root.activate-content(field); }
+                                        select-region(index) => { root.select-math-region(index); }
+                                        edited(input) => { root.edit-math-input(input); }
+                                        position-changed(value, anchor, caret) => { root.math-position-changed(value, anchor, caret); }
+                                        tool(name) => { root.math-tool(name); }
+                                        parent => { root.math-parent(); }
+                                        undo(redo) => { root.undo-math(redo); }
+                                        resize-grid(rows, columns) => { root.resize-math-grid(rows, columns); }
+                                        canvas-layout(x,y,scale) => { root.math-canvas-left = x; root.math-canvas-top = y; root.math-canvas-scale = scale; }
+                                    }
+                                    if root.editor-answer-mode == 0 : Disclosure { label: @tr("其他正确写法"); expanded: root.editor-extra; activated => { root.editor-extra = !root.editor-extra; } }
+                                    if root.editor-answer-mode == 0 && root.editor-extra : TextEdit { height: 64px; vertical-stretch: 0; text <=> root.editor-aliases; }
+                                }
+                            }
+                            settings-page := SettingsPage {
+                                width: parent.width; height: parent.height;
+                                visible: root.current-tab == 1;
+                                interval-minutes: root.interval-minutes; interval-options: root.interval-options; interval-selection: root.interval-selection;
+                                feedback-seconds: root.feedback-seconds; feedback-options: root.feedback-options; feedback-selection: root.feedback-selection;
+                                pause-minutes: root.pause-minutes; pause-options: root.pause-options; pause-selection: root.pause-selection; pause-detail: root.pause-detail;
+                                autostart-enabled: root.autostart-enabled; autostart-available: root.autostart-available; autostart-error: root.autostart-error;
+                                quiet-hours-enabled: root.quiet-hours-enabled; quiet-start <=> root.quiet-start; quiet-end <=> root.quiet-end; quiet-summary: root.quiet-summary; quiet-time-error: root.quiet-time-error;
+                                popup-corner: root.popup-corner; remember-position: root.remember-position;
+                                show-pack-tags: root.show-pack-tags;
+                                focus-on-reminder: root.focus-on-reminder;
+                                auto-check-updates: root.auto-check-updates;
+                                interface-language: root.interface-language;
+                                appearance: root.appearance;
+                                choose-appearance(index) => { root.choose-appearance(index); }
+                                choose-language(index) => { root.choose-language(index); }
+                                choose-interval(index) => { root.choose-interval(index); }
+                                choose-feedback(index) => { root.choose-feedback(index); }
+                                choose-pause(index) => { root.choose-pause(index); }
+                                set-interval(value) => { root.set-interval(value); }
+                                set-feedback(value) => { root.set-feedback(value); }
+                                set-pause(value) => { root.set-pause(value); }
+                                set-autostart(value) => { root.set-autostart(value); }
+                                set-quiet-enabled(value) => { root.set-quiet-enabled(value); }
+                                set-quiet-range(start, end) => { root.set-quiet-range(start, end); }
+                                set-corner(value) => { root.set-corner(value); }
+                                set-remember-position(value) => { root.set-remember-position(value); }
+                                set-show-pack-tags(value) => { root.set-show-pack-tags(value); }
+                                set-focus-on-reminder(value) => { root.set-focus-on-reminder(value); }
+                                set-auto-check-updates(value) => { root.set-auto-check-updates(value); }
+                            }
+                        }
+                    }
+                }
+            }
+            if root.import-pending : Rectangle {
+                preferred-height: import-actions.preferred-height;
+                background: Theme.soft; border-radius: 6px; border-width: 1px; border-color: Theme.border;
+                import-actions := VerticalLayout {
+                    padding: 12px; spacing: 10px;
+                    Text { text: root.import-description; wrap: word-wrap; color: Theme.ink; }
+                    HorizontalLayout { spacing: 8px; Button { text: @tr("替换知识包"); clicked => { root.confirm-import(); } } Button { text: @tr("取消"); clicked => { root.cancel-import(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                }
+            }
+            FocusScope {
+                visible: root.delete-pending;
+                height: self.visible ? delete-actions.preferred-height : 0px;
+                forward-focus: delete-cancel;
+                init => { if self.visible { delete-cancel.focus(); } }
+                changed visible => { if self.visible { delete-cancel.focus(); } }
+                capture-key-pressed(event) => {
+                    if event.text == Key.Escape { root.cancel-delete(); return accept; }
+                    return reject;
+                }
+                Rectangle { width: 100%; height: 100%; background: Theme.soft; border-radius: 6px; border-width: 1px; border-color: Theme.border; }
+                delete-actions := VerticalLayout {
+                    padding: 12px; spacing: 10px;
+                    Text { text: root.delete-description; wrap: word-wrap; color: Theme.ink; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        delete-cancel := Button { text: @tr("取消"); clicked => { root.cancel-delete(); } }
+                        delete-confirm := Button { text: @tr("删除知识包"); clicked => { root.confirm-delete(); } }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                    }
+                }
+            }
+            FocusScope {
+                visible: root.card-delete-pending;
+                height: self.visible ? card-delete-actions.preferred-height : 0px;
+                forward-focus: card-delete-cancel;
+                init => { if self.visible { card-delete-cancel.focus(); } }
+                changed visible => { if self.visible { card-delete-cancel.focus(); } }
+                capture-key-pressed(event) => {
+                    if event.text == Key.Escape { root.cancel-card-delete(); return accept; }
+                    return reject;
+                }
+                Rectangle { width: 100%; height: 100%; background: Theme.soft; border-radius: 6px; border-width: 1px; border-color: Theme.border; }
+                card-delete-actions := VerticalLayout {
+                    padding: 12px; spacing: 10px;
+                    Text { text: @tr("删除这道题及其练习设置？此操作无法撤销。"); wrap: word-wrap; color: Theme.ink; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        card-delete-cancel := Button { text: @tr("取消"); clicked => { root.cancel-card-delete(); } }
+                        card-delete-confirm := Button { text: @tr("删除题目"); clicked => { root.confirm-card-delete(); } }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                    }
+                }
+            }
+            if root.message != "" : Text { text: root.message; color: root.message-is-error ? Theme.wrong-ink : Theme.muted; wrap: word-wrap; font-size: 12px; }
+            if root.editor-visible && root.editor-error != "" : Text { text: root.editor-error; color: Theme.wrong-ink; wrap: word-wrap; font-size: 12px; }
+            VerticalLayout {
+                vertical-stretch: 0;
+                spacing: 10px;
+                Rectangle { height: 1px; background: Theme.border; }
+                HorizontalLayout {
+                    height: 36px;
+                    spacing: root.editor-visible ? 8px : 12px;
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                    editor-cancel := Button { visible: root.editor-visible && !root.card-delete-pending; width: self.visible ? 72px : 0px; height: self.visible ? 36px : 0px; text: @tr("取消"); clicked => { root.cancel-editor(); } }
+                    if root.editor-visible && !root.card-delete-pending : Button { text: @tr("保存"); clicked => { root.save-editor(); } }
+                    if !root.editor-visible : IconButton { glyph: @image-url("../assets/return_to_tray.svg"); label: @tr("回到托盘"); borderless: true; activated => { root.go-background(); } }
+                    if !root.editor-visible : IconButton { glyph: @image-url("../assets/quit.svg"); label: @tr("退出 Try"); ink: Theme.muted; borderless: true; activated => { root.quit-app(); } }
+                }
+            }
+        }
+    }
+    // Keep the version metric outside the popup so its controls share testable coordinates.
+    version-measure := Text { visible: false; text: root.app-version; font-size: 12px; }
+    mit-measure := Text { visible: false; text: @tr("MIT 许可"); font-size: 12px; }
+    about-popup := PopupWindow {
+        x: root.about-left;
+        y: root.about-top;
+        width: 300px;
+        height: root.about-height;
+        close-policy: close-on-click-outside;
+        forward-focus: about-focus;
+        Rectangle {
+            background: Theme.panel;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+            about-focus := FocusScope {
+                width: 100%; height: 100%;
+                key-pressed(event) => {
+                    if event.text == Key.Escape { root.hide-about(); return accept; }
+                    return reject;
+                }
+                Image { source: root.app-icon; x: 20px; y: 22px; width: 32px; height: 32px; image-fit: contain; }
+                Text { x: 64px; y: 20px; width: 160px; height: 26px; text: "Try"; color: Theme.ink; font-size: 18px; font-weight: 600; }
+                version-label := Text {
+                    x: 64px; y: 44px; width: root.version-width; height: 36px;
+                    text: root.app-version; color: Theme.muted; font-size: 12px; vertical-alignment: center;
+                }
+                IconButton {
+                    x: root.check-link-left - root.about-left; y: root.check-link-top - root.about-top;
+                    glyph: @image-url("../assets/check_updates.svg"); label: @tr("检查更新");
+                    borderless: true; enabled: root.update-state != 1;
+                    activated => { root.check-updates(); }
+                }
+                IconButton {
+                    x: 244px; y: 16px;
+                    glyph: @image-url("../assets/cross_mark.svg"); label: @tr("关闭关于");
+                    borderless: true; activated => { root.hide-about(); }
+                }
+                if root.update-state != 0 : HorizontalLayout {
+                    x: 64px; y: 80px; width: 216px; height: 36px; spacing: 6px;
+                    Text { text: root.update-status; color: Theme.muted; font-size: 12px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                    if root.update-download : TextLink {
+                        width: 64px; font-size: 12px; centered: true;
+                        label: @tr("下载"); name: @tr("下载新版");
+                        activated => { root.open-update-download(); }
+                    }
+                }
+                TextLink {
+                    x: root.home-link-left - root.about-left; y: root.home-link-top - root.about-top;
+                    label: @tr("项目主页");
+                    activated => { root.hide-about(); root.open-project-home(); }
+                }
+                Text {
+                    x: 64px; y: root.notices-link-top - root.about-top;
+                    width: root.mit-width; height: 36px; text: @tr("MIT 许可");
+                    color: Theme.muted; font-size: 12px; vertical-alignment: center;
+                }
+                Text {
+                    x: 64px + root.mit-width + 6px; y: root.notices-link-top - root.about-top;
+                    width: 6px; height: 36px; text: "·";
+                    color: Theme.disabled; font-size: 12px; vertical-alignment: center;
+                }
+                TextLink {
+                    x: root.notices-link-left - root.about-left;
+                    y: root.notices-link-top - root.about-top;
+                    width: 280px - self.x; font-size: 12px; ink: Theme.muted;
+                    label: @tr("第三方声明");
+                    activated => { root.open-notices(); root.hide-about(); }
+                }
+            }
+        }
+    }
+    notices-popup := PopupWindow {
+        x: root.about-left; y: root.notices-top; width: 300px; height: 280px;
+        close-policy: close-on-click-outside;
+        forward-focus: notices-view;
+        notices-view := ThirdPartyNotices {
+            width: 100%; height: 100%;
+            go-back => { root.return-to-about(); root.hide-notices(); }
+            close-view => { root.hide-notices(); }
+        }
+    }
+}
+
+component AnswerTile inherits Rectangle {
+    in property <AnswerOption> option;
+    in property <bool> symbol-only;
+    in property <image> symbol;
+    in property <bool> enabled: true;
+    in property <int> feedback: 0;
+    callback activated();
+    forward-focus: tile-focus;
+    min-width: 0px;
+    horizontal-stretch: 1;
+    border-radius: 7px;
+    border-width: root.feedback == 0 ? 1px : 2px;
+    border-color: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink : tile-focus.has-focus ? Theme.focus : Theme.control-border;
+    background: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft : tile-touch.has-hover && root.enabled ? Theme.hover : Theme.soft;
+    accessible-role: button;
+    accessible-label: root.option.label;
+    accessible-enabled: root.enabled;
+    Image {
+        visible: root.symbol-only;
+        source: root.symbol;
+        width: 24px; height: 24px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        colorize: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink : Theme.ink;
+    }
+    FormulaLabel {
+        visible: !root.symbol-only;
+        x: 8px; y: 8px;
+        width: parent.width - 16px;
+        height: parent.height - 16px;
+        fallback: root.option.label;
+        formula: root.option.formula;
+        formula-width: root.option.formula-width;
+        formula-height: root.option.formula-height;
+        texts: root.option.texts;
+        font-size: 20px;
+        ink: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink : Theme.ink;
+    }
+    tile-focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == Key.Space {
+                root.activated(); return accept;
+            }
+            return reject;
+        }
+    }
+    tile-touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { tile-focus.focus(); root.activated(); }
+    }
+}
+
+export component PracticeWindow inherits Window {
+    in property <bool> dark-theme: true;
+    in property <image> app-icon;
+    icon: root.app-icon;
+    title: @tr("Try · 练习");
+    no-frame: true;
+    always-on-top: true;
+    width: 320px;
+    in property <string> pack-tag;
+    in property <bool> show-pack-tags: true;
+    in property <bool> tag-on-right;
+    out property <bool> pack-tag-visible: root.show-pack-tags && root.pack-tag != "";
+    private property <length> tag-space: root.pack-tag-visible ? 26px : 0px;
+    out property <length> pack-tag-left: tag-badge.x;
+    out property <length> pack-tag-width: tag-badge.width;
+    private property <length> practice-content-height: max(48px, practice-prompt.preferred-height) + 20px + root.answer-row-height + root.answer-footer-height;
+    private property <length> knowledge-content-height: max(48px, practice-prompt.preferred-height) + 32px + (root.standard-answer != "" ? 16px + max(32px, standard-label.preferred-height) : 0px);
+    private property <length> answer-footer-height: root.entry-open ? root.entry-area-height : root.feedback == 2 ? max(64px, standard-label.preferred-height + 13px) : 64px;
+    private property <length> desired-height: min(560px, max(230px, root.knowledge-only ? root.knowledge-content-height + 48px : root.practice-content-height + 42px) + root.tag-space);
+    height: root.desired-height;
+    // Native resize events assign height. Retain the content-derived target
+    // separately so a taller formula updates the window after expansion.
+    changed desired-height => { root.height = root.desired-height; }
+    default-font-size: 18px;
+    background: root.feedback == 1 ? Theme.correct : root.feedback == 2 ? Theme.wrong : Theme.panel;
+
+    in property <string> prompt;
+    in property <string> standard-answer;
+    in property <image> prompt-formula;
+    in property <float> prompt-formula-width;
+    in property <float> prompt-formula-height;
+    in property <[NativeText]> prompt-texts;
+    out property <length> prompt-natural-height: root.knowledge-only ? knowledge-prompt.preferred-height : practice-prompt.preferred-height;
+    out property <length> prompt-area-height: root.knowledge-only ? knowledge-prompt.height : practice-prompt.height;
+    out property <length> answer-natural-height: standard-label.preferred-height;
+    out property <length> answer-area-height: standard-label.height;
+    out property <length> content-height: root.knowledge-only ? knowledge-scroll.content-height : practice-scroll.content-height;
+    out property <length> visible-content-height: root.knowledge-only ? knowledge-scroll.visible-height : practice-scroll.visible-height;
+    out property <length> content-scroll-y: root.knowledge-only ? knowledge-scroll.content-y : practice-scroll.content-y;
+    in property <image> answer-formula;
+    in property <float> answer-formula-width;
+    in property <float> answer-formula-height;
+    in property <[NativeText]> answer-texts;
+    out property <float> pixel-scale: 1px / 1phx;
+    in property <int> feedback: 0;
+    in property <int> answer-mode: 0;
+    in property <bool> knowledge-only;
+    in property <[AnswerOption]> options;
+    in property <float> option-formula-height;
+    in property <int> selected-option: -1;
+    private property <length> answer-row-height: root.answer-mode == 0 ? max(48px, !root.entry-open ? min(144px, root.input-preview.formula-height * 1px + 20px) : 48px) : max(48px, root.option-formula-height * 1px + 16px);
+    in-out property <string> answer-text;
+    in property <AnswerOption> input-preview;
+    in property <FormulaPosition> answer-position;
+    in property <MathRegion> input-caret;
+    in property <[MathRegion]> input-selection;
+    out property <bool> input-math-mode: answer-input.math-mode;
+    out property <length> input-canvas-left: answer-input.canvas-left;
+    out property <length> input-canvas-top: answer-input.canvas-top;
+    out property <float> input-canvas-scale: answer-input.canvas-scale;
+    out property <length> formula-button-center-x: formula-toggle.absolute-position.x + formula-toggle.width / 2;
+    out property <length> formula-button-center-y: formula-toggle.absolute-position.y + formula-toggle.height / 2;
+    in property <bool> entry-open;
+    in property <string> entry-input;
+    in property <string> entry-error;
+    in property <[MathRegion]> entry-regions;
+    in property <MathRegion> entry-selection;
+    in property <FormulaPosition> entry-position;
+    in property <FormulaNavigation> entry-navigation;
+    in property <bool> entry-can-move-out;
+    in property <bool> entry-can-unwrap;
+    in property <bool> entry-can-undo;
+    in property <bool> entry-can-redo;
+    out property <length> answer-footer-top: answer-footer.absolute-position.y;
+    out property <length> answer-footer-left: answer-footer.absolute-position.x;
+    out property <length> answer-footer-width: answer-footer.width;
+    private property <length> entry-area-height: max(54px, min(96px, root.input-preview.formula-height * 1px + 16px)) + 257px;
+    callback answer-edited(string);
+    callback entry-position-changed(string, int, int);
+    callback input-pointer-select(float, float, bool);
+    callback input-move-caret(int, bool);
+    callback input-command(string);
+    callback toggle-entry();
+    callback cancel-entry();
+    callback entry-command(string);
+    callback select-entry-region(int);
+    callback submit-answer(string);
+    callback choose-answer(int);
+    callback dismiss();
+    callback rasterize-formulas(float);
+    changed pixel-scale => { root.rasterize-formulas(root.pixel-scale); }
+
+    public function focus-answer() {
+        if root.answer-mode == 0 && !root.knowledge-only { answer-input.focus(); }
+        else { card-focus.focus(); }
+    }
+    init => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
+    changed dark-theme => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
+    tag-measure := Text { visible: false; text: root.pack-tag; font-size: 11px; }
+    card-focus := FocusScope {
+        capture-key-pressed(event) => {
+            if event.text == Key.Escape && root.entry-open { root.cancel-entry(); return accept; }
+            if event.text == Key.Escape || ((root.feedback != 0 || root.knowledge-only) && event.text == Key.Return) {
+                root.dismiss(); return accept;
+            }
+            if !root.knowledge-only && root.answer-mode != 0 && root.feedback == 0 {
+                if event.text == "1" { root.choose-answer(0); return accept; }
+                if event.text == "2" { root.choose-answer(1); return accept; }
+                if root.answer-mode == 1 && event.text == "3" { root.choose-answer(2); return accept; }
+            }
+            return reject;
+        }
+        WindowMoveArea { }
+        tag-badge := Rectangle {
+            visible: root.pack-tag-visible;
+            x: root.tag-on-right ? root.width - self.width - 24px : 24px;
+            y: 16px; width: min(138px, tag-measure.preferred-width + 18px); height: 21px;
+            border-radius: 5px; border-width: 1px;
+            background: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft : Theme.soft;
+            border-color: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft : Theme.border;
+            Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.pack-tag; color: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink : Theme.muted; font-size: 11px; overflow: elide; vertical-alignment: center; }
+            Tooltip { text: @markdown("\{root.pack-tag}"); }
+        }
+        knowledge-scroll := ScrollView {
+            visible: root.knowledge-only;
+            x: 24px; y: 24px + root.tag-space;
+            width: parent.width - 36px; height: parent.height - 48px - root.tag-space;
+            horizontal-scrollbar-policy: always-off;
+            content-width: self.visible-width;
+            content-height: max(self.visible-height, root.knowledge-content-height);
+            VerticalLayout {
+                x: 0px; y: 0px;
+                width: root.width - 48px;
+                height: knowledge-scroll.content-height;
+                spacing: 16px;
+                Rectangle { vertical-stretch: 1; background: transparent; }
+                knowledge-prompt := FormulaLabel {
+                    fallback: root.prompt; formula: root.prompt-formula;
+                    formula-width: root.prompt-formula-width; formula-height: root.prompt-formula-height;
+                    texts: root.prompt-texts; font-size: 24px; min-height: 48px; vertical-stretch: 0;
+                }
+                if root.standard-answer != "" : FormulaLabel {
+                    fallback: root.standard-answer; formula: root.answer-formula;
+                    formula-width: root.answer-formula-width; formula-height: root.answer-formula-height;
+                    texts: root.answer-texts; font-size: 20px; min-height: 32px; vertical-stretch: 0;
+                }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+            }
+        }
+        practice-scroll := ScrollView {
+            visible: !root.knowledge-only;
+            x: 24px; y: 24px + root.tag-space;
+            width: parent.width - 36px; height: parent.height - 42px - root.tag-space;
+            horizontal-scrollbar-policy: always-off;
+            content-width: self.visible-width;
+            content-height: max(self.visible-height, root.practice-content-height);
+            VerticalLayout {
+                x: 0px; y: 0px;
+                width: root.width - 48px;
+                height: practice-scroll.content-height;
+                spacing: 0px;
+                practice-prompt := FormulaLabel {
+                    fallback: root.prompt;
+                    formula: root.prompt-formula;
+                    formula-width: root.prompt-formula-width;
+                    formula-height: root.prompt-formula-height;
+                    texts: root.prompt-texts;
+                    font-size: 24px;
+                    min-height: 48px;
+                    vertical-stretch: 1;
+                }
+                Rectangle { height: 20px; background: transparent; }
+                Rectangle {
+                    height: root.answer-row-height;
+                    background: transparent;
+                    Rectangle {
+                        visible: root.answer-mode == 0;
+                        width: parent.width; height: parent.height;
+                        background: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft : Theme.soft;
+                        border-radius: 7px;
+                        border-width: root.feedback == 0 ? 1px : 2px;
+                        border-color: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 || root.entry-error != "" ? Theme.wrong-ink : answer-input.has-focus ? Theme.focus : Theme.control-border;
+                        accessible-role: text-input;
+                        accessible-label: @tr("你的答案");
+                        if !root.entry-open && root.entry-error != "" : Tooltip { text: @markdown("\{root.entry-error}"); }
+                        answer-input := InlineFormulaInput {
+                            x: 12px; y: 8px;
+                            width: parent.width - 62px;
+                            height: parent.height - 16px;
+                            input: root.entry-open ? root.entry-input : root.answer-text;
+                            position: root.entry-open ? root.entry-position : root.answer-position;
+                            navigation: root.entry-navigation;
+                            entry-open: root.entry-open;
+                            preview: root.input-preview;
+                            caret: root.input-caret; selection: root.input-selection;
+                            foreground: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink : Theme.ink;
+                            enabled: root.feedback == 0;
+                            edited(value) => { root.answer-edited(value); }
+                            position-changed(value, anchor, caret) => { root.entry-position-changed(value, anchor, caret); }
+                            command(value) => { if root.entry-open { root.entry-command(value); } else { root.input-command(value); } }
+                            pointer-select(x, y, extend) => { root.input-pointer-select(x, y, extend); }
+                            move-caret(direction, extend) => { root.input-move-caret(direction, extend); }
+                            accepted => { root.submit-answer(root.answer-text); }
+                        }
+                        formula-toggle := ToolButton {
+                            x: parent.width - 38px; y: (parent.height - 32px) / 2;
+                            width: 32px; height: 32px;
+                            label: "ƒ"; name: root.entry-open ? @tr("收起公式输入") : @tr("公式输入");
+                            enabled: root.feedback == 0;
+                            activated => { root.toggle-entry(); }
+                        }
+                    }
+                    HorizontalLayout {
+                        visible: root.answer-mode != 0;
+                        width: parent.width; height: parent.height;
+                        spacing: 8px;
+                        for option[index] in root.options : AnswerTile {
+                            option: option;
+                            symbol-only: root.answer-mode == 2;
+                            symbol: index == 0 ? @image-url("../assets/check_mark.svg") : @image-url("../assets/cross_mark.svg");
+                            enabled: root.feedback == 0;
+                            feedback: root.selected-option == index ? root.feedback : 0;
+                            activated => { root.choose-answer(index); }
+                        }
+                    }
+                }
+                answer-footer := Rectangle {
+                    height: root.answer-footer-height;
+                    vertical-stretch: 0;
+                    background: transparent;
+                    if root.entry-open : answer-pad := AnswerPad {
+                        x: 0px; y: 13px; width: parent.width; height: parent.height - 13px;
+                        preview: root.input-preview; regions: root.entry-regions;
+                        selection: root.entry-selection; error: root.entry-error;
+                        navigation: root.entry-navigation;
+                        can-move-out: root.entry-can-move-out; can-unwrap: root.entry-can-unwrap;
+                        can-undo: root.entry-can-undo; can-redo: root.entry-can-redo;
+                        command(value) => { root.entry-command(value); }
+                        select-region(index) => { root.select-entry-region(index); }
+                    }
+                    standard-label := FormulaLabel {
+                        visible: root.feedback == 2;
+                        x: 0px; y: 13px;
+                        width: parent.width;
+                        height: parent.height - 13px;
+                        fallback: root.standard-answer;
+                        formula: root.answer-formula;
+                        formula-width: root.answer-formula-width;
+                        formula-height: root.answer-formula-height;
+                        texts: root.answer-texts;
+                        font-size: 20px;
+                        ink: Theme.wrong-ink;
+                    }
+                }
+            }
+        }
+    }
+}

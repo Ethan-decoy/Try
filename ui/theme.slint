@@ -1,0 +1,25 @@
+// Shared desktop colors. Each window owns its palette; formula images use the
+// same ink through colorize, so switching appearance needs no rasterization.
+export global Theme {
+    in-out property <bool> dark: true;
+    out property <color> canvas: self.dark ? #141414 : #f5f5f5;
+    out property <color> sidebar: self.dark ? #191919 : #fafafa;
+    out property <color> panel: self.dark ? #1c1c1c : #ffffff;
+    out property <color> soft: self.dark ? #272727 : #f5f5f5;
+    out property <color> hover: self.dark ? #303030 : #ededed;
+    out property <color> border: self.dark ? #343434 : #e5e5e5;
+    out property <color> control-border: self.dark ? #646464 : #a3a3a3;
+    out property <color> ink: self.dark ? #f4f4f4 : #171717;
+    out property <color> muted: self.dark ? #a3a3a3 : #6b6b6b;
+    out property <color> disabled: self.dark ? #656565 : #a3a3a3;
+    out property <color> primary: self.dark ? #f4f4f4 : #171717;
+    out property <color> primary-ink: self.dark ? #171717 : #fafafa;
+    out property <color> focus: self.dark ? #d4d4d4 : #404040;
+    out property <color> selection: self.dark ? #ffffff35 : #17171725;
+    out property <color> correct: self.dark ? #123e26 : #e7f6ed;
+    out property <color> correct-soft: self.dark ? #12472b : #dcf2e4;
+    out property <color> correct-ink: self.dark ? #86e6ac : #196638;
+    out property <color> wrong: self.dark ? #50131e : #fff0f1;
+    out property <color> wrong-soft: self.dark ? #601925 : #fde3e7;
+    out property <color> wrong-ink: self.dark ? #ffb3bc : #a5283a;
+}

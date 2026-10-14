@@ -1,0 +1,136 @@
+import { Theme } from "theme.slint";
+import { AnswerOption, FormulaLabel } from "content.slint";
+import { AnswerPick } from "controls.slint";
+
+// The same column uses the answer control appropriate to each question type.
+export component QuickAnswer inherits Rectangle {
+    in property <int> mode;
+    in property <string> identity;
+    in property <string> value;
+    in property <AnswerOption> preview;
+    in property <[AnswerOption]> options;
+    in property <bool> truth;
+    in property <bool> enabled: true;
+    in property <string> label;
+    private property <string> draft: root.value;
+    private property <bool> dirty;
+    private property <string> error;
+    private property <int> cursor;
+    private property <bool> keyboard-used;
+    private property <bool> input-focused: answer-input.has-focus;
+    private property <length> field-height: root.mode == 2 ? 36px : max(36px, answer-label.preferred-height + 6px);
+    callback save(string) -> string;
+    callback prepare-options();
+    callback choose(int) -> string;
+    preferred-height: root.field-height + (root.error == "" ? 4px : 26px);
+    min-width: 0px; preferred-width: 0px;
+    changed value => { if !root.dirty { root.draft = root.value; } }
+    changed identity => { root.cancel(); }
+    changed input-focused => { if !root.input-focused { root.commit(); } }
+    function commit() {
+        if root.dirty {
+            root.error = root.save(root.draft);
+            if root.error == "" { root.dirty = false; root.draft = root.value; }
+        }
+    }
+    function cancel() { root.dirty = false; root.error = ""; root.draft = root.value; }
+    function open-options(keyboard: bool) {
+        root.prepare-options(); root.cursor = 0; root.keyboard-used = keyboard;
+        choices.show();
+    }
+    function finish-choice() { choices.close(); if root.keyboard-used { choice-focus.focus(); } }
+    function pick(index: int) { root.error = root.choose(index); root.finish-choice(); }
+
+    answer-field := Rectangle {
+        x: 8px; y: 2px; width: parent.width - 16px; height: root.field-height;
+        visible: root.mode != 2;
+        border-radius: 8px;
+        background: answer-input.has-focus || choice-touch.has-hover ? Theme.hover : Theme.soft;
+        Rectangle {
+            x: 8px; y: parent.height - 1px; width: parent.width - 16px; height: 1px;
+            background: root.error != "" ? Theme.wrong-ink : answer-input.has-focus ? Theme.focus : Theme.border;
+        }
+        answer-input := TextInput {
+            x: 9px; y: (parent.height - self.height) / 2; width: parent.width - 18px; height: 28px;
+            visible: root.mode == 0;
+            enabled: root.enabled && root.mode == 0;
+            single-line: true;
+            text <=> root.draft;
+            color: Theme.ink; font-size: 13px;
+            vertical-alignment: center;
+            opacity: !self.has-focus && !root.dirty ? 0 : 1;
+            accessible-label: @tr("答案：") + root.label;
+            edited => { root.dirty = true; root.error = ""; }
+            accepted => { root.commit(); }
+            key-pressed(event) => {
+                if event.text == Key.Escape { root.cancel(); return accept; }
+                return reject;
+            }
+        }
+        answer-label := FormulaLabel {
+            visible: root.mode == 1 || (root.mode == 0 && !answer-input.has-focus && !root.dirty);
+            x: 9px; y: 3px;
+            width: parent.width - (root.mode == 1 ? 30px : 18px); height: parent.height - 6px;
+            fallback: root.value; formula: root.preview.formula;
+            formula-width: root.preview.formula-width; formula-height: root.preview.formula-height;
+            texts: root.preview.texts; align-left: true; font-size: 13px;
+        }
+        if root.mode == 1 : Image { x: parent.width - 21px; y: (parent.height - self.height) / 2; width: 12px; height: 12px; source: @image-url("../assets/chevron.svg"); colorize: Theme.muted; }
+        if root.mode == 1 && choice-focus.has-focus : Rectangle { x: 9px; y: parent.height - 3px; width: 18px; height: 2px; background: Theme.focus; }
+        choice-focus := FocusScope {
+            width: 0px; enabled: root.enabled && root.mode == 1;
+            key-pressed(event) => {
+                if event.text == Key.Return || event.text == Key.Space || event.text == Key.DownArrow { root.open-options(true); return accept; }
+                return reject;
+            }
+        }
+        choice-touch := TouchArea {
+            visible: root.mode == 1; enabled: root.enabled && root.mode == 1;
+            mouse-cursor: pointer;
+            clicked => { root.open-options(false); }
+        }
+    }
+    if root.mode == 2 : HorizontalLayout {
+        x: 8px; y: 2px; width: parent.width - 16px; height: 36px; spacing: 6px;
+        AnswerPick { glyph: @image-url("../assets/check_mark.svg"); symbol-only: true; compact: true; selected: root.truth; label: @tr("正确：") + root.label; activated => { if root.enabled { root.error = root.choose(0); } } }
+        AnswerPick { glyph: @image-url("../assets/cross_mark.svg"); symbol-only: true; compact: true; selected: !root.truth; label: @tr("不正确：") + root.label; activated => { if root.enabled { root.error = root.choose(1); } } }
+        Rectangle { horizontal-stretch: 1; }
+    }
+    if root.error != "" : Text {
+        x: 8px; y: root.field-height + 4px; width: parent.width - 16px; height: 20px;
+        text: root.error; color: Theme.wrong-ink; font-size: 10px; overflow: elide;
+        Tooltip { text: @markdown("\{root.error}"); }
+    }
+    choices := PopupWindow {
+        x: 8px; y: root.field-height + 6px; width: max(180px, root.width - 16px);
+        height: 8px + max(44px, root.options[0].formula-height * 1px + 8px) + max(44px, root.options[1].formula-height * 1px + 8px) + max(44px, root.options[2].formula-height * 1px + 8px);
+        close-policy: close-on-click-outside;
+        forward-focus: options-focus;
+        Rectangle {
+            background: Theme.soft; border-radius: 6px; border-width: 1px; border-color: Theme.border;
+            options-focus := FocusScope {
+                key-pressed(event) => {
+                    root.keyboard-used = true;
+                    if event.text == Key.UpArrow { root.cursor = max(0, root.cursor - 1); return accept; }
+                    if event.text == Key.DownArrow { root.cursor = min(root.options.length - 1, root.cursor + 1); return accept; }
+                    if event.text == Key.Return || event.text == Key.Space { root.pick(root.cursor); return accept; }
+                    if event.text == Key.Escape { root.finish-choice(); return accept; }
+                    return reject;
+                }
+                VerticalLayout {
+                    padding: 4px; spacing: 0px;
+                    for option[index] in root.options : Rectangle {
+                        height: max(44px, option.formula-height * 1px + 8px); border-radius: 4px;
+                        background: option-touch.has-hover || (root.keyboard-used && root.cursor == index) ? Theme.hover : transparent;
+                        accessible-role: button; accessible-label: option.label;
+                        accessible-checkable: true; accessible-checked: index == 0;
+                        accessible-action-default => { root.pick(index); }
+                        FormulaLabel { x: 9px; y: 4px; width: parent.width - 34px; height: parent.height - 8px; fallback: option.label; formula: option.formula; formula-width: option.formula-width; formula-height: option.formula-height; texts: option.texts; align-left: true; font-size: 13px; }
+                        if index == 0 : Image { x: parent.width - 21px; y: (parent.height - 12px) / 2; width: 12px; height: 12px; source: @image-url("../assets/check_mark.svg"); colorize: Theme.ink; }
+                        option-touch := TouchArea { mouse-cursor: pointer; clicked => { root.pick(index); } }
+                    }
+                }
+            }
+        }
+    }
+}

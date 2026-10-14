@@ -1,0 +1,103 @@
+{
+  "format": "try",
+  "schema_version": 1,
+  "id": "english_recall",
+  "name": "英语 · 词汇",
+  "tag": "英语",
+  "description": "单词与中文词义。",
+  "cards": [
+    {
+      "id": "hesitate",
+      "prompt": "hesitate",
+      "answer": "犹豫",
+      "aliases": [
+        "迟疑",
+        "踌躇"
+      ],
+      "distractors": [
+        {
+          "text": "决定"
+        },
+        {
+          "text": "忘记"
+        }
+      ],
+      "true_false": {
+        "statement": "hesitate → 犹豫",
+        "is_true": true,
+        "correction": "✓"
+      }
+    },
+    {
+      "id": "precise",
+      "prompt": "precise",
+      "answer": "精确",
+      "aliases": [
+        "准确",
+        "精确的",
+        "准确的"
+      ],
+      "distractors": [
+        {
+          "text": "模糊"
+        },
+        {
+          "text": "随意"
+        }
+      ],
+      "true_false": {
+        "statement": "precise → 模糊",
+        "is_true": false,
+        "correction": "✕"
+      }
+    },
+    {
+      "id": "coherent",
+      "prompt": "coherent",
+      "answer": "连贯",
+      "aliases": [
+        "连贯的",
+        "条理清楚",
+        "一致",
+        "一致的"
+      ],
+      "distractors": [
+        {
+          "text": "矛盾"
+        },
+        {
+          "text": "零散"
+        }
+      ],
+      "true_false": {
+        "statement": "coherent → 连贯",
+        "is_true": true,
+        "correction": "✓"
+      }
+    },
+    {
+      "id": "retrieve",
+      "prompt": "retrieve",
+      "answer": "检索",
+      "aliases": [
+        "取回",
+        "提取",
+        "找回",
+        "取出"
+      ],
+      "distractors": [
+        {
+          "text": "遗忘"
+        },
+        {
+          "text": "丢弃"
+        }
+      ],
+      "true_false": {
+        "statement": "retrieve → 遗忘",
+        "is_true": false,
+        "correction": "✕"
+      }
+    }
+  ]
+}

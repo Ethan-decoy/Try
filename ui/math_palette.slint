@@ -1,0 +1,87 @@
+import { Theme } from "theme.slint";
+export struct MathTool {
+    name: string,
+    command: string,
+}
+
+export component MathPalette inherits Rectangle {
+    in property <string> label;
+    in property <[MathTool]> tools;
+    in property <image> sheet;
+    in property <int> columns: 4;
+    in property <length> cell-width: 72px;
+    callback choose(string);
+    private property <int> cursor;
+    private property <bool> keyboard-used;
+    private property <bool> expanded;
+    width: max(72px, trigger-label.preferred-width + 35px); height: 32px; horizontal-stretch: 0;
+    border-radius: 4px;
+    background: trigger-touch.has-hover ? Theme.hover : Theme.soft;
+    forward-focus: trigger-focus;
+    accessible-role: combobox;
+    accessible-label: root.label;
+    accessible-expandable: true;
+    accessible-expanded: root.expanded;
+    accessible-action-expand => { root.open(true); }
+    public function open(keyboard: bool) { root.cursor = 0; root.keyboard-used = keyboard; palette.show(); }
+    function finish() { palette.close(); }
+    function pick(index: int) { root.finish(); root.choose(root.tools[index].command); }
+    HorizontalLayout {
+        padding-left: 10px; padding-right: 8px; spacing: 7px;
+        trigger-label := Text { text: root.label; color: Theme.ink; font-size: 13px; vertical-alignment: center; }
+        Image { source: @image-url("../assets/chevron.svg"); width: 10px; height: 10px; y: (parent.height - self.height) / 2; colorize: Theme.muted; }
+    }
+    if trigger-focus.has-focus : Rectangle { x: 10px; y: parent.height - 3px; width: 16px; height: 2px; background: Theme.focus; }
+    trigger-focus := FocusScope {
+        width: 0px;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == Key.Space || event.text == Key.DownArrow { root.open(true); return accept; }
+            return reject;
+        }
+    }
+    trigger-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open(false); } }
+    palette := PopupWindow {
+        x: 0px; y: root.height + 5px;
+        width: root.columns * root.cell-width + 12px;
+        height: ceil(root.tools.length / root.columns) * 36px + 12px;
+        close-policy: close-on-click-outside;
+        forward-focus: palette-focus;
+        Rectangle {
+            background: Theme.soft; border-width: 1px; border-color: Theme.border; border-radius: 6px;
+            palette-focus := FocusScope {
+                focus-changed-event => { root.expanded = self.has-focus; }
+                key-pressed(event) => {
+                    root.keyboard-used = true;
+                    if event.text == Key.LeftArrow { root.cursor = max(0, root.cursor - 1); return accept; }
+                    if event.text == Key.RightArrow { root.cursor = min(root.tools.length - 1, root.cursor + 1); return accept; }
+                    if event.text == Key.UpArrow { root.cursor = max(0, root.cursor - root.columns); return accept; }
+                    if event.text == Key.DownArrow { root.cursor = min(root.tools.length - 1, root.cursor + root.columns); return accept; }
+                    if event.text == Key.Return || event.text == Key.Space { root.pick(root.cursor); return accept; }
+                    if event.text == Key.Escape { root.finish(); trigger-focus.focus(); return accept; }
+                    return reject;
+                }
+                for tool[index] in root.tools : Rectangle {
+                    x: 6px + mod(index, root.columns) * root.cell-width;
+                    y: 6px + floor(index / root.columns) * 36px;
+                    width: root.cell-width - 2px; height: 34px;
+                    border-radius: 4px;
+                    background: cell-touch.has-hover || (root.keyboard-used && root.cursor == index) ? Theme.hover : transparent;
+                    accessible-role: button; accessible-label: tool.name;
+                    accessible-action-default => { root.pick(index); }
+                    Image {
+                        source: root.sheet;
+                        width: parent.width; height: parent.height;
+                        source-clip-x: mod(index, root.columns) * root.cell-width / 1px * 3;
+                        source-clip-y: floor(index / root.columns) * 108;
+                        source-clip-width: root.cell-width / 1px * 3;
+                        source-clip-height: 108;
+                        image-fit: contain;
+                        colorize: Theme.ink;
+                    }
+                    Tooltip { text: @markdown("\{tool.name}"); }
+                    cell-touch := TouchArea { mouse-cursor: pointer; clicked => { root.pick(index); } }
+                }
+            }
+        }
+    }
+}

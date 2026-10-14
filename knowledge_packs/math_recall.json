@@ -1,0 +1,116 @@
+{
+  "format": "try",
+  "schema_version": 1,
+  "id": "math_recall",
+  "name": "数学 · 常用公式",
+  "tag": "数学",
+  "description": "微积分与三角公式（弧度制）。不定积分保留常数 C。",
+  "cards": [
+    {
+      "id": "sine_derivative",
+      "prompt": "(sin x)′ = ?",
+      "answer": "cos(x)",
+      "prompt_latex": "\\frac{d}{dx}\\sin(x)=?",
+      "answer_latex": "\\cos(x)",
+      "distractors": [
+        {
+          "text": "−sin(x)",
+          "latex": "-\\sin(x)"
+        },
+        {
+          "text": "−cos(x)",
+          "latex": "-\\cos(x)"
+        }
+      ],
+      "true_false": {
+        "statement": "(sin x)′ = cos(x)",
+        "is_true": true,
+        "correction": "✓",
+        "statement_latex": "\\frac{d}{dx}\\sin(x)=\\cos(x)"
+      },
+      "aliases": [
+        "cos x"
+      ]
+    },
+    {
+      "id": "exponential_integral",
+      "prompt": "∫ eˣ dx = ?",
+      "answer": "e^x + C",
+      "prompt_latex": "\\int e^{x}\\,dx=?",
+      "answer_latex": "e^{x}+C",
+      "distractors": [
+        {
+          "text": "e^x",
+          "latex": "e^{x}"
+        },
+        {
+          "text": "−e^x + C",
+          "latex": "-e^{x}+C"
+        }
+      ],
+      "true_false": {
+        "statement": "∫ eˣ dx = −eˣ + C",
+        "is_true": false,
+        "correction": "✕",
+        "statement_latex": "\\int e^{x}\\,dx=-e^{x}+C"
+      },
+      "aliases": [
+        "e^x+c"
+      ]
+    },
+    {
+      "id": "sine_double_angle",
+      "prompt": "sin(2x) = ?",
+      "answer": "2sin(x)cos(x)",
+      "prompt_latex": "\\sin(2x)=?",
+      "answer_latex": "2\\sin(x)\\cos(x)",
+      "distractors": [
+        {
+          "text": "sin²(x)",
+          "latex": "\\sin^{2}(x)"
+        },
+        {
+          "text": "2sin(x)",
+          "latex": "2\\sin(x)"
+        }
+      ],
+      "true_false": {
+        "statement": "sin(2x) = 2sin(x)cos(x)",
+        "is_true": true,
+        "correction": "✓",
+        "statement_latex": "\\sin(2x)=2\\sin(x)\\cos(x)"
+      },
+      "aliases": [
+        "2*sin(x)*cos(x)"
+      ]
+    },
+    {
+      "id": "cosine_double_angle",
+      "prompt": "cos(2x) = ?",
+      "answer": "cos²(x) − sin²(x)",
+      "prompt_latex": "\\cos(2x)=?",
+      "answer_latex": "\\cos^{2}(x)-\\sin^{2}(x)",
+      "distractors": [
+        {
+          "text": "cos²(x) + sin²(x)",
+          "latex": "\\cos^{2}(x)+\\sin^{2}(x)"
+        },
+        {
+          "text": "2sin(x)cos(x)",
+          "latex": "2\\sin(x)\\cos(x)"
+        }
+      ],
+      "true_false": {
+        "statement": "cos(2x) = cos²(x) + sin²(x)",
+        "is_true": false,
+        "correction": "✕",
+        "statement_latex": "\\cos(2x)=\\cos^{2}(x)+\\sin^{2}(x)"
+      },
+      "aliases": [
+        "cos(x)^2-sin(x)^2",
+        "1-2*sin(x)^2",
+        "2*cos(x)^2-1"
+      ]
+    }
+  ]
+}

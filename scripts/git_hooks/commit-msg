@@ -1,0 +1,22 @@
+#!/bin/sh
+# Git requires this hook name. Keep the implementation portable and dependency-free.
+set -eu
+
+header=$(sed -n '1p' "$1" | tr -d '\r')
+pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z][a-z0-9_]*\))?!?: [^[:space:]].*$'
+
+if ! printf '%s\n' "$header" | LC_ALL=C grep -Eq "$pattern"; then
+    printf '%s\n' '提交标题应使用 Conventional Commits 格式：' \
+        '  feat(scope): 中文描述' \
+        '  fix(ui): 修复卡片收起后的焦点状态' >&2
+    exit 1
+fi
+
+# Match U+4E00..U+9FFF by UTF-8 bytes, without relying on an installed locale.
+if ! printf '%s\n' "${header#*: }" | LC_ALL=C awk '
+    /\344[\270-\277][\200-\277]|[\345-\351][\200-\277][\200-\277]/ { found = 1 }
+    END { exit !found }
+'; then
+    printf '%s\n' '提交描述应使用中文；type 和 scope 保持小写英文。' >&2
+    exit 1
+fi

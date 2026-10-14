@@ -1,0 +1,482 @@
+import { Theme } from "theme.slint";
+import { Button, LineEdit, SpinBox, TextEdit } from "std-widgets.slint";
+import { AnswerPick, Disclosure, IconButton } from "controls.slint";
+import { MathPalette, MathTool } from "math_palette.slint";
+import { FormulaInput, FormulaNavigation, FormulaPosition } from "formula_input.slint";
+export { FormulaNavigation, FormulaPosition } from "formula_input.slint";
+
+export struct NativeText {
+    text: string,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    font-size: float,
+}
+
+export struct MathRegion {
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+}
+
+export struct AnswerOption {
+    label: string,
+    formula: image,
+    formula-width: float,
+    formula-height: float,
+    texts: [NativeText],
+}
+
+export component FormulaLabel inherits Rectangle {
+    in property <string> fallback;
+    in property <image> formula;
+    in property <float> formula-width;
+    in property <float> formula-height;
+    in property <[NativeText]> texts;
+    in property <length> font-size: 26px;
+    in property <color> ink: Theme.ink;
+    in property <bool> align-left: false;
+    in property <float> max-scale: 1;
+    in property <brush> formula-tint: root.ink;
+    out property <float> formula-scale: root.formula-width > 0 ? min(1, root.width / (root.formula-width * 1px), root.max-scale) : 1;
+    out property <length> formula-x: root.align-left ? 0px : (root.width - root.formula-width * self.formula-scale * 1px) / 2;
+    out property <length> formula-y: (root.height - root.formula-height * self.formula-scale * 1px) / 2;
+    private property <bool> truth-symbol: root.formula-width <= 0 && (root.fallback == "✓" || root.fallback == "✕");
+    preferred-height: root.formula-width > 0 ? root.formula-height * 1px * self.formula-scale : plain-text.preferred-height;
+    Image {
+        visible: root.formula-width > 0;
+        source: root.formula;
+        width: root.formula-width * root.formula-scale * 1px;
+        height: root.formula-height * root.formula-scale * 1px;
+        x: root.formula-x;
+        y: root.formula-y;
+        image-fit: contain;
+        colorize: root.formula-tint;
+    }
+    for overlay in root.texts : Text {
+        visible: root.formula-width > 0;
+        text: overlay.text;
+        x: root.formula-x + overlay.x * root.formula-scale * 1px;
+        y: root.formula-y + overlay.y * root.formula-scale * 1px;
+        width: overlay.width * root.formula-scale * 1px;
+        height: overlay.height * root.formula-scale * 1px;
+        font-size: overlay.font-size * root.formula-scale * 1px;
+        color: root.ink;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Image {
+        visible: root.truth-symbol;
+        source: root.fallback == "✓" ? @image-url("../assets/check_mark.svg") : @image-url("../assets/cross_mark.svg");
+        width: root.font-size; height: root.font-size;
+        x: root.align-left ? 0px : (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        colorize: root.ink;
+    }
+    plain-text := Text {
+        visible: root.formula-width <= 0 && !root.truth-symbol;
+        text: root.fallback;
+        font-size: root.font-size;
+        color: root.ink;
+        width: parent.width;
+        height: parent.height;
+        horizontal-alignment: root.align-left ? left : center;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+}
+
+export component ToolButton inherits Rectangle {
+    in property <string> label;
+    in property <string> name;
+    in property <image> glyph;
+    in property <bool> icon-only;
+    in property <bool> enabled: true;
+    in property <length> font-size: 16px;
+    callback activated();
+    forward-focus: tool-focus;
+    preferred-width: 32px;
+    min-width: 28px;
+    horizontal-stretch: 1;
+    height: 32px;
+    border-radius: 4px;
+    background: tool-touch.has-hover && root.enabled ? Theme.hover : Theme.soft;
+    opacity: root.enabled ? 1 : 0.4;
+    border-width: tool-focus.has-focus ? 1px : 0px;
+    border-color: Theme.focus;
+    accessible-role: button;
+    accessible-label: root.name;
+    accessible-enabled: root.enabled;
+    Text { visible: !root.icon-only; text: root.label; color: Theme.ink; font-size: root.font-size; horizontal-alignment: center; vertical-alignment: center; }
+    Image { visible: root.icon-only; source: root.glyph; width: 18px; height: 18px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; colorize: Theme.ink; }
+    Tooltip { text: @markdown("\{root.name}"); }
+    tool-focus := FocusScope {
+        width: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; } return reject; }
+    }
+    tool-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.activated(); } }
+}
+
+export component NavigationTools inherits HorizontalLayout {
+    in property <FormulaNavigation> navigation;
+    in property <bool> show-exit: true;
+    callback command(string);
+    spacing: 4px;
+    height: 32px;
+    ToolButton { width: 32px; horizontal-stretch: 0; label: "←"; name: @tr("上一个公式位置"); enabled: root.navigation.previous; activated => { root.command("previous"); } }
+    ToolButton { width: 32px; horizontal-stretch: 0; label: "→"; name: @tr("下一个公式位置"); enabled: root.navigation.next; activated => { root.command("next"); } }
+    ToolButton { width: 32px; horizontal-stretch: 0; label: "↑"; name: @tr("选中外层结构"); enabled: root.navigation.parent; activated => { root.command("parent"); } }
+    if root.show-exit : ToolButton { width: 32px; horizontal-stretch: 0; label: "↗"; name: @tr("在结构后继续输入"); enabled: root.navigation.exit; activated => { root.command("exit"); } }
+}
+
+export component StructureTools inherits HorizontalLayout {
+    in property <bool> can-move-out;
+    in property <bool> can-unwrap;
+    in property <bool> show-history;
+    in property <bool> can-undo;
+    in property <bool> can-redo;
+    callback command(string);
+    spacing: 4px;
+    height: 32px;
+    ToolButton { width: 60px; horizontal-stretch: 0; font-size: 13px; label: @tr("外移"); name: @tr("将分式或上下标移到外层"); enabled: root.can-move-out; activated => { root.command("move_out"); } }
+    ToolButton { width: 60px; horizontal-stretch: 0; font-size: 13px; label: @tr("拆层"); name: @tr("去掉外层根号、括号或标记，保留内容"); enabled: root.can-unwrap; activated => { root.command("unwrap"); } }
+    Rectangle { horizontal-stretch: 1; background: transparent; }
+    if root.show-history : ToolButton { width: 32px; horizontal-stretch: 0; label: "C"; name: @tr("清空此输入框"); activated => { root.command("clear"); } }
+    if root.show-history : ToolButton { width: 32px; horizontal-stretch: 0; glyph: @image-url("../assets/undo.svg"); icon-only: true; name: @tr("撤销"); enabled: root.can-undo; activated => { root.command("undo"); } }
+    if root.show-history : ToolButton { width: 32px; horizontal-stretch: 0; glyph: @image-url("../assets/redo.svg"); icon-only: true; name: @tr("重做"); enabled: root.can-redo; activated => { root.command("redo"); } }
+}
+
+component MathComposer inherits Rectangle {
+    in property <[MathTool]> functions;
+    in property <[MathTool]> symbols;
+    in property <AnswerOption> active-preview;
+    in property <[MathRegion]> regions;
+    in property <MathRegion> selection;
+    in property <FormulaPosition> position;
+    in property <FormulaNavigation> navigation;
+    in property <bool> text-mode;
+    in property <bool> has-formula;
+    in-out property <string> input;
+    in property <string> error;
+    in property <bool> can-undo;
+    in property <bool> can-redo;
+    in property <bool> can-move-out;
+    in property <bool> can-unwrap;
+    in property <int> grid-rows;
+    in property <int> grid-columns;
+    callback select-region(int);
+    callback edited(string);
+    callback position-changed(string, int, int);
+    callback tool(string);
+    callback parent();
+    callback undo(bool);
+    callback resize-grid(int, int);
+    callback canvas-layout(float, float, float);
+    callback measured-height(length);
+    out property <length> natural-height: editor.preferred-height;
+    out property <length> canvas-left: picture.absolute-position.x + picture.formula-x;
+    out property <length> canvas-top: picture.absolute-position.y + picture.formula-y;
+    out property <float> canvas-scale: picture.formula-scale;
+    forward-focus: editor-input;
+    function apply-tool(command: string) {
+        root.tool(command);
+        editor-input.focus();
+    }
+    changed natural-height => { root.measured-height(root.natural-height); }
+    changed canvas-left => { root.canvas-layout(root.canvas-left / 1px, root.canvas-top / 1px, root.canvas-scale); }
+    changed canvas-top => { root.canvas-layout(root.canvas-left / 1px, root.canvas-top / 1px, root.canvas-scale); }
+    changed canvas-scale => { root.canvas-layout(root.canvas-left / 1px, root.canvas-top / 1px, root.canvas-scale); }
+    changed input => { editor-input.focus(); }
+    init => {
+        editor-input.focus();
+        root.measured-height(root.natural-height);
+        root.canvas-layout(root.canvas-left / 1px, root.canvas-top / 1px, root.canvas-scale);
+    }
+    editor := VerticalLayout {
+        padding: 12px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 4px;
+            if root.has-formula : ToolButton { width: 32px; horizontal-stretch: 0; label: @tr("文"); name: @tr("加入文字"); activated => { root.apply-tool("text"); } }
+            ToolButton { width: 32px; horizontal-stretch: 0; label: "ƒ"; name: @tr("公式生成器"); activated => { root.apply-tool("math"); } }
+            if !root.text-mode : MathPalette {
+                label: @tr("函数");
+                tools: root.functions;
+                sheet: @image-url("../local_artifacts/math_palette_assets/functions.png");
+                choose(command) => { root.apply-tool(command); }
+            }
+            if !root.text-mode : MathPalette {
+                label: @tr("符号"); columns: 6; cell-width: 44px;
+                tools: root.symbols;
+                sheet: @image-url("../local_artifacts/math_palette_assets/symbols.png");
+                choose(command) => { root.apply-tool(command); }
+            }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+            ToolButton { width: 32px; horizontal-stretch: 0; label: "C"; name: @tr("清空此输入框"); activated => { root.apply-tool("clear"); } }
+            ToolButton { width: 32px; horizontal-stretch: 0; glyph: @image-url("../assets/undo.svg"); icon-only: true; name: @tr("撤销"); enabled: root.can-undo; activated => { root.undo(false); editor-input.focus(); } }
+            ToolButton { width: 32px; horizontal-stretch: 0; glyph: @image-url("../assets/redo.svg"); icon-only: true; name: @tr("重做"); enabled: root.can-redo; activated => { root.undo(true); editor-input.focus(); } }
+        }
+        if root.has-formula : NavigationTools {
+            navigation: root.navigation;
+            command(value) => { root.apply-tool(value); }
+        }
+        if !root.text-mode : HorizontalLayout {
+            spacing: 4px;
+            ToolButton { label: "a/b"; name: @tr("分数"); activated => { root.apply-tool("fraction"); } }
+            ToolButton { label: "√"; name: @tr("根号"); activated => { root.apply-tool("root"); } }
+            ToolButton { label: "ⁿ√"; name: @tr("任意次根号"); activated => { root.apply-tool("nth_root"); } }
+            ToolButton { label: "x²"; name: @tr("上标"); activated => { root.apply-tool("power"); } }
+            ToolButton { label: "x₁"; name: @tr("下标"); activated => { root.apply-tool("subscript"); } }
+            ToolButton { label: "( )"; name: @tr("括号"); activated => { root.apply-tool("group"); } }
+            ToolButton { label: "π"; name: @tr("圆周率"); activated => { root.apply-tool("pi"); } }
+            ToolButton { label: "∫"; name: @tr("积分"); activated => { root.apply-tool("integral"); } }
+            ToolButton { label: "∑"; name: @tr("求和"); activated => { root.apply-tool("sum"); } }
+            ToolButton { label: "lim"; name: @tr("极限"); activated => { root.apply-tool("limit"); } }
+            ToolButton { glyph: @image-url("../assets/matrix.svg"); icon-only: true; name: @tr("矩阵"); activated => { root.apply-tool("matrix"); } }
+            ToolButton { label: "{"; name: @tr("分段函数"); activated => { root.apply-tool("cases"); } }
+        }
+        canvas := Rectangle {
+            visible: root.has-formula;
+            height: root.has-formula ? max(54px, root.active-preview.formula-height * 1px + 20px) : 0px;
+            background: Theme.panel;
+            border-radius: 4px;
+            picture := FormulaLabel {
+                x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px;
+                fallback: root.active-preview.label;
+                formula: root.active-preview.formula;
+                formula-width: root.active-preview.formula-width;
+                formula-height: root.active-preview.formula-height;
+                texts: root.active-preview.texts;
+                font-size: 18px;
+                align-left: true;
+            }
+            Rectangle {
+                visible: root.selection.width > 0;
+                x: picture.x + picture.formula-x + (root.selection.x - 3) * picture.formula-scale * 1px;
+                y: picture.y + picture.formula-y + (root.selection.y - 3) * picture.formula-scale * 1px;
+                width: (root.selection.width + 6) * picture.formula-scale * 1px;
+                height: (root.selection.height + 6) * picture.formula-scale * 1px;
+                border-width: 1px;
+                border-color: Theme.focus;
+                border-radius: 3px;
+                background: transparent;
+            }
+            for region[index] in root.regions : TouchArea {
+                x: picture.x + picture.formula-x + (region.x - 3) * picture.formula-scale * 1px;
+                y: picture.y + picture.formula-y + (region.y - 3) * picture.formula-scale * 1px;
+                width: (region.width + 6) * picture.formula-scale * 1px;
+                height: (region.height + 6) * picture.formula-scale * 1px;
+                mouse-cursor: text;
+                clicked => { root.select-region(index); editor-input.focus(); }
+            }
+        }
+        if root.has-formula && !root.text-mode : StructureTools {
+            can-move-out: root.can-move-out;
+            can-unwrap: root.can-unwrap;
+            command(value) => { root.apply-tool(value); }
+        }
+        if root.grid-rows > 0 : HorizontalLayout {
+            spacing: 6px;
+            Text { text: @tr("行"); color: Theme.muted; vertical-alignment: center; }
+            SpinBox { width: 72px; minimum: 1; maximum: 6; value: root.grid-rows; edited(value) => { root.resize-grid(value, root.grid-columns); } }
+            Text { text: @tr("列"); color: Theme.muted; vertical-alignment: center; }
+            SpinBox { width: 72px; minimum: 1; maximum: 6; value: root.grid-columns; edited(value) => { root.resize-grid(root.grid-rows, value); } }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+        }
+        Rectangle {
+            height: root.text-mode ? 62px : 42px;
+            background: Theme.soft;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: editor-input.has-focus ? Theme.focus : Theme.border;
+            clip: true;
+            editor-input := FormulaInput {
+                x: 10px; y: 8px; width: parent.width - 20px; height: parent.height - 16px;
+                input: root.input;
+                text-mode: root.text-mode;
+                position: root.position;
+                navigation: root.navigation;
+                structural-navigation: root.has-formula;
+                font-size: 14px;
+                edited(value) => { root.input = value; root.edited(value); }
+                position-changed(value, anchor, caret) => { root.position-changed(value, anchor, caret); }
+                command(value) => { root.apply-tool(value); }
+            }
+        }
+        if root.error != "" : Text { text: root.error; color: Theme.wrong-ink; wrap: word-wrap; font-size: 12px; }
+    }
+}
+
+export component ContentField inherits Rectangle {
+    in property <[MathTool]> functions;
+    in property <[MathTool]> symbols;
+    in property <AnswerOption> preview;
+    in property <bool> active;
+    in property <AnswerOption> active-preview;
+    in property <[MathRegion]> regions;
+    in property <MathRegion> selection;
+    in property <FormulaPosition> position;
+    in property <FormulaNavigation> navigation;
+    in property <bool> text-mode;
+    in property <bool> has-formula;
+    in-out property <string> input;
+    in property <string> error;
+    in property <bool> can-undo;
+    in property <bool> can-redo;
+    in property <bool> can-move-out;
+    in property <bool> can-unwrap;
+    in property <int> grid-rows;
+    in property <int> grid-columns;
+    callback activated();
+    callback select-region(int);
+    callback edited(string);
+    callback position-changed(string, int, int);
+    callback tool(string);
+    callback parent();
+    callback undo(bool);
+    callback resize-grid(int, int);
+    callback canvas-layout(float, float, float);
+    private property <length> composer-height: 200px;
+    forward-focus: field-focus;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    border-radius: 7px;
+    border-width: 1px;
+    border-color: root.active ? Theme.focus : Theme.border;
+    background: Theme.soft;
+    height: root.active ? root.composer-height : max(64px, root.preview.formula-height * 1px + 24px);
+    accessible-role: button;
+    accessible-label: @tr("编辑内容：") + root.preview.label;
+    field-focus := FocusScope {
+        key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; } return reject; }
+    }
+    if !root.active : Rectangle {
+        FormulaLabel {
+            x: 12px; y: 12px; width: parent.width - 24px; height: parent.height - 24px;
+            fallback: root.preview.label;
+            formula: root.preview.formula;
+            formula-width: root.preview.formula-width;
+            formula-height: root.preview.formula-height;
+            texts: root.preview.texts;
+            font-size: 16px;
+            align-left: true;
+        }
+        TouchArea { mouse-cursor: text; clicked => { root.activated(); } }
+    }
+    if root.active : MathComposer {
+        functions: root.functions;
+        symbols: root.symbols;
+        active-preview: root.active-preview;
+        regions: root.regions;
+        selection: root.selection;
+        position: root.position;
+        navigation: root.navigation;
+        text-mode: root.text-mode;
+        has-formula: root.has-formula;
+        input <=> root.input;
+        error: root.error;
+        can-undo: root.can-undo;
+        can-redo: root.can-redo;
+        can-move-out: root.can-move-out;
+        can-unwrap: root.can-unwrap;
+        grid-rows: root.grid-rows;
+        grid-columns: root.grid-columns;
+        select-region(index) => { root.select-region(index); }
+        edited(input) => { root.edited(input); }
+        position-changed(value, anchor, caret) => { root.position-changed(value, anchor, caret); }
+        tool(name) => { root.tool(name); }
+        parent => { root.parent(); }
+        undo(redo) => { root.undo(redo); }
+        resize-grid(rows, columns) => { root.resize-grid(rows, columns); }
+        canvas-layout(x,y,scale) => { if root.active { root.canvas-layout(x,y,scale); } }
+        measured-height(height) => { root.composer-height = height; }
+    }
+}
+
+export component ContentForm inherits VerticalLayout {
+    in property <[MathTool]> functions;
+    in property <[MathTool]> symbols;
+    in property <[AnswerOption]> fields;
+    in property <int> answer-mode;
+    in property <int> correct-choice;
+    in property <int> truth-choice: -1;
+    callback choice-changed(int);
+    callback truth-changed(bool);
+    in property <int> active-field: -1;
+    in property <AnswerOption> active-preview;
+    in property <[MathRegion]> regions;
+    in property <MathRegion> selection;
+    in property <FormulaPosition> position;
+    in property <FormulaNavigation> navigation;
+    in property <bool> text-mode;
+    in property <bool> has-formula;
+    in-out property <string> input;
+    in property <string> error;
+    in property <bool> can-undo;
+    in property <bool> can-redo;
+    in property <bool> can-move-out;
+    in property <bool> can-unwrap;
+    in property <int> grid-rows;
+    in property <int> grid-columns;
+    callback activate-field(int);
+    callback select-region(int);
+    callback edited(string);
+    callback position-changed(string, int, int);
+    callback tool(string);
+    callback parent();
+    callback undo(bool);
+    callback resize-grid(int, int);
+    callback canvas-layout(float, float, float);
+    private property <[int]> visible-fields: root.answer-mode == 2 ? [4] : root.answer-mode == 1 ? [0,1,2,3] : [0,1];
+    private property <[string]> labels: root.answer-mode == 1 ? [@tr("题目"), @tr("选项 A"), @tr("选项 B"), @tr("选项 C"), @tr("题目")] : [@tr("题目"), @tr("答案"), "", "", @tr("题目")];
+    spacing: 14px;
+    for field in root.visible-fields : VerticalLayout {
+        spacing: 7px;
+        HorizontalLayout {
+            height: root.answer-mode == 1 && field > 0 ? 36px : 16px;
+            spacing: 4px;
+            Text { text: root.labels[field]; color: Theme.muted; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+            if root.answer-mode == 1 && field > 0 : AnswerPick { selected: root.correct-choice == field - 1; label: root.labels[field] + @tr(" · 设为正确答案"); activated => { root.choice-changed(field - 1); } }
+        }
+        ContentField {
+            functions: root.functions;
+            symbols: root.symbols;
+            preview: root.fields[field];
+            active: root.active-field == field;
+            active-preview: root.active-preview;
+            regions: root.regions;
+            selection: root.selection;
+            position: root.position;
+            navigation: root.navigation;
+            text-mode: root.text-mode;
+            has-formula: root.has-formula;
+            input <=> root.input;
+            error: root.error;
+            can-undo: root.can-undo;
+            can-redo: root.can-redo;
+            can-move-out: root.can-move-out;
+            can-unwrap: root.can-unwrap;
+            grid-rows: root.grid-rows;
+            grid-columns: root.grid-columns;
+            activated => { root.activate-field(field); }
+            select-region(index) => { root.select-region(index); }
+            edited(input) => { root.edited(input); }
+            position-changed(value, anchor, caret) => { root.position-changed(value, anchor, caret); }
+            tool(name) => { root.tool(name); }
+            parent => { root.parent(); }
+            undo(redo) => { root.undo(redo); }
+            resize-grid(rows, columns) => { root.resize-grid(rows, columns); }
+            canvas-layout(x,y,scale) => { root.canvas-layout(x,y,scale); }
+        }
+    }
+    if root.answer-mode == 2 : HorizontalLayout {
+        height: 42px; spacing: 8px;
+        Text { text: @tr("答案"); color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+        AnswerPick { symbol-only: true; glyph: @image-url("../assets/check_mark.svg"); selected: root.truth-choice == 0; label: @tr("正确"); width: 48px; height: 42px; activated => { root.truth-changed(true); } }
+        AnswerPick { symbol-only: true; glyph: @image-url("../assets/cross_mark.svg"); selected: root.truth-choice == 1; label: @tr("不正确"); width: 48px; height: 42px; activated => { root.truth-changed(false); } }
+        Rectangle { horizontal-stretch: 1; background: transparent; }
+    }
+}

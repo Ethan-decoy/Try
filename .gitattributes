@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.exe binary
+*.ico binary
+*.png binary
+
+# Preserve upstream license text verbatim, including its original whitespace.
+third_party_licenses/* -whitespace
