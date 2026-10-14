@@ -1,6 +1,6 @@
 # 发布与平台范围
 
-版本为 `0.1.0`。实际下载以 [Releases](https://github.com/Ethan-decoy/Try/releases) 的附件和说明为准。
+当前发布为 [`0.1.0` 预发布版](https://github.com/Ethan-decoy/Try/releases/tag/v0.1.0)。实际下载以 [Releases](https://github.com/Ethan-decoy/Try/releases) 的附件和说明为准。
 
 | 平台 | 分发文件 | 范围 |
 | --- | --- | --- |

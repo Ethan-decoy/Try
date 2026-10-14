@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (in preparation)
+## 0.1.0 (2026-10-14, prerelease)
 
 - Frameless practice cards with typed answers, multiple choice, true/false and fact viewing.
 - Create, edit, delete, import and export knowledge packs and individual questions, with configurable participation and answer modes. Imported packs are saved independently of their source files; empty packs remain editable.
