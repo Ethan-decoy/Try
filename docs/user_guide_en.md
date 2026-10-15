@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers the `0.2.0` candidate for Windows x64, macOS arm64 and Linux x64. Platform packages and verification scope are in the [release record](release_checklist.md).
+This guide covers the `0.2.1` prerelease for Windows x64, macOS arm64 and Linux x64. Platform packages and verification scope are in the [release record](release_checklist.md).
 
 ## Practice
 

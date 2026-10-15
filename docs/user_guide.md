@@ -2,7 +2,7 @@
 
 [English](user_guide_en.md) · [返回首页](../README.md)
 
-本说明对应 `0.2.0` 候选版，目标为 Windows x64、macOS arm64 和 Linux x64。平台包与验证范围见 [发布记录](release_checklist.md)。
+本说明对应 `0.2.1` 预发布版，目标为 Windows x64、macOS arm64 和 Linux x64。平台包与验证范围见 [发布记录](release_checklist.md)。
 
 ## 开始练习
 

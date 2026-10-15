@@ -1,11 +1,12 @@
 # Changelog
 
-## 0.2.0 (candidate)
+## 0.2.1 (2026-10-15, prerelease)
 
 - Optional PNG/JPEG question images with a compact practice layout and a separate enlarged view, shared by typed answers, multiple choice, true/false and fact viewing.
 - Add, replace, remove or drop a picture in the question editor. Try manages its own bounded image files, so moving the original does not break a question.
 - Export and import image packs as one self-contained JSON file, with validated resources and shared-picture deduplication. Existing text/formula packs remain compatible.
 - Include the image in each answer mode's learning fingerprint while preserving existing text-only history. Update the authoring and user guides for picture questions.
+- Fall back to public release checks when GitHub's anonymous API allowance is exhausted, while respecting the configured proxy and excluding draft tags without public downloads. Show a specific message if checking remains limited.
 
 ## 0.1.0 (2026-10-14, prerelease)
 

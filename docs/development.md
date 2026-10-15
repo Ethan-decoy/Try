@@ -47,7 +47,7 @@ Windows 辅助脚本会定位工具链、MSVC 和 SDK，并将产物留在 `loca
 
 静态题面由 `src/media.rs` 管理：源 PNG／JPEG 在后台规范化为有界 PNG，以内容哈希保存到数据目录的 `media/`。库和草稿只记录资源标识，显示时只解码当前题；收起窗口释放像素。`Store` 负责将含图包组装为单个 JSON 或从中安装资源，`media` 传输字段不进入 `state.json`。导入、编辑失败保留原题库；清理只处理已识别且未被库、当前草稿或待确认导入引用的自有文件。修改图片改变各题型的学习指纹，未添加图片的题目保留原指纹。格式与配额见 [知识包格式](knowledge_pack_format.md#题面图片与可携带资源)。Windows 可用 `./scripts/build_windows.ps1 -Action test -NativeChecks -NativeTest native_picture_questions` 验证隔离题库中的编辑、取消、保存、显示、放大与资源清理；生成的截图留在 `local_artifacts/`。
 
-版本检查使用固定 GitHub Release 源，忽略草稿。自动检查默认开启，启动后延迟至少 30 秒，每 24 小时最多一次；手动检查可覆盖预算，同时只运行一个请求。缓存受大小限制，结果安静显示在关于页。
+版本检查使用固定 GitHub Release 源，忽略草稿。预发布通道的 REST API 请求受限时，沿用系统代理检查同一仓库的公开 Atom 订阅源，并确认 `checksums.sha256` 已可匿名访问；只有标签、没有公开分发附件的候选不会提示更新。订阅源限制为 1 MiB／10000 个 XML 节点，最多探测三个版本的附件，不跟随下载重定向；正式版本通道保留 API 的预发布过滤规则。两条路径均失败时保留受限错误，关于页显示稍后重试。自动检查默认开启，启动后延迟至少 30 秒，每 24 小时最多一次；手动检查可覆盖预算，同时只运行一个检查任务。缓存受大小限制，结果安静显示在关于页。显式网络验证可分别运行 `update_check::tests::live_release_check` 与 `update_check::tests::live_rate_limited_api_fallback`，后者模拟 API 403 后通过实际传输检查公开源，不反复请求已耗尽的 API 额度。
 
 ## 翻译
 

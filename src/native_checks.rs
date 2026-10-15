@@ -5292,6 +5292,25 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                     app.show_main().unwrap();
                     let main = main_window(app);
                     assert_eq!(main.get_update_status(), "No public releases yet");
+                    main.invoke_show_about();
+                    app.begin_update_check(|| Err(CheckError::RateLimited));
+                }
+                7 => {
+                    assert_eq!(main.get_update_status(), "Check limited; try later");
+                    assert!(!main.get_update_download());
+                    snapshot(
+                        main.window(),
+                        checks.output.join("about_rate_limited_en.png"),
+                    );
+                    main.invoke_choose_language(1);
+                }
+                8 => {
+                    assert_eq!(main.get_update_status(), "检查受限，请稍后再试");
+                    assert!(!main.get_update_download());
+                    snapshot(
+                        main.window(),
+                        checks.output.join("about_rate_limited_zh.png"),
+                    );
                     assert_eq!(app.store.load().unwrap().packs, checks.original_packs);
                     checks.finished.set(true);
                     println!(

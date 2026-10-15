@@ -4495,7 +4495,7 @@ dependencies = [
 
 [[package]]
 name = "try"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64",
  "chrono",
@@ -4507,6 +4507,7 @@ dependencies = [
  "rand",
  "resvg",
  "rfd",
+ "roxmltree",
  "semver",
  "serde",
  "serde_json",

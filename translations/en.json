@@ -364,6 +364,7 @@
   "已是最新": "Up to date",
   "尚无公开版本": "No public releases yet",
   "暂时无法检查": "Unable to check",
+  "检查受限，请稍后再试": "Check limited; try later",
   "新版本 {version}": "Version {version} available",
   "下载": "Download",
   "下载新版": "Download new version",

@@ -1214,6 +1214,9 @@ impl App {
             UpdateStatus::Finished(Ok(CheckOutcome::NoPublicRelease)) => {
                 (2, tr!("尚无公开版本").to_owned(), false)
             }
+            UpdateStatus::Finished(Err(CheckError::RateLimited)) => {
+                (2, tr!("检查受限，请稍后再试").to_owned(), false)
+            }
             UpdateStatus::Finished(Err(_)) => (2, tr!("暂时无法检查").to_owned(), false),
         };
         window.set_update_state(state);
