@@ -81,6 +81,8 @@ jobs:
         run: |
           ./scripts/build_windows.ps1 -Action build -Distribution
           ./scripts/prepare_windows_release.ps1 -OutputDirectory local_artifacts/releases/windows_x64
+          ./scripts/build_windows.ps1 -Action build -Distribution -Example update_driver
+          python scripts/check_in_app_update.py --executable local_artifacts/releases/windows_x64/try.exe --driver local_artifacts/target/x86_64-pc-windows-msvc/release/examples/update_driver.exe --output local_artifacts/releases/windows_x64/update_install_check.json
       - name: Tests
         if: runner.os != 'Windows'
         run: cargo test --release --locked --features distribution

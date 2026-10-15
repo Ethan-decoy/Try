@@ -71,6 +71,8 @@ fn compile_translations() -> std::path::PathBuf {
         "src/practice.rs",
         "src/learning.rs",
         "src/learning_store.rs",
+        "src/updater.rs",
+        "src/update_install.rs",
     ] {
         println!("cargo:rerun-if-changed={path}");
         let source = std::fs::read_to_string(path).expect("Translation source must be readable");

@@ -1,6 +1,6 @@
 [package]
 name = "try"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.92"
 publish = false
@@ -11,6 +11,11 @@ license = "MIT"
 native_checks = []
 portable = []
 distribution = []
+
+[[example]]
+name = "update_driver"
+path = "tests/fixtures/update_driver.rs"
+required-features = ["native_checks", "distribution"]
 
 [dependencies]
 slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "system-tray", "compat-1-18", "unstable-winit-030"] }
@@ -32,11 +37,13 @@ rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", 
 latex-rust = { version = "=2.1.0", default-features = false }
 resvg = { version = "=0.48.1", default-features = false }
 roxmltree = "=0.21.1"
+zip = { version = "=9.0.3", default-features = false, features = ["deflate-flate2"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Networking_WinHttp", "Win32_System_Registry", "Win32_Security", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Networking_WinHttp", "Win32_System_Registry", "Win32_System_Threading", "Win32_Security", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
+libc = "0.2"
 ureq = { version = "=3.4.2", default-features = false, features = ["native-tls"] }
 
 [build-dependencies]

@@ -255,186 +255,13 @@ fn evaluate_response(
     )
 }
 
-#[cfg(target_os = "windows")]
 mod transport {
-    use super::{CheckError, MAX_RESPONSE_BYTES};
-    use std::ffi::c_void;
-    use std::ptr::{null, null_mut};
-    use std::time::{Duration, Instant};
-    use windows_sys::Win32::Networking::WinHttp::*;
-
-    struct InternetHandle(*mut c_void);
-
-    impl InternetHandle {
-        fn new(handle: *mut c_void) -> Result<Self, CheckError> {
-            if handle.is_null() {
-                Err(CheckError::Network)
-            } else {
-                Ok(Self(handle))
-            }
-        }
-    }
-
-    impl Drop for InternetHandle {
-        fn drop(&mut self) {
-            // SAFETY: this wrapper owns a live WinHTTP handle and closes it once.
-            unsafe { WinHttpCloseHandle(self.0) };
-        }
-    }
-
-    fn wide(value: &str) -> Vec<u16> {
-        value.encode_utf16().chain(Some(0)).collect()
-    }
-
-    fn succeeded(value: i32) -> Result<(), CheckError> {
-        if value == 0 {
-            Err(CheckError::Network)
-        } else {
-            Ok(())
-        }
-    }
-
+    use super::CheckError;
     pub(super) fn get(url: &str) -> Result<(u16, Vec<u8>), CheckError> {
-        let (origin, host_name) = if url.starts_with("https://api.github.com/") {
-            ("https://api.github.com", "api.github.com")
-        } else if url.starts_with("https://github.com/") {
-            ("https://github.com", "github.com")
-        } else {
-            return Err(CheckError::Network);
-        };
-        let path = url
-            .strip_prefix(origin)
-            .filter(|path| path.starts_with('/'))
-            .ok_or(CheckError::Network)?;
-        let agent = wide(concat!("Try/", env!("CARGO_PKG_VERSION")));
-        let host = wide(host_name);
-        let path = wide(path);
-        let verb = wide("GET");
-        let headers = if host_name == "api.github.com" {
-            wide("Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n")
-        } else {
-            wide("Accept: application/atom+xml, */*\r\n")
-        };
-        // SAFETY: strings are NUL-terminated and live through each synchronous call.
-        // Handles own their resources; read/query pointers refer to initialized buffers.
-        unsafe {
-            let session = InternetHandle::new(WinHttpOpen(
-                agent.as_ptr(),
-                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-                null(),
-                null(),
-                0,
-            ))?;
-            succeeded(WinHttpSetTimeouts(session.0, 5_000, 5_000, 5_000, 5_000))?;
-            let connection = InternetHandle::new(WinHttpConnect(session.0, host.as_ptr(), 443, 0))?;
-            let request = InternetHandle::new(WinHttpOpenRequest(
-                connection.0,
-                verb.as_ptr(),
-                path.as_ptr(),
-                null(),
-                null(),
-                null(),
-                WINHTTP_FLAG_SECURE,
-            ))?;
-            // A fixed GitHub endpoint needs no redirects. Keep normal certificate checks.
-            let policy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
-            succeeded(WinHttpSetOption(
-                request.0,
-                WINHTTP_OPTION_REDIRECT_POLICY,
-                (&policy as *const u32).cast(),
-                std::mem::size_of_val(&policy) as u32,
-            ))?;
-            succeeded(WinHttpSendRequest(
-                request.0,
-                headers.as_ptr(),
-                (headers.len() - 1) as u32,
-                null(),
-                0,
-                0,
-                0,
-            ))?;
-            succeeded(WinHttpReceiveResponse(request.0, null_mut()))?;
-            let mut status = 0u32;
-            let mut size = std::mem::size_of_val(&status) as u32;
-            succeeded(WinHttpQueryHeaders(
-                request.0,
-                WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                null(),
-                (&mut status as *mut u32).cast(),
-                &mut size,
-                null_mut(),
-            ))?;
-            if status != 200 {
-                return Ok((status as u16, vec![]));
-            }
-            let deadline = Instant::now() + Duration::from_secs(15);
-            let mut body = Vec::new();
-            let mut buffer = [0u8; 8192];
-            loop {
-                if Instant::now() >= deadline {
-                    return Err(CheckError::Network);
-                }
-                let mut read = 0;
-                succeeded(WinHttpReadData(
-                    request.0,
-                    buffer.as_mut_ptr().cast(),
-                    buffer.len() as u32,
-                    &mut read,
-                ))?;
-                if read == 0 {
-                    return Ok((status as u16, body));
-                }
-                if body.len() + read as usize > MAX_RESPONSE_BYTES {
-                    return Err(CheckError::InvalidResponse);
-                }
-                body.extend_from_slice(&buffer[..read as usize]);
-            }
-        }
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-mod transport {
-    use super::{CheckError, MAX_RESPONSE_BYTES};
-    use std::io::Read;
-    use std::time::Duration;
-    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
-
-    pub(super) fn get(url: &str) -> Result<(u16, Vec<u8>), CheckError> {
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(15)))
-            .https_only(true)
-            .max_redirects(0)
-            .http_status_as_error(false)
-            .tls_config(
-                TlsConfig::builder()
-                    .provider(TlsProvider::NativeTls)
-                    .root_certs(RootCerts::PlatformVerifier)
-                    .build(),
-            )
-            .build()
-            .into();
-        let mut response = agent
-            .get(url)
-            .header("User-Agent", concat!("Try/", env!("CARGO_PKG_VERSION")))
-            .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .call()
-            .map_err(|_| CheckError::Network)?;
-        let status = response.status().as_u16();
-        let mut body = vec![];
-        if status == 200 {
-            response
-                .body_mut()
-                .as_reader()
-                .take(MAX_RESPONSE_BYTES as u64 + 1)
-                .read_to_end(&mut body)
-                .map_err(|_| CheckError::Network)?;
-            if body.len() > MAX_RESPONSE_BYTES {
-                return Err(CheckError::InvalidResponse);
-            }
-        }
-        Ok((status, body))
+        crate::update_transport::get(url).map_err(|error| match error {
+            crate::update_transport::Error::TooLarge => CheckError::InvalidResponse,
+            _ => CheckError::Network,
+        })
     }
 }
 
@@ -802,7 +629,9 @@ mod tests {
             }
             panic!("Native HTTPS transport did not connect to the local test server");
         });
-        let result = super::transport::get(&format!("https://{address}/"));
+        let result =
+            crate::update_transport::probe_native_tls_handshake(&format!("https://{address}/"))
+                .map_err(|_| CheckError::Network);
         server.join().unwrap();
         assert_eq!(result, Err(CheckError::Network));
     }

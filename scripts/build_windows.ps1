@@ -5,6 +5,8 @@ param(
     [switch]$Distribution,
     [string]$NoticesDirectory = 'local_artifacts/open_source/distribution_notices',
     [switch]$DocTests,
+    [ValidateSet('update_driver')]
+    [string]$Example,
     [switch]$NativeChecks,
     [ValidateSet('all', 'native_picture_questions', 'native_automatic_updates', 'native_practice_focus', 'native_pack_tags', 'native_desktop_theme', 'native_adaptive_practice', 'native_practice_text_layout', 'native_starter_packs', 'native_question_focus', 'native_question_deletion', 'native_lifecycle', 'native_frameless_repaint', 'native_no_frame_baseline', 'native_drag_repaint', 'native_answer_modes', 'native_question_management', 'native_multi_pack_participation', 'native_pack_deletion', 'native_math_authoring', 'native_formula_answers', 'native_formula_editing', 'native_inline_answers', 'native_settings', 'native_quick_answers', 'native_main_repaint', 'native_repaint_baseline', 'native_localization', 'native_update_check', 'native_tray_menu', 'native_licenses')]
     [string]$NativeTest = 'native_lifecycle'
@@ -89,6 +91,10 @@ if ($NativeChecks) {
     if ($NativeTest -ne 'all') {
         $taskArguments += '--bin', 'try', $NativeTest, '--', '--ignored', '--test-threads=1', '--nocapture'
     }
+}
+if ($Example) {
+    if ($Action -ne 'build' -or -not $Distribution) { throw 'Update examples require a distribution build.' }
+    $taskArguments += '--example', $Example, '--features', 'native_checks'
 }
 if ($DocTests) {
     if ($Action -ne 'test' -or $NativeChecks) { throw 'DocTests requires -Action test without NativeChecks.' }

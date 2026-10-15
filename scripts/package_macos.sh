@@ -52,6 +52,7 @@ done
 codesign --force --sign - "$task_app"
 codesign --verify --deep --strict "$task_app"
 python3 scripts/check_unix_release.py --smoke --output "$task_output/check.json" -- "$task_app/Contents/MacOS/try"
+python3 scripts/check_in_app_update.py --executable "$task_app" --output "$task_output/update_install_check.json"
 task_zip="$task_output/download/try_${task_platform}_${task_version}.zip"
 ditto -c -k --sequesterRsrc --keepParent "$task_app" "$task_zip"
 (cd "$task_output/download" && shasum -a 256 "$(basename "$task_zip")" > "$(basename "$task_zip").sha256")

@@ -59,5 +59,6 @@ python3 scripts/collect_linux_notices.py "$task_appdir"
 "$task_tools/linuxdeploy-x86_64.AppImage" --appdir "$task_appdir" --output appimage
 python3 scripts/check_unix_release.py --output "$task_output/check.json" -- "$LDAI_OUTPUT" --appimage-extract-and-run
 dbus-run-session -- xvfb-run -a python3 scripts/check_unix_release.py --smoke --output "$task_output/startup_check.json" -- "$LDAI_OUTPUT" --appimage-extract-and-run
+dbus-run-session -- xvfb-run -a python3 scripts/check_in_app_update.py --executable "$LDAI_OUTPUT" --helper "$task_appdir/usr/bin/try" --output "$task_output/update_install_check.json"
 (cd "$task_output/download" && sha256sum "$(basename "$LDAI_OUTPUT")" > "$(basename "$LDAI_OUTPUT").sha256")
 echo "Packaged: $LDAI_OUTPUT"

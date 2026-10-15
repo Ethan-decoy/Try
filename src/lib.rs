@@ -20,5 +20,8 @@ pub mod storage;
 #[cfg(any(test, feature = "native_checks"))]
 pub mod test_fixtures;
 pub mod update_check;
+pub mod update_install;
 pub mod update_schedule;
+mod update_transport;
+pub mod updater;
 pub mod window_position;

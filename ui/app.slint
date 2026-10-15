@@ -181,6 +181,9 @@ export component MainWindow inherits Window {
     in property <int> update-state;
     in property <string> update-status;
     in property <bool> update-download;
+    in property <string> update-action;
+    in property <bool> update-busy;
+    in property <int> update-action-kind;
     out property <length> about-left: 24px;
     out property <length> about-top: root.height - root.about-height - 72px;
     // Reserve the result row so checking cannot resize or move the popup.
@@ -197,6 +200,8 @@ export component MainWindow inherits Window {
     callback check-updates();
     callback update-check-finished();
     callback open-update-download();
+    callback cancel-update-download();
+    callback restart-update();
     callback open-project-home();
     callback open-notices();
     callback return-to-about();
@@ -982,7 +987,7 @@ export component MainWindow inherits Window {
                 IconButton {
                     x: root.check-link-left - root.about-left; y: root.check-link-top - root.about-top;
                     glyph: @image-url("../assets/check_updates.svg"); label: @tr("检查更新");
-                    borderless: true; enabled: root.update-state != 1;
+                    borderless: true; enabled: root.update-state != 1 && !root.update-busy;
                     activated => { root.check-updates(); }
                 }
                 IconButton {
@@ -993,10 +998,20 @@ export component MainWindow inherits Window {
                 if root.update-state != 0 : HorizontalLayout {
                     x: 64px; y: 80px; width: 216px; height: 36px; spacing: 6px;
                     Text { text: root.update-status; color: Theme.muted; font-size: 12px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
-                    if root.update-download : TextLink {
-                        width: 64px; font-size: 12px; centered: true;
-                        label: @tr("下载"); name: @tr("下载新版");
+                    if root.update-download && root.update-action-kind == 0 : TextLink {
+                        width: 102px; font-size: 12px; centered: true;
+                        label: root.update-action;
                         activated => { root.open-update-download(); }
+                    }
+                    if root.update-download && root.update-action-kind == 1 : TextLink {
+                        width: 102px; font-size: 12px; centered: true;
+                        label: root.update-action;
+                        activated => { root.cancel-update-download(); }
+                    }
+                    if root.update-download && root.update-action-kind == 2 : TextLink {
+                        width: 102px; font-size: 12px; centered: true;
+                        label: root.update-action;
+                        activated => { root.restart-update(); }
                     }
                 }
                 TextLink {

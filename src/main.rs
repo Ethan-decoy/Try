@@ -19,7 +19,10 @@ use r#try::storage::Store;
 
 slint::include_modules!();
 
-fn run(logger: &mut Option<flexi_logger::LoggerHandle>) -> AppResult<()> {
+fn run(
+    logger: &mut Option<flexi_logger::LoggerHandle>,
+    restart: &mut Option<(r#try::updater::PreparedUpdate, std::path::PathBuf)>,
+) -> AppResult<()> {
     let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
     if arguments.iter().any(|arg| arg == "--distribution-info") {
         println!("{}", r#try::distribution::information());
@@ -114,20 +117,56 @@ fn run(logger: &mut Option<flexi_logger::LoggerHandle>) -> AppResult<()> {
     if practice {
         app.show_practice()?;
     }
-    slint::run_event_loop_until_quit().map_err(|error| error.to_string())
+    if r#try::update_install::completing(&arguments) {
+        let weak = std::rc::Rc::downgrade(&app);
+        let receipt_arguments = arguments.clone();
+        let receipt_directory = directory.clone();
+        slint::Timer::single_shot(std::time::Duration::from_millis(350), move || {
+            if let Err(error) =
+                r#try::update_install::acknowledge(&receipt_arguments, &receipt_directory)
+            {
+                log::error!(target: "try::updates", "event=updated_startup_rejected reason={error}");
+                if let Some(app) = weak.upgrade() {
+                    app.reject_update_startup();
+                }
+            }
+        });
+    }
+    if arguments.iter().any(|s| s == "--update-failed") {
+        app.show_update_failure();
+    }
+    slint::run_event_loop_until_quit().map_err(|error| error.to_string())?;
+    if let Some(update) = app.take_restart_update() {
+        *restart = Some((update, directory));
+    }
+    Ok(())
 }
 
 fn main() -> std::process::ExitCode {
     r#try::i18n::activate(r#try::i18n::InterfaceLanguage::System);
+    let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    if let Some(result) = r#try::update_install::helper_mode(&arguments) {
+        if let Err(error) = &result {
+            eprintln!("Try update helper: {error}");
+        }
+        return if result.is_ok() {
+            std::process::ExitCode::SUCCESS
+        } else {
+            std::process::ExitCode::FAILURE
+        };
+    }
     let mut logger = None;
-    let code = if let Err(error) = run(&mut logger) {
+    let mut restart = None;
+    let code = if let Err(error) = run(&mut logger, &mut restart) {
         log::error!(target: "try::main", "event=run_failed reason={error}");
         eprintln!("Try: {error}");
-        rfd::MessageDialog::new()
-            .set_title(tr!("Try · 无法启动"))
-            .set_description(error)
-            .set_level(rfd::MessageLevel::Error)
-            .show();
+        if !r#try::update_install::completing(&arguments) {
+            rfd::MessageDialog::new()
+                .set_title(tr!("Try · 无法启动"))
+                .set_description(error)
+                .set_level(rfd::MessageLevel::Error)
+                .show();
+        }
         std::process::ExitCode::FAILURE
     } else {
         log::info!(target: "try::main", "event=run_finished");
@@ -135,6 +174,17 @@ fn main() -> std::process::ExitCode {
     };
     if let Some(logger) = logger {
         logger.shutdown();
+    }
+    if let Some((update, directory)) = restart
+        && let Err(error) = update.launch(&directory)
+    {
+        let _ = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--data-dir")
+            .arg(directory)
+            .arg("--update-failed")
+            .spawn();
+        eprintln!("Try update: {error}");
+        return std::process::ExitCode::FAILURE;
     }
     code
 }

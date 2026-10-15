@@ -5297,6 +5297,12 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                 }
                 7 => {
                     assert_eq!(main.get_update_status(), "Check limited; try later");
+                    *app.update_transfer.lock().unwrap() = UpdateTransfer::Failed("fixture".into());
+                    app.begin_update_check(|| Err(CheckError::RateLimited));
+                    assert!(
+                        matches!(*app.update_transfer.lock().unwrap(), UpdateTransfer::Idle),
+                        "a fresh check clears a stale download error"
+                    );
                     assert!(!main.get_update_download());
                     snapshot(
                         main.window(),
@@ -5311,10 +5317,87 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                         main.window(),
                         checks.output.join("about_rate_limited_zh.png"),
                     );
+                    app.begin_update_download(|cancel, progress| {
+                        progress(42, Some(100));
+                        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                        while !cancel.load(Ordering::Relaxed)
+                            && std::time::Instant::now() < deadline
+                        {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err("cancelled fixture".into())
+                    });
+                }
+                9 => {
+                    assert_eq!(main.get_update_status(), "正在下载 42%");
+                    assert_eq!(main.get_update_action(), "取消");
+                    assert!(main.get_update_busy());
+                    main.invoke_choose_language(2);
+                }
+                10 => {
+                    assert_eq!(main.get_update_status(), "Downloading 42%");
+                    assert_eq!(main.get_update_action(), "Cancel");
+                    app.close_main();
+                    app.show_main().unwrap();
+                }
+                11 => {
+                    assert_eq!(main.get_update_status(), "Downloading 42%");
+                    main.invoke_show_about();
+                    main.invoke_cancel_update_download();
+                }
+                12 => {
+                    assert!(!main.get_update_busy());
+                    assert_eq!(main.get_update_status(), "Check limited; try later");
+                    *app.update_transfer.lock().unwrap() =
+                        UpdateTransfer::Ready(updater::ui_fixture(&checks.output).unwrap());
+                    app.refresh_update_status();
+                }
+                13 => {
+                    assert_eq!(main.get_update_action(), "Restart & update");
+                    assert_eq!(main.get_update_status(), "Update ready");
+                    main.invoke_cancel_update_download();
+                    assert!(
+                        app.restart_update.borrow().is_none(),
+                        "late cancellation never restarts"
+                    );
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Idle
+                    ));
+                    *app.update_transfer.lock().unwrap() =
+                        UpdateTransfer::Ready(updater::ui_fixture(&checks.output).unwrap());
+                    app.refresh_update_status();
+                    app.editor.replace(Some(EditorTarget::NewPack {
+                        id: "update_fixture".into(),
+                    }));
+                    main.invoke_restart_update();
+                    assert!(
+                        app.restart_update.borrow().is_none(),
+                        "unsaved editor blocks restart"
+                    );
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Ready(_)
+                    ));
+                    app.editor.borrow_mut().take();
+                    main.invoke_choose_language(1);
+                }
+                14 => {
+                    assert_eq!(main.get_update_action(), "重启并更新");
+                    assert_eq!(main.get_update_status(), "更新已就绪");
                     assert_eq!(app.store.load().unwrap().packs, checks.original_packs);
+                    main.invoke_restart_update();
+                    assert!(
+                        app.restart_update.borrow().is_some(),
+                        "ready update is handed to shutdown"
+                    );
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Idle
+                    ));
                     checks.finished.set(true);
                     println!(
-                        "Native update icon, stable about geometry, one worker, lazy window release/recreation, live bilingual states, retry and minimum layout checks passed."
+                        "Native update checking, transfer progress, cancellation, ready state, unsaved-editor guard, bilingual labels and stable about geometry passed."
                     );
                     app.quit();
                     return;
@@ -5367,7 +5450,7 @@ fn native_update_check() {
     });
     update_phase(checks.clone(), 0);
     let watchdog = Rc::downgrade(&checks.app);
-    Timer::single_shot(Duration::from_secs(12), move || {
+    Timer::single_shot(Duration::from_secs(20), move || {
         if let Some(app) = watchdog.upgrade() {
             app.quit();
         }

@@ -10,6 +10,7 @@ use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEve
 use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use r#try::autostart::Autostart;
@@ -27,6 +28,7 @@ use r#try::storage::Store;
 use r#try::tr;
 use r#try::update_check::{self, CheckError, CheckOutcome};
 use r#try::update_schedule::{self, UpdateSchedule};
+use r#try::updater::{self, PreparedUpdate};
 use r#try::window_position::PopupCorner;
 
 type ImageTask = (
@@ -54,6 +56,9 @@ pub struct App {
     update_check: Arc<Mutex<UpdateCheck>>,
     update_fetch: Cell<UpdateFetch>,
     automatic_update_timer: Timer,
+    update_transfer: Arc<Mutex<UpdateTransfer>>,
+    update_transfer_timer: Timer,
+    restart_update: RefCell<Option<PreparedUpdate>>,
     practice: RefCell<Option<PracticeSession>>,
     next_practice_id: Cell<u64>,
     pending_import: RefCell<Option<KnowledgePack>>,
@@ -96,7 +101,18 @@ struct UpdateCheck {
     status: UpdateStatus,
     schedule: UpdateSchedule,
     observer: Option<slint::Weak<MainWindow>>,
-    browser_error: bool,
+}
+
+#[derive(Default)]
+enum UpdateTransfer {
+    #[default]
+    Idle,
+    Downloading {
+        percent: Option<u64>,
+        cancel: Arc<AtomicBool>,
+    },
+    Ready(PreparedUpdate),
+    Failed(String),
 }
 
 impl UpdateCheck {
@@ -203,10 +219,12 @@ impl App {
                 status,
                 schedule,
                 observer: None,
-                browser_error: false,
             })),
             update_fetch: Cell::new(update_check::check),
             automatic_update_timer: Timer::default(),
+            update_transfer: Arc::new(Mutex::new(UpdateTransfer::Idle)),
+            update_transfer_timer: Timer::default(),
+            restart_update: RefCell::default(),
             practice: RefCell::new(None),
             next_practice_id: Cell::new(1),
             pending_import: RefCell::new(None),
@@ -236,7 +254,11 @@ impl App {
             autostart_error: RefCell::new(String::new()),
             floating,
         });
-        app.collect_media();
+        // A failed update may roll back JSON. Defer initial media collection
+        // until the new process has acknowledged a usable library.
+        if !std::env::args_os().any(|s| s == "--complete-update") {
+            app.collect_media();
+        }
         app.connect_tray();
         app.read_autostart_status();
         app.refresh();
@@ -436,6 +458,18 @@ impl App {
         window.on_open_update_download(move || {
             if let Some(app) = weak.upgrade() {
                 app.open_update_download();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window.on_cancel_update_download(move || {
+            if let Some(app) = weak.upgrade() {
+                app.cancel_update_download();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window.on_restart_update(move || {
+            if let Some(app) = weak.upgrade() {
+                app.restart_after_update();
             }
         });
 
@@ -1131,6 +1165,14 @@ impl App {
         automatic: bool,
     ) {
         {
+            let mut transfer = self.update_transfer.lock().unwrap();
+            match &*transfer {
+                UpdateTransfer::Downloading { .. } | UpdateTransfer::Ready(_) => return,
+                UpdateTransfer::Failed(_) => *transfer = UpdateTransfer::Idle,
+                UpdateTransfer::Idle => {}
+            }
+        }
+        {
             let mut check = self.update_check.lock().unwrap();
             if matches!(check.status, UpdateStatus::Checking) {
                 return;
@@ -1147,7 +1189,6 @@ impl App {
                 }
             }
             check.status = UpdateStatus::Checking;
-            check.browser_error = false;
         }
         self.refresh_update_status();
         let state = self.update_check.clone();
@@ -1196,18 +1237,12 @@ impl App {
             return;
         };
         let check = self.update_check.lock().unwrap();
-        let (state, text, download) = match &check.status {
+        let (state, mut text, mut download) = match &check.status {
             UpdateStatus::Idle => (0, String::new(), false),
             UpdateStatus::Checking => (1, tr!("正在检查…").to_owned(), false),
-            UpdateStatus::Finished(Ok(CheckOutcome::Available(release))) => (
-                2,
-                if check.browser_error {
-                    tr!("无法打开浏览器").to_owned()
-                } else {
-                    tr!("新版本 {version}", version = release.version)
-                },
-                true,
-            ),
+            UpdateStatus::Finished(Ok(CheckOutcome::Available(release))) => {
+                (2, tr!("新版本 {version}", version = release.version), true)
+            }
             UpdateStatus::Finished(Ok(CheckOutcome::UpToDate)) => {
                 (2, tr!("已是最新").to_owned(), false)
             }
@@ -1219,25 +1254,197 @@ impl App {
             }
             UpdateStatus::Finished(Err(_)) => (2, tr!("暂时无法检查").to_owned(), false),
         };
+        let transfer = self.update_transfer.lock().unwrap();
+        let mut action = tr!("下载更新").to_owned();
+        let mut busy = false;
+        let mut action_kind = 0;
+        match &*transfer {
+            UpdateTransfer::Downloading { percent, cancel } => {
+                action_kind = 1;
+                text = if cancel.load(Ordering::Relaxed) {
+                    tr!("正在取消…").into()
+                } else if let Some(percent) = percent {
+                    tr!("正在下载 {percent}%", percent = percent)
+                } else {
+                    tr!("正在下载…").into()
+                };
+                action = tr!("取消").into();
+                download = true;
+                busy = true;
+            }
+            UpdateTransfer::Ready(_) => {
+                action_kind = 2;
+                text = tr!("更新已就绪").into();
+                action = tr!("重启并更新").into();
+                download = true;
+                busy = true;
+            }
+            UpdateTransfer::Failed(_) => {
+                text = tr!("下载失败，请重试").into();
+                action = tr!("重试").into();
+            }
+            UpdateTransfer::Idle => {}
+        }
         window.set_update_state(state);
         window.set_update_status(text.into());
         window.set_update_download(download);
+        window.set_update_action(action.into());
+        window.set_update_busy(busy);
+        window.set_update_action_kind(action_kind);
     }
 
-    fn open_update_download(&self) {
-        let url = {
+    fn open_update_download(self: &Rc<Self>) {
+        {
+            let transfer = self.update_transfer.lock().unwrap();
+            if matches!(
+                *transfer,
+                UpdateTransfer::Downloading { .. } | UpdateTransfer::Ready(_)
+            ) {
+                return;
+            }
+        }
+        let release = {
             let check = self.update_check.lock().unwrap();
             match &check.status {
-                UpdateStatus::Finished(Ok(CheckOutcome::Available(release))) => release.page_url(),
+                UpdateStatus::Finished(Ok(CheckOutcome::Available(release))) => release.clone(),
                 _ => return,
             }
         };
-        let result = webbrowser::open(&url);
-        if let Err(error) = &result {
-            log::warn!(target: "try::updates", "event=browser_open_failed reason={error}");
-        }
-        self.update_check.lock().unwrap().browser_error = result.is_err();
+        self.begin_update_download(move |cancel, progress| {
+            updater::prepare(release, cancel, progress)
+        });
+    }
+
+    fn cancel_update_download(self: &Rc<Self>) {
+        let idle = {
+            let mut transfer = self.update_transfer.lock().unwrap();
+            match &*transfer {
+                UpdateTransfer::Downloading { cancel, .. } => {
+                    cancel.store(true, Ordering::Relaxed);
+                    false
+                }
+                UpdateTransfer::Ready(_) => {
+                    *transfer = UpdateTransfer::Idle;
+                    true
+                }
+                _ => true,
+            }
+        };
         self.refresh_update_status();
+        if idle {
+            self.update_transfer_timer.stop();
+            self.arm_automatic_update_check(false);
+        }
+    }
+
+    fn begin_update_download(
+        self: &Rc<Self>,
+        fetch: impl FnOnce(&AtomicBool, &mut dyn FnMut(u64, Option<u64>)) -> AppResult<PreparedUpdate>
+        + Send
+        + 'static,
+    ) {
+        let language = self.library.borrow().settings.interface_language;
+        let cancel = Arc::new(AtomicBool::new(false));
+        *self.update_transfer.lock().unwrap() = UpdateTransfer::Downloading {
+            percent: None,
+            cancel: cancel.clone(),
+        };
+        self.automatic_update_timer.stop();
+        self.refresh_update_status();
+        let state = self.update_transfer.clone();
+        let worker = std::thread::Builder::new()
+            .name("try_update_download".into())
+            .spawn(move || {
+                i18n::activate(language);
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    fetch(&cancel, &mut |received, total| {
+                        if let UpdateTransfer::Downloading { percent, .. } =
+                            &mut *state.lock().unwrap()
+                        {
+                            *percent = total.filter(|n| *n > 0).map(|n| {
+                                received
+                                    .saturating_mul(100)
+                                    .checked_div(n)
+                                    .unwrap_or(0)
+                                    .min(99)
+                            });
+                        }
+                    })
+                }))
+                .unwrap_or_else(|_| Err(tr!("更新下载失败，请重试。").into()));
+                *state.lock().unwrap() = if cancel.load(Ordering::Relaxed) {
+                    UpdateTransfer::Idle
+                } else {
+                    match result {
+                        Ok(prepared) => UpdateTransfer::Ready(prepared),
+                        Err(error) => UpdateTransfer::Failed(error),
+                    }
+                };
+            });
+        if let Err(error) = worker {
+            *self.update_transfer.lock().unwrap() = UpdateTransfer::Failed(error.to_string());
+        }
+        let weak = Rc::downgrade(self);
+        self.update_transfer_timer.start(
+            TimerMode::Repeated,
+            Duration::from_millis(150),
+            move || {
+                if let Some(app) = weak.upgrade() {
+                    app.refresh_update_status();
+                    let state = app.update_transfer.lock().unwrap();
+                    if !matches!(*state, UpdateTransfer::Downloading { .. }) {
+                        let error = if let UpdateTransfer::Failed(error) = &*state {
+                            Some(error.clone())
+                        } else {
+                            None
+                        };
+                        let ready = matches!(*state, UpdateTransfer::Ready(_));
+                        drop(state);
+                        app.update_transfer_timer.stop();
+                        if let Some(error) = error {
+                            app.notify(&error, true);
+                        }
+                        if !ready {
+                            app.arm_automatic_update_check(false);
+                        }
+                    }
+                }
+            },
+        );
+    }
+
+    fn restart_after_update(self: &Rc<Self>) {
+        if !matches!(
+            *self.update_transfer.lock().unwrap(),
+            UpdateTransfer::Ready(_)
+        ) {
+            return;
+        }
+        if self.editor.borrow().is_some() || self.pending_import.borrow().is_some() {
+            self.notify(tr!("请先保存或取消编辑，再更新。"), true);
+            return;
+        }
+        if let Err(error) = self.store.save(&self.library.borrow()) {
+            self.notify(&error, true);
+            return;
+        }
+        let previous = std::mem::take(&mut *self.update_transfer.lock().unwrap());
+        if let UpdateTransfer::Ready(prepared) = previous {
+            self.restart_update.replace(Some(prepared));
+            self.quit();
+        }
+    }
+
+    pub fn take_restart_update(&self) -> Option<PreparedUpdate> {
+        self.restart_update.borrow_mut().take()
+    }
+
+    pub fn show_update_failure(&self) {
+        self.notify(tr!("更新未完成，原有数据已保留。"), true);
+    }
+
+    pub fn reject_update_startup(self: &Rc<Self>) {
+        self.quit();
     }
 
     fn resolved_dark_theme(&self, appearance: Appearance) -> bool {
@@ -4046,6 +4253,10 @@ impl App {
         self.pause_timer.stop();
         self.feedback_timer.stop();
         self.automatic_update_timer.stop();
+        self.update_transfer_timer.stop();
+        if let UpdateTransfer::Downloading { cancel, .. } = &*self.update_transfer.lock().unwrap() {
+            cancel.store(true, Ordering::Relaxed);
+        }
         if let Some(window) = self.main_window.borrow_mut().take() {
             let _ = window.hide();
         }

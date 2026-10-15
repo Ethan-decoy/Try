@@ -49,6 +49,16 @@ Windows 辅助脚本会定位工具链、MSVC 和 SDK，并将产物留在 `loca
 
 版本检查使用固定 GitHub Release 源，忽略草稿。预发布通道的 REST API 请求受限时，沿用系统代理检查同一仓库的公开 Atom 订阅源，并确认 `checksums.sha256` 已可匿名访问；只有标签、没有公开分发附件的候选不会提示更新。订阅源限制为 1 MiB／10000 个 XML 节点，最多探测三个版本的附件，不跟随下载重定向；正式版本通道保留 API 的预发布过滤规则。两条路径均失败时保留受限错误，关于页显示稍后重试。自动检查默认开启，启动后延迟至少 30 秒，每 24 小时最多一次；手动检查可覆盖预算，同时只运行一个检查任务。缓存受大小限制，结果安静显示在关于页。显式网络验证可分别运行 `update_check::tests::live_release_check` 与 `update_check::tests::live_rate_limited_api_fallback`，后者模拟 API 403 后通过实际传输检查公开源，不反复请求已耗尽的 API 额度。
 
+## 应用内更新
+
+`updater` 按固定仓库、版本标签及平台文件名下载校验文件和程序，不使用令牌。`update_transport` 共用系统 HTTPS／代理路径，流式下载上限 128 MiB，只跟随白名单 GitHub HTTPS 主机的重定向；元数据和 XML 继续保持独立上限。下载在后台执行，进度计时器仅在传输期间运行，取消、失败或正常退出会释放未交接的暂存目录。
+
+`update_install` 用当前程序的临时副本执行一次性交接，Windows 等待原进程退出，Unix 在原数据锁与窗口释放后接收交接。Windows 替换 exe，macOS 校验并替换完整 app，Linux 使用原始 AppImage 路径并管理其子进程组。暂存目录位于安装位置旁边以支持同文件系统重命名。内部 job 限定目录、来源摘要、平台、随机凭据和配置备份名单；重启显式传入原数据目录，并保留原启动路径的形式。
+
+新进程读入题库、建立窗口与托盘并进入事件循环后确认启动。确认前保留旧程序和三份 JSON 备份，推迟首次媒体清理；确认后回收暂存文件。安装位置旁的 `.try_update.lock` 使用文件锁串行化不同数据配置的更新，替换前再次核对原程序摘要。启动失败则停止本次新进程、在取得数据锁后恢复旧程序及 JSON，再启动旧版；恢复受阻时保留备份并显示位置。更新按钮在未保存编辑时阻止重启，自动检查仍不自动下载或重启。
+
+`native_update_check` 覆盖中英文进度、取消、窗口重建、就绪状态、编辑保护、退出交接和关于页固定几何。`python scripts/check_in_app_update.py --executable <程序> --output <记录.json>` 在临时目录中验证实际替换、重启、配置／题库／图片保留及失败回退；macOS 传入 app，Linux 另以 `--helper` 指定 AppImage 内原生程序。Windows 使用 `./scripts/build_windows.ps1 -Action build -Distribution -Example update_driver` 构建独立交接样例，再给检查脚本传入 `--driver local_artifacts/target/x86_64-pc-windows-msvc/release/examples/update_driver.exe`，可同时验证父进程的真实暂存、握手与退出。该检查已接入三平台打包流程。生成的 job、截图、备份与记录不进入源码仓库。
+
 ## 翻译
 
 界面使用 [English 目录](../translations/en.json)。新增 `@tr`／`tr!` 文案时同步目录，保持占位符不变。原始目录为 JSON，构建生成的 gettext 文件留在 Cargo 输出目录；知识包内容保持作者原语言。

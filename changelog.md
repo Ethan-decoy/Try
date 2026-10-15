@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 (2026-10-15, prerelease)
+
+- Download updates inside Try with progress, cancellation and retry; apply the verified update with one restart.
+- Replace the original Windows executable, complete macOS app bundle or Linux AppImage while reusing the same data directory and launch path.
+- Preserve settings, packs, images and learning records. Wait for the updated application to load its profile and start successfully; restore the previous program and profile files if startup fails.
+- Keep automatic checks quiet and downloads user initiated. Cover staging, unsafe archives, cancellation, profile locking, restart and rollback with repeatable checks.
+
 ## 0.2.1 (2026-10-15, prerelease)
 
 - Optional PNG/JPEG question images with a compact practice layout and a separate enlarged view, shared by typed answers, multiple choice, true/false and fact viewing.
