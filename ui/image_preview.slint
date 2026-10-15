@@ -1,0 +1,27 @@
+import { Theme } from "theme.slint";
+import { Palette } from "std-widgets.slint";
+
+export component ImagePreviewWindow inherits Window {
+    in property <bool> dark-theme;
+    in property <image> picture;
+    in property <image> app-icon;
+    icon: root.app-icon;
+    title: @tr("Try · 图片预览");
+    preferred-width: 760px;
+    preferred-height: 540px;
+    min-width: 320px;
+    min-height: 240px;
+    background: Theme.panel;
+    callback dismiss();
+    init => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
+    changed dark-theme => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
+    Rectangle {
+        x: 16px; y: 16px; width: parent.width - 32px; height: parent.height - 32px;
+        background: white; border-radius: 6px; clip: true;
+        Image { source: root.picture; width: parent.width; height: parent.height; image-fit: contain; }
+    }
+    FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => { if event.text == Key.Escape { root.dismiss(); return accept; } return reject; }
+    }
+}

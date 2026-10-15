@@ -144,7 +144,7 @@ fn digest<T: Serialize>(content: &T) -> String {
 }
 
 fn fingerprint(card: &Card, mode: AnswerMode) -> String {
-    match mode {
+    let original = match mode {
         AnswerMode::Input => digest(&(
             1,
             mode,
@@ -170,6 +170,12 @@ fn fingerprint(card: &Card, mode: AnswerMode) -> String {
                 .as_ref()
                 .map(|s| (&s.statement, &s.statement_latex, s.is_true)),
         )),
+    };
+    // Preserve existing text-only records byte-for-byte; a changed visual cue
+    // invalidates progress in every mode just like a changed textual cue.
+    match &card.prompt_image {
+        Some(image) => digest(&(2, original, image)),
+        None => original,
     }
 }
 
@@ -701,6 +707,7 @@ mod tests {
                 description: String::new(),
                 cards: (0..size)
                     .map(|c| Card {
+                        prompt_image: None,
                         id: Some(format!("q{c}")),
                         prompt: format!("cue{c}"),
                         answer: format!("answer{c}"),
@@ -892,6 +899,69 @@ mod tests {
         assert_ne!(
             fingerprint(original, AnswerMode::TrueFalse),
             fingerprint(&edited, AnswerMode::TrueFalse)
+        );
+    }
+
+    #[test]
+    fn changing_or_removing_a_picture_resets_each_mode_without_changing_text_only_hashes() {
+        let library = library(&[1]);
+        let original = &library.packs[0].cards[0];
+        for mode in AnswerMode::ALL {
+            let expected = match mode {
+                AnswerMode::Input => digest(&(
+                    1,
+                    mode,
+                    &original.prompt,
+                    &original.prompt_latex,
+                    &original.answer,
+                    &original.answer_latex,
+                    &original.aliases,
+                )),
+                AnswerMode::MultipleChoice => digest(&(
+                    1,
+                    mode,
+                    &original.prompt,
+                    &original.prompt_latex,
+                    &original.answer,
+                    &original.answer_latex,
+                    &original.distractors,
+                )),
+                AnswerMode::TrueFalse => digest(&(
+                    1,
+                    mode,
+                    original
+                        .true_false
+                        .as_ref()
+                        .map(|s| (&s.statement, &s.statement_latex, s.is_true)),
+                )),
+            };
+            assert_eq!(
+                fingerprint(original, mode),
+                expected,
+                "Existing text-only history stays valid"
+            );
+            let mut changed = original.clone();
+            changed.prompt_image = Some("a".repeat(64));
+            let first = fingerprint(&changed, mode);
+            assert_ne!(first, expected);
+            changed.prompt_image = Some("b".repeat(64));
+            assert_ne!(fingerprint(&changed, mode), first);
+            changed.prompt_image = None;
+            assert_eq!(fingerprint(&changed, mode), expected);
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().into()).unwrap();
+        let mut library = library.clone();
+        let mut learner = loaded(&store, &library);
+        review(&mut learner, &library, 0, AnswerMode::Input, true, NOW);
+        library.packs[0].cards[0].prompt_image = Some("a".repeat(64));
+        assert_eq!(learner.pack_summary(&library, "pack_0", NOW).assessed, 0);
+        learner.reconcile(&library).unwrap();
+        assert_eq!(
+            loaded(&store, &library)
+                .pack_summary(&library, "pack_0", NOW)
+                .assessed,
+            0
         );
     }
 

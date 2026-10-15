@@ -29,6 +29,11 @@ use r#try::update_check::{self, CheckError, CheckOutcome};
 use r#try::update_schedule::{self, UpdateSchedule};
 use r#try::window_position::PopupCorner;
 
+type ImageTask = (
+    u64,
+    std::sync::mpsc::Receiver<AppResult<r#try::media::NormalizedImage>>,
+);
+
 type UpdateFetch = fn() -> Result<CheckOutcome, CheckError>;
 
 pub struct App {
@@ -56,6 +61,11 @@ pub struct App {
     pending_card_delete: RefCell<Option<QuestionKey>>,
     editor: RefCell<Option<EditorTarget>>,
     editor_preview_timer: Timer,
+    editor_image: RefCell<Option<String>>,
+    image_task: RefCell<Option<ImageTask>>,
+    image_revision: Cell<u64>,
+    image_task_timer: Timer,
+    image_preview: RefCell<Option<crate::ImagePreviewWindow>>,
     answer_preview_timer: Timer,
     row_render_timer: Timer,
     pending_rows: RefCell<std::collections::BTreeSet<i32>>,
@@ -204,6 +214,11 @@ impl App {
             pending_card_delete: RefCell::new(None),
             editor: RefCell::new(None),
             editor_preview_timer: Timer::default(),
+            editor_image: RefCell::new(None),
+            image_task: RefCell::new(None),
+            image_revision: Cell::new(0),
+            image_task_timer: Timer::default(),
+            image_preview: RefCell::new(None),
             answer_preview_timer: Timer::default(),
             row_render_timer: Timer::default(),
             pending_rows: RefCell::default(),
@@ -221,6 +236,7 @@ impl App {
             autostart_error: RefCell::new(String::new()),
             floating,
         });
+        app.collect_media();
         app.connect_tray();
         app.read_autostart_status();
         app.refresh();
@@ -372,6 +388,11 @@ impl App {
         let applied_theme = Cell::new(None);
         window.window().on_winit_window_event(move |window, event| {
             crate::window_repaint::prepare(window, event);
+            if let WindowEvent::DroppedFile(path) = event
+                && let Some(app) = weak.upgrade()
+            {
+                app.import_question_image(path.clone());
+            }
             if matches!(
                 event,
                 WindowEvent::RedrawRequested | WindowEvent::ThemeChanged(_)
@@ -768,6 +789,33 @@ impl App {
             }
         });
         let weak = Rc::downgrade(self);
+        window.on_choose_question_image(move || {
+            if let Some(app) = weak.upgrade() {
+                app.choose_question_image();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window.on_remove_question_image(move || {
+            if let Some(app) = weak.upgrade() {
+                let _ = app.set_editor_image(None);
+                app.close_image_preview();
+                app.collect_media();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window.on_preview_question_image(move || {
+            if let Some(app) = weak.upgrade() {
+                let image = app
+                    .main_window
+                    .borrow()
+                    .as_ref()
+                    .map(|w| w.get_editor_picture());
+                if let Some(image) = image {
+                    app.preview_image(image);
+                }
+            }
+        });
+        let weak = Rc::downgrade(self);
         window.on_import_pack(move || {
             if let Some(app) = weak.upgrade() {
                 app.import_pack();
@@ -809,6 +857,7 @@ impl App {
         window.on_cancel_import(move || {
             if let Some(app) = weak.upgrade() {
                 app.pending_import.borrow_mut().take();
+                app.collect_media();
                 app.refresh();
                 app.notify("", false);
             }
@@ -998,6 +1047,10 @@ impl App {
     }
 
     fn close_main(self: &Rc<Self>) {
+        self.close_image_preview();
+        self.editor_image.borrow_mut().take();
+        self.image_revision
+            .set(self.image_revision.get().wrapping_add(1));
         self.row_render_timer.stop();
         self.pending_rows.borrow_mut().clear();
         self.editor_preview_timer.stop();
@@ -1016,6 +1069,7 @@ impl App {
         self.pending_delete.borrow_mut().take();
         self.pending_card_delete.borrow_mut().take();
         self.refresh_tray_navigation();
+        self.collect_media();
         self.arm_reminder();
     }
 
@@ -1210,6 +1264,10 @@ impl App {
         if let Some(session) = self.practice.borrow().as_ref() {
             session.window.set_dark_theme(dark);
             self.floating.apply_theme(session.window.window(), dark);
+        }
+        if let Some(window) = self.image_preview.borrow().as_ref() {
+            window.set_dark_theme(dark);
+            self.floating.apply_theme(window.window(), dark);
         }
     }
 
@@ -1571,6 +1629,7 @@ impl App {
         self.store.save(&candidate)?;
         self.floating.configure(&candidate.settings);
         self.library.replace(candidate);
+        self.collect_media();
         if !self.knowledge_only.get()
             && let Err(error) = self.learner.borrow_mut().reconcile(&self.library.borrow())
         {
@@ -2039,6 +2098,10 @@ impl App {
             )
         };
         let mode = requested_mode.unwrap_or(mode);
+        self.image_revision
+            .set(self.image_revision.get().wrapping_add(1));
+        let draft_image = draft.prompt_image.clone();
+        window.set_editor_image_loading(self.image_task.borrow().is_some());
         self.math_fields.replace(vec![
             Field::new(&draft.prompt, &draft.prompt_latex),
             Field::new(&draft.answer, &draft.answer_latex),
@@ -2096,6 +2159,9 @@ impl App {
         window.invoke_reset_editor_scroll();
         self.seed_judgment(mode);
         self.render_editor_preview();
+        if let Err(error) = self.set_editor_image(draft_image) {
+            window.set_editor_error(error.into());
+        }
     }
 
     fn render_editor_preview(&self) {
@@ -2422,6 +2488,9 @@ impl App {
     }
 
     fn save_editor(self: &Rc<Self>) {
+        if self.image_task.borrow().is_some() {
+            return;
+        }
         if self.pending_card_delete.borrow().is_some() {
             return;
         }
@@ -2497,6 +2566,7 @@ impl App {
             }
         }
         let mut draft = CardDraft {
+            prompt_image: self.editor_image.borrow().clone(),
             prompt: window.get_editor_prompt().to_string(),
             answer: window.get_editor_answer().to_string(),
             aliases: window.get_editor_aliases().to_string(),
@@ -2532,6 +2602,12 @@ impl App {
             mode,
             usize::try_from(window.get_editor_correct_choice()).unwrap_or_default(),
         );
+        if let Some(id) = &card.prompt_image
+            && let Err(error) = self.store.media().read(id)
+        {
+            window.set_editor_error(error.into());
+            return;
+        }
         let result = match self.editor.borrow().as_ref() {
             Some(EditorTarget::NewPack { id }) => {
                 let pack = KnowledgePack {
@@ -2572,6 +2648,10 @@ impl App {
     }
 
     fn close_editor(&self) {
+        self.image_revision
+            .set(self.image_revision.get().wrapping_add(1));
+        self.editor_image.borrow_mut().take();
+        self.close_image_preview();
         self.editor_preview_timer.stop();
         self.pending_card_delete.borrow_mut().take();
         self.editor.borrow_mut().take();
@@ -2583,6 +2663,10 @@ impl App {
             window.set_editor_can_delete(false);
             window.set_card_delete_prompt("".into());
             window.set_editor_visible(false);
+            window.set_editor_picture(slint::Image::default());
+            window.set_editor_picture_width(0.0);
+            window.set_editor_picture_height(0.0);
+            window.set_editor_has_image(false);
             window.set_editor_error("".into());
             window.set_editor_prompt_preview(AnswerOption::default());
             window.set_editor_answer_preview(AnswerOption::default());
@@ -2591,6 +2675,158 @@ impl App {
             window.set_math_preview(AnswerOption::default());
             window.set_math_regions(ModelRc::default());
         }
+        self.collect_media();
+    }
+
+    fn collect_media(&self) {
+        let mut keep: std::collections::BTreeSet<String> = self
+            .library
+            .borrow()
+            .packs
+            .iter()
+            .flat_map(|pack| {
+                pack.cards
+                    .iter()
+                    .filter_map(|card| card.prompt_image.clone())
+            })
+            .collect();
+        keep.extend(self.editor_image.borrow().clone());
+        if let Some(pack) = self.pending_import.borrow().as_ref() {
+            keep.extend(
+                pack.cards
+                    .iter()
+                    .filter_map(|card| card.prompt_image.clone()),
+            );
+        }
+        self.store.media().collect(&keep);
+    }
+
+    fn set_editor_image(&self, id: Option<String>) -> AppResult<()> {
+        self.editor_image.replace(id.clone());
+        if let Some(window) = self.main_window.borrow().as_ref() {
+            window.set_editor_has_image(id.is_some());
+            window.set_editor_picture(slint::Image::default());
+            window.set_editor_picture_width(0.0);
+            window.set_editor_picture_height(0.0);
+            if let Some(id) = id {
+                let loaded = self.store.media().load(&id)?;
+                window.set_editor_picture(loaded.image);
+                window.set_editor_picture_width(loaded.width as f32);
+                window.set_editor_picture_height(loaded.height as f32);
+            }
+        }
+        Ok(())
+    }
+
+    fn choose_question_image(self: &Rc<Self>) {
+        if self.editor.borrow().is_none() || self.image_task.borrow().is_some() {
+            return;
+        }
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(tr!("选择题面图片"))
+            .add_filter(tr!("图片"), &["png", "jpg", "jpeg"])
+            .pick_file()
+        else {
+            return;
+        };
+        self.import_question_image(path);
+    }
+
+    fn import_question_image(self: &Rc<Self>, path: std::path::PathBuf) {
+        if self.editor.borrow().is_none() || self.image_task.borrow().is_some() {
+            return;
+        }
+        let revision = self.image_revision.get();
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        self.image_task.replace(Some((revision, receiver)));
+        if let Some(window) = self.main_window.borrow().as_ref() {
+            window.set_editor_image_loading(true);
+            window.set_editor_error("".into());
+        }
+        std::thread::spawn(move || {
+            let _ = sender.send(r#try::media::normalize_file(&path));
+        });
+        let weak = Rc::downgrade(self);
+        self.image_task_timer
+            .start(TimerMode::Repeated, Duration::from_millis(40), move || {
+                let Some(app) = weak.upgrade() else {
+                    return;
+                };
+                let received = {
+                    let task = app.image_task.borrow();
+                    task.as_ref()
+                        .and_then(|(revision, receiver)| match receiver.try_recv() {
+                            Ok(result) => Some((*revision, result)),
+                            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+                            Err(_) => {
+                                Some((*revision, Err(tr!("图片处理未完成，请重新选择。").into())))
+                            }
+                        })
+                };
+                let Some((revision, result)) = received else {
+                    return;
+                };
+                app.image_task_timer.stop();
+                app.image_task.borrow_mut().take();
+                if let Some(window) = app.main_window.borrow().as_ref() {
+                    window.set_editor_image_loading(false);
+                }
+                if app.image_revision.get() != revision || app.editor.borrow().is_none() {
+                    return;
+                }
+                let result = result.and_then(|image| {
+                    app.store.media().install(&image.id, &image.png)?;
+                    app.set_editor_image(Some(image.id))
+                });
+                if let Some(window) = app.main_window.borrow().as_ref() {
+                    window.set_editor_error(result.err().unwrap_or_default().into());
+                }
+                app.collect_media();
+            });
+    }
+
+    fn close_image_preview(&self) {
+        if let Some(window) = self.image_preview.borrow_mut().take() {
+            let _ = window.hide();
+        }
+    }
+
+    fn preview_image(self: &Rc<Self>, image: slint::Image) {
+        if image.size().width == 0 {
+            return;
+        }
+        self.feedback_timer.stop();
+        self.close_image_preview();
+        let result = (|| -> AppResult<()> {
+            let window = crate::ImagePreviewWindow::new().map_err(|e| e.to_string())?;
+            window.set_picture(image);
+            window.set_app_icon(self.icon.clone());
+            window.set_dark_theme(
+                self.resolved_dark_theme(self.library.borrow().settings.appearance),
+            );
+            let weak = Rc::downgrade(self);
+            window.on_dismiss(move || {
+                if let Some(app) = weak.upgrade() {
+                    app.close_image_preview();
+                }
+            });
+            let weak = Rc::downgrade(self);
+            window.window().on_close_requested(move || {
+                let weak = weak.clone();
+                Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(app) = weak.upgrade() {
+                        app.close_image_preview();
+                    }
+                });
+                slint::CloseRequestResponse::HideWindow
+            });
+            window.show().map_err(|e| e.to_string())?;
+            self.floating
+                .apply_theme(window.window(), window.get_dark_theme());
+            self.image_preview.replace(Some(window));
+            Ok(())
+        })();
+        self.report(result, "");
     }
 
     fn import_pack(self: &Rc<Self>) {
@@ -2601,7 +2837,11 @@ impl App {
         else {
             return;
         };
-        match Store::read_pack(&path) {
+        let imported = self.store.import_pack(&path);
+        if imported.is_err() {
+            self.collect_media();
+        }
+        match imported {
             Ok(pack) => {
                 let duplicate = self
                     .library
@@ -2781,7 +3021,10 @@ impl App {
         if path.extension().is_none() {
             path.set_extension("json");
         }
-        self.report(Store::export_pack(&path, &pack), tr!("已导出。"));
+        self.report(
+            self.store.export_portable_pack(&path, &pack),
+            tr!("已导出。"),
+        );
     }
 
     pub fn show_practice(self: &Rc<Self>) -> AppResult<()> {
@@ -2851,6 +3094,12 @@ impl App {
         } else {
             PreparedQuestion::new(&question.card, mode, &mut rand::rng())?
         };
+        // Resolve media before opening a session or recording a review token.
+        let question_image = prepared
+            .prompt_image
+            .as_deref()
+            .map(|id| self.store.media().load(id))
+            .transpose()?;
         if origin == PracticeOrigin::Manual {
             self.close_main();
         }
@@ -2886,6 +3135,24 @@ impl App {
         window.set_knowledge_only(prepared.knowledge_only);
         window.set_prompt(prepared.prompt.text.clone().into());
         window.set_standard_answer(prepared.answer.text.clone().into());
+        if let Some(image) = question_image {
+            window.set_question_image(image.image);
+            window.set_question_image_width(image.width as f32);
+            window.set_question_image_height(image.height as f32);
+        }
+        let weak = Rc::downgrade(self);
+        window.on_preview_question_image(move || {
+            if let Some(app) = weak.upgrade() {
+                let image = app
+                    .practice
+                    .borrow()
+                    .as_ref()
+                    .map(|s| s.window.get_question_image());
+                if let Some(image) = image {
+                    app.preview_image(image);
+                }
+            }
+        });
         formula_presentation::apply_practice(&window, &prepared, window.get_pixel_scale());
         let weak = Rc::downgrade(self);
         window.on_rasterize_formulas(move |scale| {
@@ -3653,6 +3920,7 @@ impl App {
     }
 
     fn close_practice(self: &Rc<Self>) {
+        self.close_image_preview();
         self.answer_preview_timer.stop();
         self.feedback_timer.stop();
         let session = self.practice.borrow_mut().take();
@@ -3768,6 +4036,7 @@ impl App {
     }
 
     fn quit(self: &Rc<Self>) {
+        self.close_image_preview();
         log::info!(target: "try::app", "event=quit_requested");
         self.close_practice();
         self.reminder_timer.stop();
@@ -3909,6 +4178,10 @@ fn make_icon() -> slint::Image {
 #[cfg(all(test, feature = "native_checks", target_os = "windows"))]
 #[path = "native_checks.rs"]
 mod native_checks;
+
+#[cfg(all(test, feature = "native_checks", target_os = "windows"))]
+#[path = "native_picture_checks.rs"]
+mod native_picture_checks;
 
 #[cfg(all(test, feature = "native_checks", target_os = "windows"))]
 #[path = "tray_checks.rs"]

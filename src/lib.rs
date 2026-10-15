@@ -13,6 +13,7 @@ pub mod math_editor;
 pub mod math_input;
 pub mod math_palette;
 mod math_vocabulary;
+pub mod media;
 pub mod practice;
 pub mod reminder_schedule;
 pub mod storage;

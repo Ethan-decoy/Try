@@ -60,6 +60,7 @@ pub fn select_question(
 /// Prepared once per card. DPI changes only rasterize these contents again.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreparedQuestion {
+    pub prompt_image: Option<String>,
     pub mode: AnswerMode,
     pub knowledge_only: bool,
     pub prompt: AnswerContent,
@@ -71,6 +72,7 @@ pub struct PreparedQuestion {
 impl PreparedQuestion {
     pub fn new(card: &Card, mode: AnswerMode, rng: &mut impl Rng) -> AppResult<Self> {
         let mut result = Self {
+            prompt_image: card.prompt_image.clone(),
             mode,
             knowledge_only: false,
             prompt: AnswerContent {
@@ -131,6 +133,7 @@ impl PreparedQuestion {
     /// Other prompts keep a separate answer rather than guessing a new sentence.
     pub fn knowledge(card: &Card) -> Self {
         let mut result = Self {
+            prompt_image: card.prompt_image.clone(),
             mode: AnswerMode::Input,
             knowledge_only: true,
             prompt: AnswerContent {
@@ -187,6 +190,31 @@ impl PreparedQuestion {
 mod tests {
     use super::*;
     use rand::{SeedableRng, rngs::StdRng};
+
+    #[test]
+    fn image_prompt_is_preserved_in_every_answer_and_knowledge_mode() {
+        let mut card = crate::test_fixtures::regression_library().packs[0].cards[0].clone();
+        card.prompt_image = Some("a".repeat(64));
+        let mut rng = StdRng::seed_from_u64(7);
+        for mode in AnswerMode::ALL {
+            assert_eq!(
+                PreparedQuestion::new(&card, mode, &mut rng)
+                    .unwrap()
+                    .prompt_image,
+                card.prompt_image
+            );
+            assert_eq!(
+                crate::card_editor::CardDraft::from(&card)
+                    .into_card_for_mode(mode, 0)
+                    .prompt_image,
+                card.prompt_image
+            );
+        }
+        assert_eq!(
+            PreparedQuestion::knowledge(&card).prompt_image,
+            card.prompt_image
+        );
+    }
 
     #[test]
     fn every_starter_domain_can_be_practiced_independently() {

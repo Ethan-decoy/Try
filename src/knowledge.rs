@@ -127,6 +127,8 @@ pub struct TrueFalse {
 #[serde(deny_unknown_fields)]
 pub struct Card {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub prompt: String,
     pub answer: String,
@@ -276,6 +278,13 @@ impl KnowledgePack {
         }
         let mut card_ids = HashSet::new();
         for (index, card) in self.cards.iter().enumerate() {
+            if card
+                .prompt_image
+                .as_ref()
+                .is_some_and(|id| !crate::media::valid_id(id))
+            {
+                return Err(tr!("图片资源标识无效。").into());
+            }
             if let Some(id) = &card.id
                 && (!valid_id(id) || !card_ids.insert(id))
             {

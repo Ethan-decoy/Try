@@ -1282,7 +1282,7 @@ struct Checks {
     creation_foreground: Rc<Cell<Option<(HWND, HWND)>>>,
 }
 
-fn snapshot(window: &slint::Window, path: PathBuf) {
+pub(super) fn snapshot(window: &slint::Window, path: PathBuf) {
     let buffer = window.take_snapshot().expect("native software snapshot");
     image::save_buffer_with_format(
         path,
@@ -1661,11 +1661,11 @@ fn later(checks: Rc<Checks>, phase: u8, delay: Duration) {
     });
 }
 
-fn main_window(app: &App) -> MainWindow {
+pub(super) fn main_window(app: &App) -> MainWindow {
     app.main_window.borrow().as_ref().unwrap().clone_strong()
 }
 
-fn practice_window(app: &App) -> PracticeWindow {
+pub(super) fn practice_window(app: &App) -> PracticeWindow {
     app.practice
         .borrow()
         .as_ref()

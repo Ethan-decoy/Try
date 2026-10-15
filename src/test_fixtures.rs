@@ -69,6 +69,7 @@ fn formula_card(
     let statement = format!("{answer} = {stated_answer}");
     let correction = format!("{answer} = {answer}");
     Card {
+        prompt_image: None,
         id: None,
         prompt: format!("{answer} = ?"),
         answer: answer.into(),

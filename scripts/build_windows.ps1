@@ -6,7 +6,7 @@ param(
     [string]$NoticesDirectory = 'local_artifacts/open_source/distribution_notices',
     [switch]$DocTests,
     [switch]$NativeChecks,
-    [ValidateSet('all', 'native_automatic_updates', 'native_practice_focus', 'native_pack_tags', 'native_desktop_theme', 'native_adaptive_practice', 'native_practice_text_layout', 'native_starter_packs', 'native_question_focus', 'native_question_deletion', 'native_lifecycle', 'native_frameless_repaint', 'native_no_frame_baseline', 'native_drag_repaint', 'native_answer_modes', 'native_question_management', 'native_multi_pack_participation', 'native_pack_deletion', 'native_math_authoring', 'native_formula_answers', 'native_formula_editing', 'native_inline_answers', 'native_settings', 'native_quick_answers', 'native_main_repaint', 'native_repaint_baseline', 'native_localization', 'native_update_check', 'native_tray_menu', 'native_licenses')]
+    [ValidateSet('all', 'native_picture_questions', 'native_automatic_updates', 'native_practice_focus', 'native_pack_tags', 'native_desktop_theme', 'native_adaptive_practice', 'native_practice_text_layout', 'native_starter_packs', 'native_question_focus', 'native_question_deletion', 'native_lifecycle', 'native_frameless_repaint', 'native_no_frame_baseline', 'native_drag_repaint', 'native_answer_modes', 'native_question_management', 'native_multi_pack_participation', 'native_pack_deletion', 'native_math_authoring', 'native_formula_answers', 'native_formula_editing', 'native_inline_answers', 'native_settings', 'native_quick_answers', 'native_main_repaint', 'native_repaint_baseline', 'native_localization', 'native_update_check', 'native_tray_menu', 'native_licenses')]
     [string]$NativeTest = 'native_lifecycle'
 )
 

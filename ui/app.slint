@@ -1,7 +1,8 @@
 import { Theme } from "theme.slint";
 import { Button, LineEdit, ListView, Palette, ScrollView, TextEdit } from "std-widgets.slint";
 export { Palette } from "std-widgets.slint";
-import { AnswerOption, ContentForm, FormulaLabel, MathRegion, NativeText, ToolButton } from "content.slint";
+import { AnswerOption, ContentForm, FormulaLabel, MathRegion, NativeText, ToolButton, QuestionPicture } from "content.slint";
+export { ImagePreviewWindow } from "image_preview.slint";
 import { AnswerPad } from "answer_pad.slint";
 import { InlineFormulaInput } from "inline_formula_input.slint";
 import { FormulaNavigation, FormulaPosition } from "content.slint";
@@ -318,6 +319,12 @@ export component MainWindow inherits Window {
     in-out property <string> editor-prompt;
     in-out property <string> editor-answer;
     in-out property <string> editor-aliases;
+    in property <image> editor-picture;
+    in property <float> editor-picture-width;
+    in property <float> editor-picture-height;
+    in property <bool> editor-image-loading;
+    out property <length> editor-picture-view-height;
+    in property <bool> editor-has-image;
     in-out property <string> editor-prompt-latex;
     in-out property <string> editor-answer-latex;
     in-out property <string> editor-choice-one;
@@ -385,6 +392,9 @@ export component MainWindow inherits Window {
     callback confirm-card-delete();
     callback cancel-card-delete();
     callback preview-editor();
+    callback choose-question-image();
+    callback remove-question-image();
+    callback preview-question-image();
     callback request-row-formula(int);
     callback save-quick-answer(string, string, string) -> string;
     callback prepare-quick-options(string, string);
@@ -783,6 +793,20 @@ export component MainWindow inherits Window {
                                     spacing: 14px;
                                     if root.editor-new-pack : Text { text: @tr("知识包名称"); color: Theme.muted; font-size: 12px; }
                                     if root.editor-new-pack : LineEdit { text <=> root.editor-pack-name; }
+                                    Text { text: @tr("题面图片（可选）"); color: Theme.muted; font-size: 12px; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        Button { text: root.editor-image-loading ? @tr("正在处理图片…") : root.editor-picture-width > 0 ? @tr("更换图片") : @tr("添加图片"); enabled: !root.editor-image-loading; clicked => { root.choose-question-image(); } }
+                                        if root.editor-has-image : Button { text: @tr("移除图片"); enabled: !root.editor-image-loading; clicked => { root.remove-question-image(); } }
+                                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                                    }
+                                    if root.editor-picture-width > 0 : QuestionPicture {
+                                        picture: root.editor-picture; picture-width: root.editor-picture-width; picture-height: root.editor-picture-height;
+                                        picture-height-limit: 160px;
+                                        vertical-stretch: 0;
+                                        changed height => { root.editor-picture-view-height = self.height; }
+                                        activated => { root.preview-question-image(); }
+                                    }
                                     ContentForm {
                                         functions: root.math-functions;
                                         symbols: root.math-symbols;
@@ -921,7 +945,7 @@ export component MainWindow inherits Window {
                     spacing: root.editor-visible ? 8px : 12px;
                     Rectangle { horizontal-stretch: 1; background: transparent; }
                     editor-cancel := Button { visible: root.editor-visible && !root.card-delete-pending; width: self.visible ? 72px : 0px; height: self.visible ? 36px : 0px; text: @tr("取消"); clicked => { root.cancel-editor(); } }
-                    if root.editor-visible && !root.card-delete-pending : Button { text: @tr("保存"); clicked => { root.save-editor(); } }
+                    if root.editor-visible && !root.card-delete-pending : Button { text: @tr("保存"); enabled: !root.editor-image-loading; clicked => { root.save-editor(); } }
                     if !root.editor-visible : IconButton { glyph: @image-url("../assets/return_to_tray.svg"); label: @tr("回到托盘"); borderless: true; activated => { root.go-background(); } }
                     if !root.editor-visible : IconButton { glyph: @image-url("../assets/quit.svg"); label: @tr("退出 Try"); ink: Theme.muted; borderless: true; activated => { root.quit-app(); } }
                 }
@@ -1081,8 +1105,9 @@ export component PracticeWindow inherits Window {
     private property <length> tag-space: root.pack-tag-visible ? 26px : 0px;
     out property <length> pack-tag-left: tag-badge.x;
     out property <length> pack-tag-width: tag-badge.width;
-    private property <length> practice-content-height: max(48px, practice-prompt.preferred-height) + 20px + root.answer-row-height + root.answer-footer-height;
-    private property <length> knowledge-content-height: max(48px, practice-prompt.preferred-height) + 32px + (root.standard-answer != "" ? 16px + max(32px, standard-label.preferred-height) : 0px);
+    private property <length> picture-area-height: root.question-image-width > 0 ? min(220px, (root.width - 48px) * root.question-image-height / root.question-image-width) + 14px : 0px;
+    private property <length> practice-content-height: max(48px, practice-prompt.preferred-height) + root.picture-area-height + 20px + root.answer-row-height + root.answer-footer-height;
+    private property <length> knowledge-content-height: max(48px, practice-prompt.preferred-height) + (root.question-image-width > 0 ? root.picture-area-height + 2px : 0px) + 32px + (root.standard-answer != "" ? 16px + max(32px, standard-label.preferred-height) : 0px);
     private property <length> answer-footer-height: root.entry-open ? root.entry-area-height : root.feedback == 2 ? max(64px, standard-label.preferred-height + 13px) : 64px;
     private property <length> desired-height: min(560px, max(230px, root.knowledge-only ? root.knowledge-content-height + 48px : root.practice-content-height + 42px) + root.tag-space);
     height: root.desired-height;
@@ -1094,6 +1119,10 @@ export component PracticeWindow inherits Window {
 
     in property <string> prompt;
     in property <string> standard-answer;
+    in property <image> question-image;
+    in property <float> question-image-width;
+    in property <float> question-image-height;
+    callback preview-question-image();
     in property <image> prompt-formula;
     in property <float> prompt-formula-width;
     in property <float> prompt-formula-height;
@@ -1207,6 +1236,11 @@ export component PracticeWindow inherits Window {
                     formula-width: root.prompt-formula-width; formula-height: root.prompt-formula-height;
                     texts: root.prompt-texts; font-size: 24px; min-height: 48px; vertical-stretch: 0;
                 }
+                if root.question-image-width > 0 : QuestionPicture {
+                    picture: root.question-image; picture-width: root.question-image-width; picture-height: root.question-image-height;
+                    vertical-stretch: 0;
+                    activated => { root.preview-question-image(); }
+                }
                 if root.standard-answer != "" : FormulaLabel {
                     fallback: root.standard-answer; formula: root.answer-formula;
                     formula-width: root.answer-formula-width; formula-height: root.answer-formula-height;
@@ -1236,6 +1270,12 @@ export component PracticeWindow inherits Window {
                     font-size: 24px;
                     min-height: 48px;
                     vertical-stretch: 1;
+                }
+                if root.question-image-width > 0 : Rectangle { height: 14px; vertical-stretch: 0; background: transparent; }
+                if root.question-image-width > 0 : QuestionPicture {
+                    picture: root.question-image; picture-width: root.question-image-width; picture-height: root.question-image-height;
+                    vertical-stretch: 0;
+                    activated => { root.preview-question-image(); }
                 }
                 Rectangle { height: 20px; background: transparent; }
                 Rectangle {

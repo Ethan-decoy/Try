@@ -40,6 +40,7 @@ pub fn with_answer(card: &Card, input: &str) -> AppResult<Card> {
 /// Text fields stay in a draft until the complete card passes library validation.
 #[derive(Clone, Debug, Default)]
 pub struct CardDraft {
+    pub prompt_image: Option<String>,
     pub prompt: String,
     pub answer: String,
     pub aliases: String,
@@ -60,6 +61,7 @@ pub struct CardDraft {
 impl From<&Card> for CardDraft {
     fn from(card: &Card) -> Self {
         let mut draft = Self {
+            prompt_image: card.prompt_image.clone(),
             prompt: card.prompt.clone(),
             answer: card.answer.clone(),
             aliases: card.aliases.join("\n"),
@@ -146,6 +148,7 @@ impl CardDraft {
             (self.correction, self.correction_latex)
         };
         Card {
+            prompt_image: self.prompt_image,
             id: None,
             prompt: self.prompt,
             answer: self.answer,

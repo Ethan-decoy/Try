@@ -12,6 +12,8 @@ Try 是一个轻量桌面练习工具，让你随手反复熟悉感兴趣的知�
 
 从 [最新版本（v0.1.0 预发布版）](https://github.com/Ethan-decoy/Try/releases/tag/v0.1.0) 下载对应平台的文件。
 
+当前源码为 **0.2.0 候选版**，新增静态图片题面；下列下载仍为已发布的 0.1.0。
+
 | 平台 | 下载文件 | 状态 |
 | --- | --- | --- |
 | Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v0.1.0/try.exe) | 便携版 |

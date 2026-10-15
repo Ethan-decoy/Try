@@ -29,6 +29,21 @@ export struct AnswerOption {
     texts: [NativeText],
 }
 
+export component QuestionPicture inherits Rectangle {
+    in property <image> picture;
+    in property <float> picture-width;
+    in property <float> picture-height;
+    in property <length> picture-height-limit: 220px;
+    callback activated();
+    preferred-height: root.picture-width > 0 ? min(root.picture-height-limit, root.width * root.picture-height / root.picture-width) : 0px;
+    min-height: self.preferred-height;
+    background: white;
+    border-radius: 6px;
+    clip: true;
+    Image { source: root.picture; width: parent.width; height: parent.height; image-fit: contain; }
+    TouchArea { mouse-cursor: pointer; clicked => { root.activated(); } }
+}
+
 export component FormulaLabel inherits Rectangle {
     in property <string> fallback;
     in property <image> formula;

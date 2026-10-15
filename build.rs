@@ -45,6 +45,7 @@ fn compile_translations() -> std::path::PathBuf {
     }
     for path in [
         "ui/app.slint",
+        "ui/image_preview.slint",
         "ui/settings.slint",
         "ui/content.slint",
         "ui/controls.slint",
@@ -59,6 +60,7 @@ fn compile_translations() -> std::path::PathBuf {
         "src/single_instance.rs",
         "src/knowledge.rs",
         "src/storage.rs",
+        "src/media.rs",
         "src/card_editor.rs",
         "src/formula.rs",
         "src/math_answer.rs",

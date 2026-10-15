@@ -1,5 +1,8 @@
 use crate::knowledge::{AppResult, KnowledgePack, Library, MAX_PACK_BYTES, MAX_STATE_BYTES};
+use crate::media::{self, MediaStore};
 use crate::tr;
+use base64::{Engine, engine::general_purpose::STANDARD};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -34,6 +37,97 @@ impl Store {
 
     pub fn directory(&self) -> &Path {
         &self.directory
+    }
+
+    pub fn media(&self) -> MediaStore {
+        MediaStore::new(&self.directory)
+    }
+
+    /// Embedded image bytes exist only during interchange, never in Library/state.json.
+    pub fn import_pack(&self, path: &Path) -> AppResult<KnowledgePack> {
+        let bytes = read_bounded(path, media::MAX_BUNDLE_BYTES)?;
+        let mut document: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        let embedded = document.as_object_mut().and_then(|o| o.remove("media"));
+        if embedded.is_none() && bytes.len() as u64 > MAX_PACK_BYTES {
+            return Err(tr!("这个知识包超过 2 MiB，请拆分后再导出。").into());
+        }
+        let pack =
+            KnowledgePack::from_json(&serde_json::to_vec(&document).map_err(|e| e.to_string())?)?;
+        let images: BTreeMap<String, String> = embedded
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|e| e.to_string())?
+            .unwrap_or_default();
+        let referenced: BTreeSet<_> = pack
+            .cards
+            .iter()
+            .filter_map(|c| c.prompt_image.clone())
+            .collect();
+        if images.len() > 128
+            || images.len() != referenced.len()
+            || images.keys().any(|id| !referenced.contains(id))
+        {
+            return Err(tr!("知识包包含多余或过多的图片资源。").into());
+        }
+        let mut staged = Vec::new();
+        let mut total = 0;
+        for id in &referenced {
+            if let Some(encoded) = images.get(id) {
+                if encoded.len() > (media::MAX_IMAGE_BYTES as usize).div_ceil(3) * 4 {
+                    return Err(tr!("知识包图片资源过大，请拆分知识包。").into());
+                }
+                let png = STANDARD
+                    .decode(encoded)
+                    .map_err(|_| tr!("知识包图片编码无效。"))?;
+                total += png.len();
+                if total > media::MAX_BUNDLE_MEDIA_BYTES {
+                    return Err(tr!("知识包图片资源过大，请拆分知识包。").into());
+                }
+                staged.push((id, png));
+            } else {
+                return Err(tr!("题面图片缺失，请重新添加或导入知识包。").into());
+            }
+        }
+        for (id, png) in staged {
+            self.media().install(id, &png)?;
+        }
+        Ok(pack)
+    }
+
+    pub fn export_portable_pack(&self, path: &Path, pack: &KnowledgePack) -> AppResult<()> {
+        let referenced: BTreeSet<_> = pack
+            .cards
+            .iter()
+            .filter_map(|c| c.prompt_image.clone())
+            .collect();
+        if referenced.is_empty() {
+            return Self::export_pack(path, pack);
+        }
+        pack.validate()?;
+        if serde_json::to_vec(pack).map_err(|e| e.to_string())?.len() as u64 > MAX_PACK_BYTES {
+            return Err(tr!("这个知识包超过 2 MiB，请拆分后再导出。").into());
+        }
+        let mut images = BTreeMap::new();
+        let mut total = 0;
+        if referenced.len() > 128 {
+            return Err(tr!("知识包包含多余或过多的图片资源。").into());
+        }
+        for id in referenced {
+            let png = self.media().read(&id)?;
+            total += png.len();
+            if total > media::MAX_BUNDLE_MEDIA_BYTES {
+                return Err(tr!("知识包图片资源过大，请拆分知识包。").into());
+            }
+            images.insert(id, STANDARD.encode(png));
+        }
+        let mut document = serde_json::to_value(pack).map_err(|e| e.to_string())?;
+        document["media"] = serde_json::to_value(images).map_err(|e| e.to_string())?;
+        let bytes = serde_json::to_vec(&document).map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > media::MAX_BUNDLE_BYTES {
+            return Err(tr!("知识包图片资源过大，请拆分知识包。").into());
+        }
+        write_atomic(path, &bytes)
     }
 
     pub fn load(&self) -> AppResult<Library> {
@@ -87,6 +181,23 @@ impl Store {
 
     pub fn save(&self, library: &Library) -> AppResult<()> {
         library.validate()?;
+        for pack in &library.packs {
+            let ids: BTreeSet<_> = pack
+                .cards
+                .iter()
+                .filter_map(|c| c.prompt_image.as_deref())
+                .collect();
+            if ids.len() > 128 {
+                return Err(tr!("知识包包含多余或过多的图片资源。").into());
+            }
+            let mut total = 0;
+            for id in ids {
+                total += self.media().size(id)?;
+            }
+            if total > media::MAX_BUNDLE_MEDIA_BYTES as u64 {
+                return Err(tr!("知识包图片资源过大，请拆分知识包。").into());
+            }
+        }
         let bytes = serde_json::to_vec_pretty(library).map_err(|error| error.to_string())?;
         if bytes.len() as u64 > MAX_STATE_BYTES {
             return Err(tr!("本地数据超过首版的 16 MiB 上限，请减少知识包。").into());
@@ -133,7 +244,7 @@ impl Store {
     }
 }
 
-fn read_bounded(path: &Path, limit: u64) -> AppResult<Vec<u8>> {
+pub(crate) fn read_bounded(path: &Path, limit: u64) -> AppResult<Vec<u8>> {
     let file = File::open(path)
         .map_err(|error| tr!("无法打开 {p0}：{error}", p0 = path.display(), error = error))?;
     let mut bytes = Vec::new();
@@ -173,6 +284,55 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn media_pack_is_self_contained_and_state_keeps_only_resource_ids() {
+        let source = tempfile::tempdir().unwrap();
+        let target = tempfile::tempdir().unwrap();
+        let store = Store::open(source.path().join("data")).unwrap();
+        let image_path = source.path().join("source.png");
+        image::DynamicImage::new_rgb8(40, 20)
+            .save(&image_path)
+            .unwrap();
+        let normalized = media::normalize_file(&image_path).unwrap();
+        store
+            .media()
+            .install(&normalized.id, &normalized.png)
+            .unwrap();
+        let mut library = Library::default();
+        library.packs[0].cards[0].prompt_image = Some(normalized.id.clone());
+        library.packs[0].cards[1].prompt_image = Some(normalized.id.clone());
+        store.save(&library).unwrap();
+        fs::remove_file(&image_path).unwrap();
+        assert_eq!(store.load().unwrap().packs, library.packs);
+        let raw_state = fs::read_to_string(store.directory().join("state.json")).unwrap();
+        assert!(!raw_state.contains("data:image"));
+        assert!(!raw_state.contains(&STANDARD.encode(&normalized.png)));
+        let bundle = target.path().join("images.json");
+        store
+            .export_portable_pack(&bundle, &library.packs[0])
+            .unwrap();
+        let document: serde_json::Value =
+            serde_json::from_slice(&fs::read(&bundle).unwrap()).unwrap();
+        assert_eq!(document["media"].as_object().unwrap().len(), 1);
+        let other = Store::open(target.path().join("fresh_data")).unwrap();
+        let imported = other.import_pack(&bundle).unwrap();
+        assert_eq!(imported, library.packs[0]);
+        assert_eq!(other.media().read(&normalized.id).unwrap(), normalized.png);
+        let before = fs::read(store.directory().join("state.json")).unwrap();
+        let mut invalid = document.clone();
+        invalid["media"][&normalized.id] = serde_json::json!(STANDARD.encode(b"corrupt"));
+        fs::write(&bundle, serde_json::to_vec(&invalid).unwrap()).unwrap();
+        assert!(store.import_pack(&bundle).is_err());
+        assert_eq!(
+            fs::read(store.directory().join("state.json")).unwrap(),
+            before
+        );
+        assert_eq!(store.media().read(&normalized.id).unwrap(), normalized.png);
+        invalid["cards"][0]["prompt_image"] = serde_json::json!("../../outside.png");
+        fs::write(&bundle, serde_json::to_vec(&invalid).unwrap()).unwrap();
+        assert!(other.import_pack(&bundle).is_err());
+    }
 
     #[test]
     fn deleting_questions_persists_and_empty_packs_export_and_reimport() {
@@ -610,6 +770,7 @@ mod tests {
         let mut pack = Library::default().packs.remove(0);
         pack.cards = vec![
             crate::knowledge::Card {
+                prompt_image: None,
                 id: None,
                 prompt: "q".repeat(1000),
                 answer: "a".repeat(1000),

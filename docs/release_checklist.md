@@ -10,9 +10,11 @@
 
 macOS 仅支持 arm64，尚未完成 Developer ID 签名与公证。Linux 的托盘、Wayland、FUSE 挂载和登录自启需要在实际桌面环境验收。缺少当前源码的验证包时，不以历史附件代替。
 
+下一版本候选为 **0.2.0**，新增静态图片题面和携带图片资源的知识包。当前下载保持 0.1.0；0.2.0 的三平台包须从同一公开提交构建、校验后整理到预发布草稿，再确认开放下载。
+
 ## 构建来源
 
-正式 Release 关联固定版本标签，例如 `v0.1.0`；标签指向已审阅的发布提交，各平台附件从该提交的干净检出构建。发布后保持标签与版本来源稳定，主分支可继续更新。打包脚本默认核对当前检出的提交，不能在源码已经改变的工作区给旧程序重新标记来源。
+正式 Release 关联固定版本标签，例如 `v0.2.0`；标签指向已审阅的发布提交，各平台附件从该提交的干净检出构建。发布后保持标签与版本来源稳定，主分支可继续更新。打包脚本默认核对当前检出的提交，不能在源码已经改变的工作区给旧程序重新标记来源。
 
 `--distribution-info` 输出内嵌版本、提交、源码状态、便携模式、运行库和声明摘要；打包脚本核对提交与 `clean` 状态。`checksums.sha256` 只列实际提供的程序文件，并与服务器摘要核对。草稿审阅期间记录候选提交，真正发布时确认标签、源码与各平台附件对应。
 
@@ -23,8 +25,8 @@ Windows 的分发命令为：
 ```powershell
 ./scripts/prepare_third_party.ps1 -FetchUpstream
 ./scripts/build_windows.ps1 -Action build -Distribution
-./scripts/prepare_windows_release.ps1 -OutputDirectory local_artifacts/releases/windows_x64_0_1_0_release
-./scripts/check_windows_startup.ps1 -Portable -Executable ./local_artifacts/releases/windows_x64_0_1_0_release/try.exe
+./scripts/prepare_windows_release.ps1 -OutputDirectory local_artifacts/releases/windows_x64_0_2_0_release
+./scripts/check_windows_startup.ps1 -Portable -Executable ./local_artifacts/releases/windows_x64_0_2_0_release/try.exe
 ```
 
 已有输出目录拒绝覆盖；本地审阅未提交修改时可显式使用 `-ReviewCandidate`，该产物保留 `dirty` 标记。macOS/Linux 启用 `distribution` 构建，再运行 `scripts/package_macos.sh`／`scripts/package_linux.sh`；Unix 检查同样核对来源和声明。

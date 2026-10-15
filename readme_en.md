@@ -12,6 +12,8 @@ Answer one short question at your chosen interval, using typed answers, multiple
 
 Download the file for your platform from the [latest version (v0.1.0 prerelease)](https://github.com/Ethan-decoy/Try/releases/tag/v0.1.0).
 
+The current source is the **0.2.0 candidate**, adding static question images. The downloads below remain the published 0.1.0 version.
+
 | Platform | Download | Status |
 | --- | --- | --- |
 | Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v0.1.0/try.exe) | Portable |

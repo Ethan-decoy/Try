@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers the initial `0.1.0` test version for Windows x64, macOS arm64 and Linux x64. Platform packages and verification scope are in the [release record](release_checklist.md).
+This guide covers the `0.2.0` candidate for Windows x64, macOS arm64 and Linux x64. Platform packages and verification scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -52,6 +52,16 @@ A fresh profile includes five small packs with four questions each. Edit or dele
 | [Everyday facts](../knowledge_packs/general_recall.json) | `1 nautical mile (metres)` | `1852` |
 
 Updating retains existing packs and preferences without adding starter content or restoring deletions. Import the JSON files above if desired.
+
+## Picture prompts
+
+Try 0.2.0 supports one static PNG or JPEG per question. Version 0.1.0 does not include this feature. In the question editor, choose **Add image** to select a file, or drop an image file onto the main window while editing a question. You can replace or remove an existing picture, and click the preview to enlarge it. Save commits the complete question; cancel preserves its original picture.
+
+Practice uses the compact card: short prompt, picture, then the answer controls. Pictures keep their colors and aspect ratio, and work with input, multiple choice, true/false and knowledge display. Click a picture to open a larger window; Esc closes that window. Automatic dismissal pauses while viewing the enlarged picture; continue answering or use Enter/Esc to dismiss the card afterwards.
+
+Try copies images into its own `media/` data folder, so moving or deleting the original file does not affect the question. Source files are limited to 8 MiB, 12 million pixels and 8192 pixels per dimension. Background processing resizes the display image to at most 524288 pixels. Each pack can use up to 128 distinct images totaling 16 MiB after processing. Shared pictures are removed only when no question or active draft references them.
+
+Export still produces one JSON file, with the pictures included. Importing it on another computer restores them. Existing text/formula packs remain compatible; picture packs require Try 0.2.0 or later. Preserve the complete Windows portable `data/` folder, including `media/`, when moving the app. Missing or damaged pictures produce an error instead of a wrong-answer result.
 
 ## Formulas
 

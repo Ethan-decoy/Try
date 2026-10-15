@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 (candidate)
+
+- Optional PNG/JPEG question images with a compact practice layout and a separate enlarged view, shared by typed answers, multiple choice, true/false and fact viewing.
+- Add, replace, remove or drop a picture in the question editor. Try manages its own bounded image files, so moving the original does not break a question.
+- Export and import image packs as one self-contained JSON file, with validated resources and shared-picture deduplication. Existing text/formula packs remain compatible.
+- Include the image in each answer mode's learning fingerprint while preserving existing text-only history. Update the authoring and user guides for picture questions.
+
 ## 0.1.0 (2026-10-14, prerelease)
 
 - Frameless practice cards with typed answers, multiple choice, true/false and fact viewing.
