@@ -2,8 +2,8 @@
   "format": "try",
   "schema_version": 1,
   "id": "rust_template",
-  "name": "Rust",
-  "tag": "编程",
+  "name": "常用写法",
+  "tag": "Rust",
   "description": "稳定标准库的常用方法、错误传播与所有权工具。方法题填写方法名。",
   "cards": [
     {

@@ -24,7 +24,7 @@ Answering adjusts selection from correct/incorrect results and actual elapsed ti
 
 Configured tags also appear before sidebar pack names. The sidebar and practice card share the Show pack tags setting. Long tags are shortened; hover to read the full text.
 
-Expand a pack's title to edit a short tag, such as Formulas or Vocabulary. Enter saves and Esc cancels; a blank tag stays hidden. Tags are included in pack exports. A card on the left uses its upper-right corner; a card on the right uses its upper-left corner, updating as the card moves. Settings > Show pack tags hides all tags and preserves your preference after restarting. Existing packs without a tag remain unchanged; add one if desired.
+Expand a pack's title to edit a short tag, such as Formulas or English. Choose a tag and name that work together, such as Formulas · Calculus or English · Words, without repeating the same information. Enter saves and Esc cancels; a blank tag stays hidden. Tags are included in pack exports. A card on the left uses its upper-right corner; a card on the right uses its upper-left corner, updating as the card moves. Settings > Show pack tags hides all tags and preserves your preference after restarting. Existing packs without a tag remain unchanged; add one if desired.
 
 Choose knowledge you want to recall at a glance, then break it into brief cues with clear answers that need little on-the-spot reasoning.
 
@@ -37,7 +37,7 @@ Choose knowledge you want to recall at a glance, then break it into brief cues w
 
 Import copies the complete pack into Try's local data. Moving, renaming or deleting the source JSON does not affect it. External edits require re-importing; replacing the same id asks for confirmation. In-app edits and deletions do not change the source file. Export contains pack content; reminder settings, participation and per-question modes are local preferences.
 
-Adding to a partially selected pack leaves new questions unselected. Adding to a fully selected pack includes them. An empty pack does not produce cards; adding questions retains its enabled state. Authoring resources: [format](knowledge_pack_format.md), [AI instructions](knowledge_pack_ai_template.md). Three advanced templates contain 12 questions each and separate the tag from the topic: [Formulas · Calculus](../knowledge_packs/authoring_template.json), [Vocabulary · English](../knowledge_packs/vocabulary_template.json) and [Programming · Rust](../knowledge_packs/rust_template.json). Their tags and titles use Chinese except for Rust, preserving the authored content when you change the UI language.
+Adding to a partially selected pack leaves new questions unselected. Adding to a fully selected pack includes them. An empty pack does not produce cards; adding questions retains its enabled state. Authoring resources: [format](knowledge_pack_format.md), [AI instructions](knowledge_pack_ai_template.md). Three advanced templates contain 12 questions each, with a complementary tag and name: [Formulas · Calculus](../knowledge_packs/authoring_template.json), [English · Advanced words](../knowledge_packs/vocabulary_template.json) and [Rust · Common patterns](../knowledge_packs/rust_template.json). Their tags and names use Chinese except for Rust, preserving the authored content when you change the UI language.
 
 ### Starter examples
 

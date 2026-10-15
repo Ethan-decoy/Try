@@ -2,7 +2,7 @@
   "format": "try",
   "schema_version": 1,
   "id": "english_recall",
-  "name": "英语 · 词汇",
+  "name": "单词",
   "tag": "英语",
   "description": "单词与中文词义。",
   "cards": [

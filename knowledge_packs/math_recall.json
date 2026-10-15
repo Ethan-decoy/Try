@@ -2,7 +2,7 @@
   "format": "try",
   "schema_version": 1,
   "id": "math_recall",
-  "name": "数学 · 常用公式",
+  "name": "常用公式",
   "tag": "数学",
   "description": "微积分与三角公式（弧度制）。不定积分保留常数 C。",
   "cards": [

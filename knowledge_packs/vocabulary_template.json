@@ -2,8 +2,8 @@
   "format": "try",
   "schema_version": 1,
   "id": "vocabulary_template",
-  "name": "英语",
-  "tag": "词汇",
+  "name": "进阶单词",
+  "tag": "英语",
   "description": "进阶词汇与简短中文词义。",
   "cards": [
     {

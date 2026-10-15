@@ -2,7 +2,7 @@
   "format": "try",
   "schema_version": 1,
   "id": "general_recall",
-  "name": "常识 · 单位与时间",
+  "name": "单位与时间",
   "tag": "常识",
   "description": "常用单位与时间概念。",
   "cards": [

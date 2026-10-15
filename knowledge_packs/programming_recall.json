@@ -2,7 +2,7 @@
   "format": "try",
   "schema_version": 1,
   "id": "programming_recall",
-  "name": "编程 · Rust / C++",
+  "name": "Rust / C++",
   "tag": "编程",
   "description": "引用、智能指针与常量表达式。T 表示类型。",
   "cards": [

@@ -2,7 +2,7 @@
   "format": "try",
   "schema_version": 1,
   "id": "chemistry_recall",
-  "name": "化学 · 结构与热力学",
+  "name": "结构与热力学",
   "tag": "化学",
   "description": "杂化、芳香电子与吉布斯能。",
   "cards": [
