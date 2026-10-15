@@ -42,4 +42,10 @@ macOS 仅支持 arm64。macOS/Linux 为实验性版本，macOS 尚未完成公�
 
 Try 自有代码与 Logo 采用 [MIT](license)，第三方组件遵循各自许可，见 [第三方声明](docs/third_party_notices.md)。
 
-<a href="https://slint.dev"><img src="https://raw.githubusercontent.com/slint-ui/slint/v1.18.1/logo/MadeWithSlint-logo-whitebg.png" width="144" alt="Made with Slint" /></a>
+<a href="https://slint.dev">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/slint-ui/slint/v1.18.1/logo/MadeWithSlint-logo-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/slint-ui/slint/v1.18.1/logo/MadeWithSlint-logo-light.svg" />
+    <img src="https://raw.githubusercontent.com/slint-ui/slint/v1.18.1/logo/MadeWithSlint-logo-light.svg" width="144" alt="Made with Slint" />
+  </picture>
+</a>
