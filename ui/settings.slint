@@ -242,7 +242,7 @@ export component SettingsPage inherits Rectangle {
                     background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
                     interval-setting := TimeSetting { y: 0px; width: parent.width; label: @tr("出题间隔"); value: root.interval-minutes; options: root.interval-options; selection: root.interval-selection; choose(index) => { root.choose-interval(index); } apply-value(value) => { root.set-interval(value); } }
                     GroupLine { y: 48px; width: parent.width - 28px; }
-                    feedback-setting := TimeSetting { y: 48px; width: parent.width; label: @tr("卡片停留"); value: root.feedback-seconds; options: root.feedback-options; selection: root.feedback-selection; maximum: 60; unit: @tr("秒"); hint: @tr("答题后／知识点展示时开始计时"); choose(index) => { root.choose-feedback(index); } apply-value(value) => { root.set-feedback(value); } }
+                    feedback-setting := TimeSetting { y: 48px; width: parent.width; label: @tr("卡片停留"); value: root.feedback-seconds; options: root.feedback-options; selection: root.feedback-selection; maximum: 60; unit: @tr("秒"); hint: @tr("答对后／知识点展示时开始计时；答错后按 Enter 确认"); choose(index) => { root.choose-feedback(index); } apply-value(value) => { root.set-feedback(value); } }
                 }
             }
             VerticalLayout {

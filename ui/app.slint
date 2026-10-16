@@ -1123,7 +1123,7 @@ export component PracticeWindow inherits Window {
     private property <length> picture-area-height: root.question-image-width > 0 ? min(220px, (root.width - 48px) * root.question-image-height / root.question-image-width) + 14px : 0px;
     private property <length> practice-content-height: max(48px, practice-prompt.preferred-height) + root.picture-area-height + 20px + root.answer-row-height + root.answer-footer-height;
     private property <length> knowledge-content-height: max(48px, practice-prompt.preferred-height) + (root.question-image-width > 0 ? root.picture-area-height + 2px : 0px) + 32px + (root.standard-answer != "" ? 16px + max(32px, standard-label.preferred-height) : 0px);
-    private property <length> answer-footer-height: root.entry-open ? root.entry-area-height : root.feedback == 2 ? max(64px, standard-label.preferred-height + 13px) : 64px;
+    private property <length> answer-footer-height: root.entry-open ? root.entry-area-height : root.feedback == 2 ? max(64px, standard-label.preferred-height + 39px) : 64px;
     private property <length> desired-height: min(560px, max(230px, root.knowledge-only ? root.knowledge-content-height + 48px : root.practice-content-height + 42px) + root.tag-space);
     height: root.desired-height;
     // Native resize events assign height. Retain the content-derived target
@@ -1203,7 +1203,7 @@ export component PracticeWindow inherits Window {
     changed pixel-scale => { root.rasterize-formulas(root.pixel-scale); }
 
     public function focus-answer() {
-        if root.answer-mode == 0 && !root.knowledge-only { answer-input.focus(); }
+        if root.answer-mode == 0 && !root.knowledge-only && root.feedback == 0 { answer-input.focus(); }
         else { card-focus.focus(); }
     }
     init => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
@@ -1212,6 +1212,7 @@ export component PracticeWindow inherits Window {
     card-focus := FocusScope {
         capture-key-pressed(event) => {
             if event.text == Key.Escape && root.entry-open { root.cancel-entry(); return accept; }
+            if event.text == Key.Escape && root.feedback == 2 { return accept; }
             if event.text == Key.Escape || ((root.feedback != 0 || root.knowledge-only) && event.text == Key.Return) {
                 root.dismiss(); return accept;
             }
@@ -1365,7 +1366,7 @@ export component PracticeWindow inherits Window {
                         visible: root.feedback == 2;
                         x: 0px; y: 13px;
                         width: parent.width;
-                        height: parent.height - 13px;
+                        height: parent.height - 39px;
                         fallback: root.standard-answer;
                         formula: root.answer-formula;
                         formula-width: root.answer-formula-width;
@@ -1373,6 +1374,14 @@ export component PracticeWindow inherits Window {
                         texts: root.answer-texts;
                         font-size: 20px;
                         ink: Theme.wrong-ink;
+                    }
+                    if root.feedback == 2 : Text {
+                        y: parent.height - 16px;
+                        width: parent.width; height: 16px;
+                        text: @tr("按 Enter 确认");
+                        font-size: 12px; color: Theme.wrong-ink;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
                     }
                 }
             }

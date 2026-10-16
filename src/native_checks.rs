@@ -1336,7 +1336,11 @@ struct AnswerChecks {
 }
 
 fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
-    Timer::single_shot(Duration::from_millis(250), move || {
+    // Newly shown windows can still be in a DWM transition at 250 ms. Wait
+    // before their first desktop comparison; keep repaint-message checks
+    // synchronous so client redraws cannot conceal unwanted caption paint.
+    let delay = if matches!(phase, 2 | 5) { 500 } else { 250 };
+    Timer::single_shot(Duration::from_millis(delay), move || {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let app = &checks.app;
             match phase {
@@ -1408,7 +1412,10 @@ fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         window.window(),
                         checks.output.join("multiple_choice_wrong.png"),
                     );
+                    assert!(!app.feedback_timer.running());
                     key(window.window(), Key::Escape.into());
+                    assert!(app.practice.borrow().is_some());
+                    key(window.window(), Key::Return.into());
                     assert!(app.practice.borrow().is_none());
                     app.show_practice().unwrap();
                 }
@@ -1490,9 +1497,119 @@ fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     snapshot(window.window(), checks.output.join("true_false_wrong.png"));
                     let checks = checks.clone();
                     Timer::single_shot(Duration::from_millis(2300), move || {
-                        checks.finished.set(checks.app.practice.borrow().is_none());
-                        checks.app.quit();
+                        answer_phase(checks, 7);
                     });
+                    return;
+                }
+                7 => {
+                    let window = practice_window(app);
+                    assert_eq!(window.get_feedback(), 2);
+                    assert!(!app.feedback_timer.running());
+                    key(window.window(), Key::Escape.into());
+                    assert!(app.practice.borrow().is_some());
+                    key(window.window(), Key::Return.into());
+                    assert!(app.practice.borrow().is_none());
+                    app.show_practice().unwrap();
+                    let window = practice_window(app);
+                    let correct = (0..2)
+                        .find(|index| {
+                            app.practice
+                                .borrow()
+                                .as_ref()
+                                .unwrap()
+                                .prepared
+                                .accepts_choice(*index)
+                                == Some(true)
+                        })
+                        .unwrap();
+                    click_option(&window, correct);
+                    assert_eq!(window.get_feedback(), 1);
+                    assert!(app.feedback_timer.running());
+                    let checks = checks.clone();
+                    Timer::single_shot(Duration::from_millis(2300), move || {
+                        answer_phase(checks, 8);
+                    });
+                    return;
+                }
+                8 => {
+                    assert!(
+                        app.practice.borrow().is_none(),
+                        "Correct feedback times out"
+                    );
+                    app.show_main().unwrap();
+                    main_window(app).invoke_toggle_knowledge_mode();
+                    app.show_practice().unwrap();
+                    assert!(practice_window(app).get_knowledge_only());
+                    assert!(app.feedback_timer.running());
+                    let checks = checks.clone();
+                    Timer::single_shot(Duration::from_millis(2300), move || {
+                        answer_phase(checks, 9);
+                    });
+                    return;
+                }
+                9 => {
+                    assert!(app.practice.borrow().is_none(), "Facts still time out");
+                    app.show_main().unwrap();
+                    let main = main_window(app);
+                    main.invoke_toggle_knowledge_mode();
+                    main.invoke_set_all_answer_modes(0);
+                    app.show_practice().unwrap();
+                }
+                10 => {
+                    let window = practice_window(app);
+                    for character in "wrong".chars() {
+                        key(window.window(), character.to_string().into());
+                    }
+                    key(window.window(), Key::Return.into());
+                    assert_eq!(window.get_feedback(), 2);
+                    let checks = checks.clone();
+                    Timer::single_shot(Duration::from_millis(2300), move || {
+                        answer_phase(checks, 11);
+                    });
+                    return;
+                }
+                11 => {
+                    let window = practice_window(app);
+                    assert_eq!(window.get_feedback(), 2);
+                    assert!(!app.feedback_timer.running());
+                    snapshot(window.window(), checks.output.join("typed_wrong.png"));
+                    key(window.window(), Key::Escape.into());
+                    assert!(app.practice.borrow().is_some());
+                    key(window.window(), Key::Return.into());
+                    assert!(app.practice.borrow().is_none());
+                    app.show_practice().unwrap();
+                }
+                12 => {
+                    let window = practice_window(app);
+                    let answer = app
+                        .practice
+                        .borrow()
+                        .as_ref()
+                        .unwrap()
+                        .question
+                        .card
+                        .answer
+                        .clone();
+                    for character in answer.chars() {
+                        key(window.window(), character.to_string().into());
+                    }
+                    key(window.window(), Key::Return.into());
+                    assert_eq!(window.get_feedback(), 1);
+                    let checks = checks.clone();
+                    Timer::single_shot(Duration::from_millis(2300), move || {
+                        answer_phase(checks, 13);
+                    });
+                    return;
+                }
+                13 => {
+                    assert!(
+                        app.practice.borrow().is_none(),
+                        "Correct typed answers time out"
+                    );
+                    std::fs::write(checks.output.join("result.txt"),
+                        "Typed, multiple-choice and true/false wrong answers wait for Enter; Esc preserves wrong feedback; correct answers and facts retain automatic dismissal.").unwrap();
+                    checks.finished.set(true);
+                    app.quit();
                     return;
                 }
                 _ => unreachable!(),
@@ -1537,7 +1654,7 @@ fn native_answer_modes() {
     });
     answer_phase(checks.clone(), 0);
     let watchdog = checks.app.clone();
-    Timer::single_shot(Duration::from_secs(20), move || watchdog.quit());
+    Timer::single_shot(Duration::from_secs(30), move || watchdog.quit());
     slint::run_event_loop_until_quit().unwrap();
     assert!(
         checks.finished.get(),
@@ -1746,9 +1863,19 @@ fn run_phase(checks: Rc<Checks>, phase: u8) {
             return;
         }
         5 => {
+            let window = practice_window(app);
+            assert_eq!(window.get_feedback(), 2);
+            assert!(!app.feedback_timer.running());
+            key(window.window(), Key::Escape.into());
+            assert!(
+                app.practice.borrow().is_some(),
+                "Wrong feedback needs Enter"
+            );
+            key(window.window(), Key::Return.into());
+            drop(window);
             assert!(
                 app.practice.borrow().is_none(),
-                "feedback timer should close the card"
+                "Enter confirms and closes wrong feedback"
             );
             assert!(
                 checks

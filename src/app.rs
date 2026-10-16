@@ -4104,7 +4104,11 @@ impl App {
             session.window.invoke_focus_answer();
             session.review_token.take()
         };
-        self.arm_card_close();
+        if correct {
+            self.arm_card_close();
+        } else {
+            self.feedback_timer.stop();
+        }
         if let Some(token) = review_token {
             let outcome = self.learner.borrow_mut().answer(
                 &self.library.borrow(),

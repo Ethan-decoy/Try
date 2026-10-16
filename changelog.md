@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 (2026-10-16, prerelease)
+
+- Keep incorrect-answer feedback and the expected answer visible until Enter is pressed; correct answers and fact viewing retain the configured display duration.
+
 ## 0.3.0 (2026-10-15, prerelease)
 
 - Download updates inside Try with progress, cancellation and retry; apply the verified update with one restart.

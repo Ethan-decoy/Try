@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers `0.3.0` for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers `0.3.1` for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -10,11 +10,11 @@ Place the Windows executable in a writable folder and open `try.exe`. Closing th
 
 Click the tray icon on Windows/Linux to start a card. On macOS, choose Practice from the menu-bar icon. The menu also opens Settings or About, pauses automatic practice, resumes it, or quits. Mac/Linux remain experimental; complete tray, focus and file-dialog behavior needs desktop testing.
 
-Enter submits a typed answer. Click a multiple-choice option or use 1, 2, 3; click ✓ / ✕ for true/false. Green means correct; red reveals the expected answer. Esc closes the card, and Enter also closes feedback. Closing without submitting does not record a result.
+Enter submits a typed answer. Click a multiple-choice option or use 1, 2, 3; click ✓ / ✕ for true/false. Green means correct; red reveals the expected answer and stays open until you press Enter to acknowledge it. Esc does not dismiss an incorrect answer. Esc closes unanswered or correct cards, and Enter can also dismiss correct feedback early. Closing without submitting does not record a result.
 
 Scheduled answer cards request keyboard focus by default, so you can type or use the number keys immediately. Turn off **Focus new practice cards** at the end of Settings to keep the other window focused until you click the card or start practice manually. The preference persists through restarting; fact viewing does not take keyboard focus automatically.
 
-Display duration starts after an answer or when a fact is shown. Unanswered cards stay open. Automatic cards pause while the main window is open; the full interval restarts after returning to the tray and finishing practice.
+Display duration starts after a correct answer or when a fact is shown. Incorrect answers do not use the timer; unanswered cards also stay open. Automatic cards pause while the main window is open; the full interval restarts after returning to the tray and finishing practice.
 
 The lower-left logo switches between answering (white) and viewing facts (outlined). Facts close after the configured duration or with Enter/Esc. Restarting returns to answering mode.
 
@@ -57,7 +57,7 @@ Updating retains existing packs and preferences without adding starter content o
 
 Try 0.2.0 supports one static PNG or JPEG per question. Version 0.1.0 does not include this feature. In the question editor, choose **Add image** to select a file, or drop an image file onto the main window while editing a question. You can replace or remove an existing picture, and click the preview to enlarge it. Save commits the complete question; cancel preserves its original picture.
 
-Practice uses the compact card: short prompt, picture, then the answer controls. Pictures keep their colors and aspect ratio, and work with input, multiple choice, true/false and knowledge display. Click a picture to open a larger window; Esc closes that window. Automatic dismissal pauses while viewing the enlarged picture; continue answering or use Enter/Esc to dismiss the card afterwards.
+Practice uses the compact card: short prompt, picture, then the answer controls. Pictures keep their colors and aspect ratio, and work with input, multiple choice, true/false and knowledge display. Click a picture to open a larger window; Esc closes that window. Automatic dismissal pauses while viewing the enlarged picture; continue answering or dismiss the card manually afterwards. Incorrect answers still require Enter to acknowledge.
 
 Try copies images into its own `media/` data folder, so moving or deleting the original file does not affect the question. Source files are limited to 8 MiB, 12 million pixels and 8192 pixels per dimension. Background processing resizes the display image to at most 524288 pixels. Each pack can use up to 128 distinct images totaling 16 MiB after processing. Shared pictures are removed only when no question or active draft references them.
 
@@ -77,7 +77,7 @@ The move-out and unwrap controls adjust scope while retaining contents. C clears
 
 Open Settings from the lower-left gear. Changes save automatically; a save failure retains valid data. Appearance offers Light, Dark and System, with System as the default. The main window, native title bar and practice card update together, and System follows changes to the operating system's appearance. Your choice persists through restarting; existing saved Light or Dark choices remain valid. Choose system language, Simplified Chinese or English under Language at the bottom. Pack content keeps its authored language.
 
-Interval presets are 15, 25, 30 and 45 minutes; feedback presets are 1, 2 and 3 seconds. Use the adjacent precise controls for custom values: Enter applies and Esc cancels. Existing custom values are retained.
+Interval presets are 15, 25, 30 and 45 minutes; display-duration presets are 1, 2 and 3 seconds and apply only to correct feedback and fact viewing. Incorrect answers require Enter to acknowledge. Use the adjacent precise controls for custom values: Enter applies and Esc cancels. Existing custom values are retained.
 
 A temporary pause lasts for its selected duration; Pause lasts until Resume. Pauses survive restarting. Resume starts the full interval without catching up missed cards. Manual practice works during pauses and quiet hours and does not resume automatic reminders.
 
