@@ -45,6 +45,10 @@ Windows 辅助脚本会定位工具链、MSVC 和 SDK，并将产物留在 `loca
 
 动态选题使用固定默认参数的 FSRS 6 标量子集，时间和随机源由调用方提供；知识展示在读取学习状态前分流。个人状态独立保存，不随知识包导出。上游源码与许可见 [第三方声明](third_party_notices.md)。
 
+关闭「弹出时自动聚焦」后，自动提醒显示完整题板，不请求系统焦点，出现或悬停不建立本次学习呈现记录；首次点击或从系统托盘进入时开始记录，点击选项的同一次操作即可作答。Windows 的输入保护在题板存续期间通过 [SetWinEventHook](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwineventhook) 订阅前台窗口、鼠标捕获及光标显隐事件，使用 out-of-context 回调，不注入其他进程；在 UI 循环合并查询 `GetCursorInfo` 和 `GetGUIThreadInfo`。其他前台窗口隐藏光标、捕获鼠标或查询失败时，使用 Winit 的 `set_cursor_hittest(false)` 穿透鼠标，释放后恢复点击；题板本身已激活时保留正常输入。切回其他进程的置顶窗口后，以 `SetWindowPos` 和 `SWP_NOACTIVATE` 恢复题板层级，不移动、缩放或激活题板，保留本程序图片预览等窗口的层级。窗口收起即释放订阅，不轮询，不监听按键或游戏暂停菜单。游戏自绘光标或其他输入方式仍需实际验证。
+
+Windows 在提醒到期时调用 [SHQueryUserNotificationState](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shqueryusernotificationstate)；`QUNS_ACCEPTS_NOTIFICATIONS` 允许提醒，`QUNS_BUSY` 只允许不自动聚焦的题板，以兼容无边框全屏窗口。系统报告独占 Direct3D 全屏、演示、锁屏、未知状态或查询失败时继续等待下一个提醒间隔，不补弹积压。macOS/Linux 暂无对应的游戏鼠标保护与全屏查询。自动提醒失败仅记日志并重排提醒，避免用错误对话框打断其他应用。`native_practice_focus` 用独立窗口检查实际输入去向、题板可见性、隐藏／释放光标、鼠标捕获、悬停、直接点击作答、系统托盘激活、环境阻止与实际计时器错误路径。
+
 静态题面由 `src/media.rs` 管理：源 PNG／JPEG 在后台规范化为有界 PNG，以内容哈希保存到数据目录的 `media/`。库和草稿只记录资源标识，显示时只解码当前题；收起窗口释放像素。`Store` 负责将含图包组装为单个 JSON 或从中安装资源，`media` 传输字段不进入 `state.json`。导入、编辑失败保留原题库；清理只处理已识别且未被库、当前草稿或待确认导入引用的自有文件。修改图片改变各题型的学习指纹，未添加图片的题目保留原指纹。格式与配额见 [知识包格式](knowledge_pack_format.md#题面图片与可携带资源)。Windows 可用 `./scripts/build_windows.ps1 -Action test -NativeChecks -NativeTest native_picture_questions` 验证隔离题库中的编辑、取消、保存、显示、放大与资源清理；生成的截图留在 `local_artifacts/`。
 
 版本检查使用固定 GitHub Release 源，忽略草稿。预发布通道的 REST API 请求受限时，沿用系统代理检查同一仓库的公开 Atom 订阅源，并确认 `checksums.sha256` 已可匿名访问；只有标签、没有公开分发附件的候选不会提示更新。订阅源限制为 1 MiB／10000 个 XML 节点，最多探测三个版本的附件，不跟随下载重定向；正式版本通道保留 API 的预发布过滤规则。两条路径均失败时保留受限错误，关于页显示稍后重试。自动检查默认开启，启动后延迟至少 30 秒，每 24 小时最多一次；手动检查可覆盖预算，同时只运行一个检查任务。缓存受大小限制，结果安静显示在关于页。显式网络验证可分别运行 `update_check::tests::live_release_check` 与 `update_check::tests::live_rate_limited_api_fallback`，后者模拟 API 403 后通过实际传输检查公开源，不反复请求已耗尽的 API 额度。

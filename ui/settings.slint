@@ -351,7 +351,7 @@ export component SettingsPage inherits Rectangle {
                 background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
                 reminder-focus-check := SettingsCheck {
                     x: 14px; y: 6px; width: parent.width - 28px;
-                    text: @tr("弹出后直接输入"); hint: @tr("定时练习出现时切换键盘焦点");
+                    text: @tr("弹出时自动聚焦"); hint: @tr("关闭后不切换当前窗口，点击题板再作答");
                     checkbox-right: true; checked: root.focus-on-reminder;
                     toggled(enabled) => { root.set-focus-on-reminder(enabled); }
                 }

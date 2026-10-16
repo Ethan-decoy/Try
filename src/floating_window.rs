@@ -7,19 +7,42 @@ use winit::window::{Theme, WindowAttributes, WindowLevel};
 
 const PRACTICE_TITLE: &str = "Try · 练习";
 
+/// Watches input ownership only while an unfocused reminder exists. It neither
+/// activates the card nor keeps the native window alive after Slint hides it.
+pub struct ReminderInputGuard {
+    #[cfg(target_os = "windows")]
+    _watch: windows::InputWatch,
+}
+
+impl ReminderInputGuard {
+    pub fn install(native: &std::sync::Arc<winit::window::Window>) -> Result<Self, String> {
+        #[cfg(target_os = "windows")]
+        return windows::InputWatch::install(native).map(|watch| Self { _watch: watch });
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = native;
+            Ok(Self {})
+        }
+    }
+}
+
 pub struct FloatingWindow {
     preferences: RefCell<(PopupCorner, Option<SavedPopupPosition>)>,
     appearance: Cell<Appearance>,
     creating_practice: Cell<bool>,
+    creating_passive: Cell<bool>,
 }
 
 pub struct PracticeCreation<'a> {
     flag: &'a Cell<bool>,
     previous: bool,
+    passive: &'a Cell<bool>,
+    previous_passive: bool,
 }
 impl Drop for PracticeCreation<'_> {
     fn drop(&mut self) {
         self.flag.set(self.previous);
+        self.passive.set(self.previous_passive);
     }
 }
 
@@ -88,6 +111,7 @@ impl FloatingWindow {
             preferences: RefCell::default(),
             appearance: Cell::new(Appearance::default()),
             creating_practice: Cell::new(false),
+            creating_passive: Cell::new(false),
         };
         controller.configure(settings);
         controller
@@ -144,6 +168,11 @@ impl FloatingWindow {
         {
             use winit::platform::windows::WindowAttributesExtWindows;
             let mut attributes = attributes.with_skip_taskbar(true);
+            if self.creating_passive.get() {
+                // Configure input ownership before moving the asynchronously
+                // created window into a visible work area.
+                return attributes.with_position(PhysicalPosition::new(-32_000, -32_000));
+            }
             let (corner, saved) = &*self.preferences.borrow();
             let areas = windows::work_areas();
             if let Some(area) = areas
@@ -166,7 +195,11 @@ impl FloatingWindow {
         }
         #[cfg(not(target_os = "windows"))]
         {
-            attributes
+            if self.creating_passive.get() {
+                attributes.with_position(PhysicalPosition::new(-32_000, -32_000))
+            } else {
+                attributes
+            }
         }
     }
 
@@ -224,10 +257,24 @@ impl FloatingWindow {
     }
 
     pub fn practice_creation(&self) -> PracticeCreation<'_> {
+        self.creation(false)
+    }
+
+    pub fn passive_creation(&self) -> PracticeCreation<'_> {
+        self.creation(true)
+    }
+
+    fn creation(&self, passive: bool) -> PracticeCreation<'_> {
         PracticeCreation {
             flag: &self.creating_practice,
             previous: self.creating_practice.replace(true),
+            passive: &self.creating_passive,
+            previous_passive: self.creating_passive.replace(passive),
         }
+    }
+
+    pub fn prepare_frame(window: &slint::Window) {
+        window.with_winit_window(shape);
     }
 
     pub fn reshape_and_clamp(window: &slint::Window) {
@@ -256,6 +303,40 @@ impl FloatingWindow {
             log::debug!(target: "try::floating_window", "event=window_activation_requested window={:?}", native.id());
             native.focus_window();
         });
+    }
+
+    pub fn reminders_allowed(background: bool) -> bool {
+        #[cfg(target_os = "windows")]
+        {
+            use windows_sys::Win32::UI::Shell::SHQueryUserNotificationState;
+            let mut state = 0;
+            // SAFETY: state is a live output value for this synchronous Shell query.
+            let result = unsafe { SHQueryUserNotificationState(&mut state) };
+            // A background card may coexist with borderless full-screen apps.
+            // Exclusive Direct3D, presentation, locked and unknown states defer.
+            result >= 0 && windows::allows_reminder(state, background)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = background;
+            true
+        }
+    }
+
+    pub fn set_mouse_passthrough(window: &slint::Window, passive: bool) -> Result<(), String> {
+        window
+            .with_winit_window(|native| {
+                native
+                    .set_cursor_hittest(!passive)
+                    .map_err(|error| r#try::tr!("无法设置提醒交互：{error}", error = error))?;
+                #[cfg(target_os = "windows")]
+                if passive {
+                    windows::opaque_layer(native)?;
+                }
+                native.request_redraw();
+                Ok(())
+            })
+            .unwrap_or_else(|| Err(r#try::tr!("提醒窗口尚未就绪。").to_owned()))
     }
 
     pub fn position(window: &slint::Window) -> Option<(i32, i32)> {
@@ -391,6 +472,253 @@ mod windows {
             RawWindowHandle::Win32(handle) => Some(handle.hwnd.get() as HWND),
             _ => None,
         }
+    }
+
+    pub fn allows_reminder(state: i32, background: bool) -> bool {
+        use windows_sys::Win32::UI::Shell::{QUNS_ACCEPTS_NOTIFICATIONS, QUNS_BUSY};
+        state == QUNS_ACCEPTS_NOTIFICATIONS || (background && state == QUNS_BUSY)
+    }
+
+    #[test]
+    fn reminder_notification_policy() {
+        use windows_sys::Win32::UI::Shell::{
+            QUNS_ACCEPTS_NOTIFICATIONS, QUNS_APP, QUNS_BUSY, QUNS_NOT_PRESENT,
+            QUNS_PRESENTATION_MODE, QUNS_QUIET_TIME, QUNS_RUNNING_D3D_FULL_SCREEN,
+        };
+        assert!(allows_reminder(QUNS_ACCEPTS_NOTIFICATIONS, false));
+        assert!(allows_reminder(QUNS_ACCEPTS_NOTIFICATIONS, true));
+        assert!(allows_reminder(QUNS_BUSY, true));
+        assert!(!allows_reminder(QUNS_BUSY, false));
+        for state in [
+            QUNS_NOT_PRESENT,
+            QUNS_PRESENTATION_MODE,
+            QUNS_QUIET_TIME,
+            QUNS_RUNNING_D3D_FULL_SCREEN,
+            QUNS_APP,
+            0,
+            -1,
+            999,
+        ] {
+            assert!(!allows_reminder(state, false));
+            assert!(!allows_reminder(state, true));
+        }
+    }
+
+    thread_local! {
+        static INPUT_WATCHES: RefCell<std::collections::BTreeMap<usize, std::rc::Weak<InputState>>> = RefCell::default();
+    }
+
+    pub struct InputWatch {
+        _state: std::rc::Rc<InputState>,
+        hooks: Vec<windows_sys::Win32::UI::Accessibility::HWINEVENTHOOK>,
+    }
+
+    struct InputState {
+        native: std::sync::Weak<winit::window::Window>,
+        foreground: Cell<HWND>,
+        passthrough: Cell<Option<bool>>,
+        pending: Cell<bool>,
+    }
+
+    impl InputState {
+        fn refresh(&self) -> Result<(), String> {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                CURSOR_SHOWING, CURSORINFO, GUITHREADINFO, GetCursorInfo, GetForegroundWindow,
+                GetGUIThreadInfo, GetWindowThreadProcessId, HWND_TOPMOST, SWP_NOACTIVATE,
+                SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
+            };
+            let Some(native) = self.native.upgrade() else {
+                return Ok(());
+            };
+            let hwnd =
+                handle(&native).ok_or_else(|| r#try::tr!("提醒窗口尚未就绪。").to_owned())?;
+            let mut cursor = CURSORINFO {
+                cbSize: size_of::<CURSORINFO>() as u32,
+                ..Default::default()
+            };
+            let mut foreground = GUITHREADINFO {
+                cbSize: size_of::<GUITHREADINFO>() as u32,
+                ..Default::default()
+            };
+            // SAFETY: read-only query of the active desktop's foreground handle.
+            let active = unsafe { GetForegroundWindow() };
+            // SAFETY: synchronous read-only desktop queries with correctly sized
+            // output structures. Unknown ownership keeps clicks with the game.
+            let passthrough = unsafe {
+                active != hwnd
+                    && (GetCursorInfo(&mut cursor) == 0
+                        || cursor.flags & CURSOR_SHOWING == 0
+                        || GetGUIThreadInfo(0, &mut foreground) == 0
+                        || (!foreground.hwndCapture.is_null() && foreground.hwndCapture != hwnd))
+            };
+            if self.passthrough.get() != Some(passthrough) {
+                native
+                    .set_cursor_hittest(!passthrough)
+                    .map_err(|error| r#try::tr!("无法设置提醒交互：{error}", error = error))?;
+                if passthrough {
+                    opaque_layer(&native)?;
+                }
+                self.passthrough.set(Some(passthrough));
+                native.request_redraw();
+            }
+            if self.foreground.replace(active) != active && !active.is_null() && active != hwnd {
+                let mut process = 0;
+                // A newly activated topmost game can cover another topmost
+                // window. Reorder only our card, without activating or moving it.
+                // Leave our own previews/dialogs above the card.
+                // SAFETY: hwnd is our live UI window; process is a live output.
+                unsafe {
+                    GetWindowThreadProcessId(active, &mut process);
+                    if process != 0
+                        && process != windows_sys::Win32::System::Threading::GetCurrentProcessId()
+                        && SetWindowPos(
+                            hwnd,
+                            HWND_TOPMOST,
+                            0,
+                            0,
+                            0,
+                            0,
+                            SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+                        ) == 0
+                    {
+                        return Err(r#try::tr!(
+                            "无法设置提醒交互：{error}",
+                            error = std::io::Error::last_os_error()
+                        ));
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fn schedule(self: &std::rc::Rc<Self>) {
+            if self.pending.replace(true) {
+                return;
+            }
+            let weak = std::rc::Rc::downgrade(self);
+            // Out-of-context events can reenter while native styles change.
+            // Coalesce them on the UI loop without periodic polling.
+            slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                if let Some(state) = weak.upgrade() {
+                    state.pending.set(false);
+                    if let Err(error) = state.refresh() {
+                        // Fail closed rather than risk an interactive game overlay.
+                        if let Some(native) = state.native.upgrade() {
+                            native.set_visible(false);
+                        }
+                        log::warn!(target: "try::floating_window", "event=reminder_input_failed reason={error}");
+                    }
+                }
+            });
+        }
+    }
+
+    unsafe extern "system" fn input_event(
+        hook: windows_sys::Win32::UI::Accessibility::HWINEVENTHOOK,
+        event: u32,
+        _hwnd: HWND,
+        object: i32,
+        _child: i32,
+        _thread: u32,
+        _time: u32,
+    ) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            EVENT_OBJECT_HIDE, EVENT_OBJECT_SHOW, OBJID_CURSOR,
+        };
+        if matches!(event, EVENT_OBJECT_SHOW | EVENT_OBJECT_HIDE) && object != OBJID_CURSOR {
+            return;
+        }
+        let state = INPUT_WATCHES.with(|watches| {
+            watches
+                .borrow()
+                .get(&(hook as usize))
+                .and_then(std::rc::Weak::upgrade)
+        });
+        if let Some(state) = state {
+            state.schedule();
+        }
+    }
+
+    impl InputWatch {
+        pub fn install(native: &std::sync::Arc<winit::window::Window>) -> Result<Self, String> {
+            use windows_sys::Win32::UI::Accessibility::SetWinEventHook;
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                EVENT_OBJECT_HIDE, EVENT_OBJECT_SHOW, EVENT_SYSTEM_CAPTUREEND,
+                EVENT_SYSTEM_CAPTURESTART, EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT,
+            };
+            let state = std::rc::Rc::new(InputState {
+                native: std::sync::Arc::downgrade(native),
+                foreground: Cell::new(std::ptr::null_mut()),
+                passthrough: Cell::new(None),
+                pending: Cell::new(false),
+            });
+            let mut watch = Self {
+                _state: state.clone(),
+                hooks: Vec::new(),
+            };
+            for (first, last) in [
+                (EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND),
+                (EVENT_SYSTEM_CAPTURESTART, EVENT_SYSTEM_CAPTUREEND),
+                (EVENT_OBJECT_SHOW, EVENT_OBJECT_HIDE),
+            ] {
+                // SAFETY: events are queued to this UI thread; no code is
+                // injected into another process. Drop removes every subscription.
+                let hook = unsafe {
+                    SetWinEventHook(
+                        first,
+                        last,
+                        std::ptr::null_mut(),
+                        Some(input_event),
+                        0,
+                        0,
+                        WINEVENT_OUTOFCONTEXT,
+                    )
+                };
+                if hook.is_null() {
+                    return Err(r#try::tr!(
+                        "无法设置提醒交互：{error}",
+                        error = std::io::Error::last_os_error()
+                    ));
+                }
+                INPUT_WATCHES.with(|watches| {
+                    watches
+                        .borrow_mut()
+                        .insert(hook as usize, std::rc::Rc::downgrade(&state));
+                });
+                watch.hooks.push(hook);
+            }
+            state.refresh()?;
+            Ok(watch)
+        }
+    }
+
+    impl Drop for InputWatch {
+        fn drop(&mut self) {
+            for hook in self.hooks.drain(..) {
+                INPUT_WATCHES.with(|watches| {
+                    watches.borrow_mut().remove(&(hook as usize));
+                });
+                // SAFETY: each handle was installed on this same UI thread.
+                unsafe {
+                    windows_sys::Win32::UI::Accessibility::UnhookWinEvent(hook);
+                }
+            }
+        }
+    }
+
+    pub fn opaque_layer(native: &winit::window::Window) -> Result<(), String> {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{LWA_ALPHA, SetLayeredWindowAttributes};
+        let hwnd = handle(native).ok_or_else(|| r#try::tr!("提醒窗口尚未就绪。").to_owned())?;
+        // Winit enables WS_EX_LAYERED for passthrough. Our GDI software surface
+        // needs explicit opaque alpha before the layered window can be visible.
+        // SAFETY: hwnd belongs to this live Winit window on its owning UI thread.
+        if unsafe { SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA) } == 0 {
+            return Err(r#try::tr!(
+                "无法设置提醒交互：{error}",
+                error = std::io::Error::last_os_error()
+            ));
+        }
+        Ok(())
     }
 
     fn area(monitor: HMONITOR) -> Option<(WorkArea, bool)> {

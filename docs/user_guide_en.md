@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers `0.3.1` for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers `0.3.2` for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -12,7 +12,9 @@ Click the tray icon on Windows/Linux to start a card. On macOS, choose Practice 
 
 Enter submits a typed answer. Click a multiple-choice option or use 1, 2, 3; click ✓ / ✕ for true/false. Green means correct; red reveals the expected answer and stays open until you press Enter to acknowledge it. Esc does not dismiss an incorrect answer. Esc closes unanswered or correct cards, and Enter can also dismiss correct feedback early. Closing without submitting does not record a result.
 
-Scheduled answer cards request keyboard focus by default, so you can type or use the number keys immediately. Turn off **Focus new practice cards** at the end of Settings to keep the other window focused until you click the card or start practice manually. The preference persists through restarting; fact viewing does not take keyboard focus automatically.
+Scheduled answer cards request keyboard focus by default, so you can type or use the number keys immediately. When gaming or avoiding interruptions, turn off **Automatically focus new cards** at the end of Settings. The complete card stays visible without activating on appearance or hover. Release the mouse and click the card to answer, or start practice from the system tray. On Windows, the card lets mouse input pass through while another window hides the cursor or captures the mouse; releasing it restores click interaction. Returning to the game keeps the card visible. Presentation recording begins when you activate the card. The preference persists through restarting; fact viewing does not take keyboard focus automatically.
+
+Before each scheduled reminder, Windows checks the system notification state. With automatic focus off, the card may appear over busy applications such as borderless fullscreen windows. System-reported exclusive Direct3D fullscreen, presentation and lock-screen states still defer reminders without accumulating missed cards. Automatic focus also defers during system busy states; explicit manual practice remains available. Try uses the system cursor and capture state rather than detecting a game's Esc key or pause menu. Games with custom cursors or other input methods still need testing. macOS/Linux retain click-to-answer interaction but do not yet implement this game mouse protection or fullscreen query; desktop validation remains necessary.
 
 Display duration starts after a correct answer or when a fact is shown. Incorrect answers do not use the timer; unanswered cards also stay open. Automatic cards pause while the main window is open; the full interval restarts after returning to the tray and finishing practice.
 
