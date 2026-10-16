@@ -12,6 +12,7 @@ mod floating_window;
 mod formula_presentation;
 #[cfg(target_os = "windows")]
 mod single_instance;
+mod structured_math;
 mod window_repaint;
 
 use r#try::knowledge::AppResult;

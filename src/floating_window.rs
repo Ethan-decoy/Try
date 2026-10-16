@@ -28,9 +28,63 @@ impl ReminderInputGuard {
 
 pub struct FloatingWindow {
     preferences: RefCell<(PopupCorner, Option<SavedPopupPosition>)>,
+    placement: RefCell<Option<(winit::window::WindowId, Placement)>>,
     appearance: Cell<Appearance>,
     creating_practice: Cell<bool>,
     creating_passive: Cell<bool>,
+}
+
+/// Keep the user's anchor separate from positions used to fit a larger card.
+struct Placement {
+    corner: PopupCorner,
+    preferred: Option<SavedPopupPosition>,
+    placed: (i32, i32),
+    user_moved: bool,
+}
+
+impl Placement {
+    fn new(
+        area: &WorkArea,
+        size: (u32, u32),
+        corner: PopupCorner,
+        saved: Option<&SavedPopupPosition>,
+    ) -> Self {
+        let preferred = saved
+            .filter(|saved| saved.monitor == area.monitor && saved.is_valid())
+            .cloned();
+        Self {
+            corner,
+            placed: area.place(size, corner, preferred.as_ref()),
+            preferred,
+            user_moved: false,
+        }
+    }
+
+    fn observe_move(&mut self, area: &WorkArea, position: (i32, i32)) {
+        if position != self.placed {
+            self.preferred = Some(area.remember(position));
+            self.placed = position;
+            self.user_moved = true;
+        }
+    }
+
+    fn resize(&mut self, area: &WorkArea, size: (u32, u32), current: (i32, i32)) -> (i32, i32) {
+        self.observe_move(area, current);
+        self.placed = area.place(size, self.corner, self.preferred.as_ref());
+        self.placed
+    }
+
+    fn moved_position(
+        &mut self,
+        area: &WorkArea,
+        current: (i32, i32),
+    ) -> Option<SavedPopupPosition> {
+        self.observe_move(area, current);
+        self.preferred
+            .as_ref()
+            .filter(|saved| self.user_moved && saved.is_valid())
+            .cloned()
+    }
 }
 
 pub struct PracticeCreation<'a> {
@@ -109,6 +163,7 @@ impl FloatingWindow {
     pub fn new(settings: &Settings) -> Self {
         let controller = Self {
             preferences: RefCell::default(),
+            placement: RefCell::default(),
             appearance: Cell::new(Appearance::default()),
             creating_practice: Cell::new(false),
             creating_passive: Cell::new(false),
@@ -249,7 +304,10 @@ impl FloatingWindow {
                 .or(areas.first())
             {
                 let size = native.outer_size();
-                let (x, y) = area.place((size.width, size.height), *corner, saved.as_ref());
+                let placement =
+                    Placement::new(area, (size.width, size.height), *corner, saved.as_ref());
+                let (x, y) = placement.placed;
+                self.placement.replace(Some((native.id(), placement)));
                 native.set_outer_position(PhysicalPosition::new(x, y));
             }
             shape(native);
@@ -277,25 +335,39 @@ impl FloatingWindow {
         window.with_winit_window(shape);
     }
 
-    pub fn reshape_and_clamp(window: &slint::Window) {
+    pub fn reshape_and_clamp(&self, window: &slint::Window) {
         window.with_winit_window(|native| {
             shape(native);
-            #[cfg(target_os = "windows")]
-            if let (Some(area), Ok(position)) =
-                (windows::current_area(native), native.outer_position())
-            {
+            if let (Some(area), Ok(position)) = (current_area(native), native.outer_position()) {
                 let size = native.outer_size();
-                let saved = area.remember((position.x, position.y));
-                let (x, y) = area.place(
-                    (size.width, size.height),
-                    PopupCorner::BottomRight,
-                    Some(&saved),
-                );
+                let (x, y) = {
+                    let mut placement = self.placement.borrow_mut();
+                    // Initial placement establishes the anchor. Late callbacks
+                    // from a closed card must not replace the next card's state.
+                    let Some((_, placement)) =
+                        placement.as_mut().filter(|(id, _)| *id == native.id())
+                    else {
+                        return;
+                    };
+                    placement.resize(&area, (size.width, size.height), (position.x, position.y))
+                };
                 if x != position.x || y != position.y {
                     native.set_outer_position(PhysicalPosition::new(x, y));
                 }
             }
         });
+    }
+
+    pub fn moved_position(&self, window: &slint::Window) -> Option<SavedPopupPosition> {
+        window
+            .with_winit_window(|native| {
+                let area = current_area(native)?;
+                let position = native.outer_position().ok()?;
+                let mut placement = self.placement.borrow_mut();
+                let (_, placement) = placement.as_mut().filter(|(id, _)| *id == native.id())?;
+                placement.moved_position(&area, (position.x, position.y))
+            })
+            .flatten()
     }
 
     pub fn activate(window: &slint::Window) {
@@ -354,48 +426,40 @@ impl FloatingWindow {
         window
             .with_winit_window(|native| {
                 let position = native.outer_position().ok()?;
-                #[cfg(target_os = "windows")]
-                let area = windows::current_area(native)?;
-                #[cfg(not(target_os = "windows"))]
-                let area = {
-                    let monitor = native.current_monitor()?;
-                    WorkArea {
-                        monitor: monitor.name().unwrap_or_else(|| "display".into()),
-                        x: monitor.position().x,
-                        y: monitor.position().y,
-                        width: monitor.size().width,
-                        height: monitor.size().height,
-                        scale: monitor.scale_factor(),
-                    }
-                };
+                let area = current_area(native)?;
                 let size = native.outer_size();
                 Some(area.tag_on_right((position.x, position.y), (size.width, size.height)))
             })
             .flatten()
     }
 
+    #[cfg(all(test, feature = "native_checks", target_os = "windows"))]
     pub fn remember(window: &slint::Window) -> Option<SavedPopupPosition> {
         window
             .with_winit_window(|native| {
                 let position = native.outer_position().ok()?;
-                #[cfg(target_os = "windows")]
-                let area = windows::current_area(native)?;
-                #[cfg(not(target_os = "windows"))]
-                let area = {
-                    let monitor = native.current_monitor()?;
-                    WorkArea {
-                        monitor: monitor.name()?,
-                        x: monitor.position().x,
-                        y: monitor.position().y,
-                        width: monitor.size().width,
-                        height: monitor.size().height,
-                        scale: monitor.scale_factor(),
-                    }
-                };
+                let area = current_area(native)?;
                 let saved = area.remember((position.x, position.y));
                 saved.is_valid().then_some(saved)
             })
             .flatten()
+    }
+}
+
+fn current_area(native: &winit::window::Window) -> Option<WorkArea> {
+    #[cfg(target_os = "windows")]
+    return windows::current_area(native);
+    #[cfg(not(target_os = "windows"))]
+    {
+        let monitor = native.current_monitor()?;
+        Some(WorkArea {
+            monitor: monitor.name().unwrap_or_else(|| "display".into()),
+            x: monitor.position().x,
+            y: monitor.position().y,
+            width: monitor.size().width,
+            height: monitor.size().height,
+            scale: monitor.scale_factor(),
+        })
     }
 }
 
@@ -884,5 +948,75 @@ mod windows {
                 DeleteObject(region);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::*;
+
+    fn area() -> WorkArea {
+        WorkArea {
+            monitor: "test".into(),
+            x: -1920,
+            y: -200,
+            width: 1920,
+            height: 1320,
+            scale: 1.5,
+        }
+    }
+
+    #[test]
+    fn resizing_keeps_all_four_corners_without_saving_temporary_positions() {
+        let area = area();
+        for corner in [
+            PopupCorner::BottomRight,
+            PopupCorner::BottomLeft,
+            PopupCorner::TopRight,
+            PopupCorner::TopLeft,
+        ] {
+            let small = (480, 345);
+            let large = (480, 795);
+            let mut placement = Placement::new(&area, small, corner, None);
+            let original = placement.placed;
+            for _ in 0..5 {
+                let expanded = placement.resize(&area, large, placement.placed);
+                assert_eq!(expanded, area.place(large, corner, None));
+                assert!(placement.moved_position(&area, expanded).is_none());
+                let collapsed = placement.resize(&area, small, expanded);
+                assert_eq!(collapsed, original);
+                assert!(placement.moved_position(&area, collapsed).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn resizing_restores_saved_position_after_temporary_clamping() {
+        let area = area();
+        let preferred = (-700, 700);
+        let saved = area.remember(preferred);
+        let mut placement =
+            Placement::new(&area, (480, 345), PopupCorner::BottomRight, Some(&saved));
+        assert_eq!(placement.placed, preferred);
+        let expanded = placement.resize(&area, (480, 795), preferred);
+        assert!(expanded.1 < preferred.1);
+        assert!(placement.moved_position(&area, expanded).is_none());
+        assert_eq!(placement.resize(&area, (480, 345), expanded), preferred);
+    }
+
+    #[test]
+    fn dragging_an_expanded_card_replaces_the_anchor_and_is_remembered() {
+        let area = area();
+        let mut placement = Placement::new(&area, (480, 345), PopupCorner::BottomRight, None);
+        let original = placement.placed;
+        placement.resize(&area, (480, 795), original);
+        let dragged = (-800, 180);
+        assert_eq!(placement.resize(&area, (480, 345), dragged), dragged);
+        assert_eq!(
+            placement.moved_position(&area, dragged),
+            Some(area.remember(dragged))
+        );
+        let expanded = placement.resize(&area, (480, 795), dragged);
+        assert_eq!(placement.resize(&area, (480, 345), expanded), dragged);
     }
 }

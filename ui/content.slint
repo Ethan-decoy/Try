@@ -1,8 +1,10 @@
 import { Theme } from "theme.slint";
 import { Button, LineEdit, SpinBox, TextEdit } from "std-widgets.slint";
-import { AnswerPick, Disclosure, IconButton } from "controls.slint";
+import { AnswerPick, Disclosure, IconButton, ToolButton } from "controls.slint";
 import { MathPalette, MathTool } from "math_palette.slint";
 import { FormulaInput, FormulaNavigation, FormulaPosition } from "formula_input.slint";
+export { ToolButton } from "controls.slint";
+import { MathInputState, StructuredMathPane } from "structured_math.slint";
 export { FormulaNavigation, FormulaPosition } from "formula_input.slint";
 
 export struct NativeText {
@@ -103,38 +105,6 @@ export component FormulaLabel inherits Rectangle {
     }
 }
 
-export component ToolButton inherits Rectangle {
-    in property <string> label;
-    in property <string> name;
-    in property <image> glyph;
-    in property <bool> icon-only;
-    in property <bool> enabled: true;
-    in property <length> font-size: 16px;
-    callback activated();
-    forward-focus: tool-focus;
-    preferred-width: 32px;
-    min-width: 28px;
-    horizontal-stretch: 1;
-    height: 32px;
-    border-radius: 4px;
-    background: tool-touch.has-hover && root.enabled ? Theme.hover : Theme.soft;
-    opacity: root.enabled ? 1 : 0.4;
-    border-width: tool-focus.has-focus ? 1px : 0px;
-    border-color: Theme.focus;
-    accessible-role: button;
-    accessible-label: root.name;
-    accessible-enabled: root.enabled;
-    Text { visible: !root.icon-only; text: root.label; color: Theme.ink; font-size: root.font-size; horizontal-alignment: center; vertical-alignment: center; }
-    Image { visible: root.icon-only; source: root.glyph; width: 18px; height: 18px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; colorize: Theme.ink; }
-    Tooltip { text: @markdown("\{root.name}"); }
-    tool-focus := FocusScope {
-        width: 0px;
-        enabled: root.enabled;
-        key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; } return reject; }
-    }
-    tool-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.activated(); } }
-}
-
 export component NavigationTools inherits HorizontalLayout {
     in property <FormulaNavigation> navigation;
     in property <bool> show-exit: true;
@@ -186,6 +156,7 @@ component MathComposer inherits Rectangle {
     callback edited(string);
     callback position-changed(string, int, int);
     callback tool(string);
+    callback open-structured-math();
     callback parent();
     callback undo(bool);
     callback resize-grid(int, int);
@@ -216,7 +187,7 @@ component MathComposer inherits Rectangle {
         HorizontalLayout {
             spacing: 4px;
             if root.has-formula : ToolButton { width: 32px; horizontal-stretch: 0; label: @tr("文"); name: @tr("加入文字"); activated => { root.apply-tool("text"); } }
-            ToolButton { width: 32px; horizontal-stretch: 0; label: "ƒ"; name: @tr("公式生成器"); activated => { root.apply-tool("math"); } }
+            ToolButton { width: 32px; horizontal-stretch: 0; label: "ƒ"; name: @tr("公式生成器"); activated => { root.open-structured-math(); } }
             if !root.text-mode : MathPalette {
                 label: @tr("函数");
                 tools: root.functions;
@@ -350,6 +321,7 @@ export component ContentField inherits Rectangle {
     callback edited(string);
     callback position-changed(string, int, int);
     callback tool(string);
+    callback open-structured-math();
     callback parent();
     callback undo(bool);
     callback resize-grid(int, int);
@@ -362,7 +334,8 @@ export component ContentField inherits Rectangle {
     border-width: 1px;
     border-color: root.active ? Theme.focus : Theme.border;
     background: Theme.soft;
-    height: root.active ? root.composer-height : max(64px, root.preview.formula-height * 1px + 24px);
+    height: root.active ? (MathInputState.open ? structured-pane-height : root.composer-height) : max(64px, root.preview.formula-height * 1px + 24px);
+    private property <length> structured-pane-height: 404px;
     accessible-role: button;
     accessible-label: @tr("编辑内容：") + root.preview.label;
     field-focus := FocusScope {
@@ -381,7 +354,12 @@ export component ContentField inherits Rectangle {
         }
         TouchArea { mouse-cursor: text; clicked => { root.activated(); } }
     }
-    if root.active : MathComposer {
+    if root.active && MathInputState.open : StructuredMathPane {
+        x: 12px; y: 12px; width: parent.width - 24px;
+        changed height => { root.structured-pane-height = self.height + 24px; }
+        init => { root.structured-pane-height = self.height + 24px; }
+    }
+    if root.active && !MathInputState.open : MathComposer {
         functions: root.functions;
         symbols: root.symbols;
         active-preview: root.active-preview;
@@ -403,6 +381,7 @@ export component ContentField inherits Rectangle {
         edited(input) => { root.edited(input); }
         position-changed(value, anchor, caret) => { root.position-changed(value, anchor, caret); }
         tool(name) => { root.tool(name); }
+        open-structured-math => { root.open-structured-math(); }
         parent => { root.parent(); }
         undo(redo) => { root.undo(redo); }
         resize-grid(rows, columns) => { root.resize-grid(rows, columns); }
@@ -441,6 +420,7 @@ export component ContentForm inherits VerticalLayout {
     callback edited(string);
     callback position-changed(string, int, int);
     callback tool(string);
+    callback open-structured-math();
     callback parent();
     callback undo(bool);
     callback resize-grid(int, int);
@@ -481,6 +461,7 @@ export component ContentForm inherits VerticalLayout {
             edited(input) => { root.edited(input); }
             position-changed(value, anchor, caret) => { root.position-changed(value, anchor, caret); }
             tool(name) => { root.tool(name); }
+            open-structured-math => { root.open-structured-math(); }
             parent => { root.parent(); }
             undo(redo) => { root.undo(redo); }
             resize-grid(rows, columns) => { root.resize-grid(rows, columns); }

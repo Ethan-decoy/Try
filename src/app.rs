@@ -71,6 +71,7 @@ pub struct App {
     image_revision: Cell<u64>,
     image_task_timer: Timer,
     image_preview: RefCell<Option<crate::ImagePreviewWindow>>,
+    structured_math: RefCell<Option<(MathTarget, crate::structured_math::Session)>>,
     answer_preview_timer: Timer,
     row_render_timer: Timer,
     pending_rows: RefCell<std::collections::BTreeSet<i32>>,
@@ -142,12 +143,21 @@ struct PracticeSession {
     entry: Option<AnswerEditor>,
     inline_input: Option<InputLayout>,
     input_history: RefCell<InputHistory>,
-    initial_position: Cell<Option<(i32, i32)>>,
 }
 
 struct AnswerEditor {
     field: Field,
     paths: Vec<Vec<usize>>,
+}
+
+enum MathTarget {
+    Content {
+        index: usize,
+        original: r#try::math_editor::Node,
+        input: String,
+        path: Vec<usize>,
+    },
+    Practice(u64),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -240,6 +250,7 @@ impl App {
             image_revision: Cell::new(0),
             image_task_timer: Timer::default(),
             image_preview: RefCell::new(None),
+            structured_math: RefCell::new(None),
             answer_preview_timer: Timer::default(),
             row_render_timer: Timer::default(),
             pending_rows: RefCell::default(),
@@ -702,6 +713,30 @@ impl App {
             }
         });
         let weak = Rc::downgrade(self);
+        self.bind_structured_math(window.global::<crate::MathInputState>());
+        let reveal_window = window.as_weak();
+        window
+            .global::<crate::MathInputState>()
+            .on_reveal(move |top, height| {
+                if let Some(window) = reveal_window.upgrade() {
+                    let viewport_top = window.get_math_viewport_top() + 4.0;
+                    let viewport_bottom = viewport_top + window.get_math_viewport_height() - 8.0;
+                    let delta = if top < viewport_top || height > viewport_bottom - viewport_top {
+                        viewport_top - top
+                    } else if top + height > viewport_bottom {
+                        viewport_bottom - top - height
+                    } else {
+                        0.0
+                    };
+                    window.set_editor_scroll_y((window.get_editor_scroll_y() + delta).min(0.0));
+                }
+            });
+        window.on_open_structured_math(move || {
+            if let Some(app) = weak.upgrade() {
+                app.open_content_math();
+            }
+        });
+        let weak = Rc::downgrade(self);
         window.on_math_tool(move |name| {
             if let Some(app) = weak.upgrade() {
                 if name == "undo" || name == "redo" {
@@ -1085,6 +1120,7 @@ impl App {
     }
 
     fn close_main(self: &Rc<Self>) {
+        self.close_structured_math_for(false);
         self.close_image_preview();
         self.editor_image.borrow_mut().take();
         self.image_revision
@@ -1424,7 +1460,10 @@ impl App {
         ) {
             return;
         }
-        if self.editor.borrow().is_some() || self.pending_import.borrow().is_some() {
+        if self.editor.borrow().is_some()
+            || self.pending_import.borrow().is_some()
+            || self.structured_math.borrow().is_some()
+        {
             self.notify(tr!("请先保存或取消编辑，再更新。"), true);
             return;
         }
@@ -1483,6 +1522,7 @@ impl App {
             window.set_dark_theme(dark);
             self.floating.apply_theme(window.window(), dark);
         }
+        self.refresh_structured_math();
     }
 
     fn apply_native_theme(
@@ -2231,6 +2271,9 @@ impl App {
         else {
             return;
         };
+        if !self.apply_content_math() {
+            return;
+        }
         if !self.flush_math() {
             return;
         }
@@ -2257,6 +2300,7 @@ impl App {
     }
 
     fn open_editor(&self, index: Option<i32>, new_pack: bool, requested_mode: Option<AnswerMode>) {
+        self.close_structured_math_for(false);
         if self.pending_delete.borrow().is_some()
             || self.pending_import.borrow().is_some()
             || self.pending_card_delete.borrow().is_some()
@@ -2501,6 +2545,9 @@ impl App {
     }
 
     fn activate_content(&self, index: i32) {
+        if !self.apply_content_math() {
+            return;
+        }
         if !self.flush_math() {
             return;
         }
@@ -2702,6 +2749,9 @@ impl App {
     }
 
     fn save_editor(self: &Rc<Self>) {
+        if !self.apply_content_math() {
+            return;
+        }
         if self.image_task.borrow().is_some() {
             return;
         }
@@ -2862,6 +2912,7 @@ impl App {
     }
 
     fn close_editor(&self) {
+        self.close_structured_math_for(false);
         self.image_revision
             .set(self.image_revision.get().wrapping_add(1));
         self.editor_image.borrow_mut().take();
@@ -3003,6 +3054,337 @@ impl App {
         if let Some(window) = self.image_preview.borrow_mut().take() {
             let _ = window.hide();
         }
+    }
+
+    fn with_math_ui(
+        &self,
+        practice: bool,
+        update: impl FnOnce(crate::MathInputState<'_>, &slint::Window),
+    ) {
+        if practice {
+            if let Some(session) = self.practice.borrow().as_ref() {
+                update(
+                    session.window.global::<crate::MathInputState>(),
+                    session.window.window(),
+                );
+            }
+        } else if let Some(window) = self.main_window.borrow().as_ref() {
+            update(window.global::<crate::MathInputState>(), window.window());
+        }
+    }
+
+    fn close_structured_math_for(&self, practice: bool) {
+        let owns = self
+            .structured_math
+            .borrow()
+            .as_ref()
+            .is_some_and(|(target, _)| matches!(target, MathTarget::Practice(_)) == practice);
+        if owns {
+            self.close_structured_math();
+        }
+    }
+
+    fn close_structured_math(&self) {
+        let active = self.structured_math.borrow_mut().take();
+        if let Some((target, _)) = active {
+            self.with_math_ui(matches!(target, MathTarget::Practice(_)), |ui, _| {
+                ui.set_open(false);
+                ui.set_keypad_expanded(false);
+                ui.set_formula(crate::MathInputView::default());
+                ui.set_catalog(ModelRc::default());
+                ui.set_error("".into());
+            });
+        }
+    }
+
+    fn dismiss_structured_math(&self) {
+        let practice = self
+            .structured_math
+            .borrow()
+            .as_ref()
+            .is_some_and(|(target, _)| matches!(target, MathTarget::Practice(_)));
+        self.close_structured_math();
+        if practice && let Some(session) = self.practice.borrow().as_ref() {
+            session.window.invoke_focus_answer();
+        }
+    }
+
+    fn bind_structured_math(self: &Rc<Self>, ui: crate::MathInputState<'_>) {
+        let weak = Rc::downgrade(self);
+        ui.on_committed(move |text| {
+            if let Some(app) = weak.upgrade() {
+                app.edit_structured_math(|edit| {
+                    edit.insert(text.as_str());
+                    false
+                });
+            }
+        });
+        let weak = Rc::downgrade(self);
+        ui.on_key(move |text, control, shift, alt| {
+            weak.upgrade().is_some_and(|app| {
+                app.edit_structured_math(|edit| edit.key(text.as_str(), control, shift, alt))
+            })
+        });
+        let weak = Rc::downgrade(self);
+        ui.on_seek(move |x, y, extend| {
+            if let Some(app) = weak.upgrade() {
+                app.edit_structured_math(|edit| {
+                    edit.pointer(x, y, extend);
+                    false
+                });
+            }
+        });
+        let weak = Rc::downgrade(self);
+        ui.on_keypad(move |token, extend| {
+            if let Some(app) = weak.upgrade() {
+                app.edit_structured_math(|edit| {
+                    edit.keypad(token.as_str(), extend);
+                    false
+                });
+            }
+        });
+        let weak = Rc::downgrade(self);
+        ui.on_choose_category(move |index| {
+            if let Some(app) = weak.upgrade() {
+                let active = app.structured_math.borrow();
+                if let Some((target, _)) = active.as_ref() {
+                    app.with_math_ui(matches!(target, MathTarget::Practice(_)), |ui, _| {
+                        ui.set_category(index);
+                        ui.set_catalog(crate::structured_math::catalog(index));
+                    });
+                }
+            }
+        });
+        let weak = Rc::downgrade(self);
+        ui.on_refresh_view(move || {
+            if let Some(app) = weak.upgrade() {
+                app.refresh_structured_math();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        ui.on_apply(move || {
+            if let Some(app) = weak.upgrade() {
+                app.apply_current_math();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        ui.on_dismiss(move || {
+            if let Some(app) = weak.upgrade() {
+                app.dismiss_structured_math();
+            }
+        });
+    }
+
+    fn edit_structured_math(
+        &self,
+        edit: impl FnOnce(&mut crate::structured_math::Session) -> bool,
+    ) -> bool {
+        let consumed = self
+            .structured_math
+            .borrow_mut()
+            .as_mut()
+            .is_some_and(|(_, session)| edit(session));
+        self.refresh_structured_math();
+        consumed
+    }
+
+    fn refresh_structured_math(&self) {
+        let active = self.structured_math.borrow();
+        let Some((target, session)) = active.as_ref() else {
+            return;
+        };
+        let dark = self.resolved_dark_theme(self.library.borrow().settings.appearance);
+        self.with_math_ui(
+            matches!(target, MathTarget::Practice(_)),
+            |ui, window| match session.view(window.scale_factor(), dark) {
+                Ok(view) => {
+                    ui.set_formula(view);
+                    ui.set_complete(session.complete().is_ok());
+                    ui.set_error(session.error().into());
+                }
+                Err(error) => ui.set_error(error.into()),
+            },
+        );
+    }
+
+    fn apply_content_math(&self) -> bool {
+        if self
+            .structured_math
+            .borrow()
+            .as_ref()
+            .is_some_and(|(target, _)| matches!(target, MathTarget::Practice(_)))
+        {
+            return true;
+        }
+        self.apply_current_math()
+    }
+
+    fn apply_current_math(&self) -> bool {
+        let result = self
+            .structured_math
+            .borrow()
+            .as_ref()
+            .map(|(_, session)| session.complete());
+        let Some(result) = result else {
+            return true;
+        };
+        match result.and_then(|latex| self.apply_structured_math(&latex)) {
+            Ok(()) => true,
+            Err(error) => {
+                if let Some((target, _)) = self.structured_math.borrow().as_ref() {
+                    self.with_math_ui(matches!(target, MathTarget::Practice(_)), |ui, _| {
+                        ui.set_error(error.into())
+                    });
+                }
+                false
+            }
+        }
+    }
+
+    fn open_content_math(self: &Rc<Self>) {
+        self.flush_math();
+        let target = (|| {
+            let main = self.main_window.borrow();
+            let index = usize::try_from(main.as_ref()?.get_math_active_field()).ok()?;
+            let fields = self.math_fields.borrow();
+            let field = fields.get(index)?;
+            let node = field.selected();
+            // Keep mixed CJK prose on the existing native text surface.
+            if node.plain().chars().any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{3400}'..='\u{9fff}' | '\u{ac00}'..='\u{d7af}')) {
+                return None;
+            }
+            let seed = if field.error().is_some() || node.is_text() {
+                crate::structured_math::Seed::Typing(field.input())
+            } else {
+                crate::structured_math::Seed::Latex(node.tex())
+            };
+            Some((
+                MathTarget::Content {
+                    index,
+                    original: field.root.clone(),
+                    input: field.input(),
+                    path: field.selection.clone(),
+                },
+                seed,
+            ))
+        })();
+        if let Some((target, seed)) = target {
+            self.open_structured_math(target, seed);
+        } else if let Some(window) = self.main_window.borrow().as_ref() {
+            window.set_math_error(tr!("请先选中其中的纯公式，再打开公式输入。").into());
+        }
+    }
+
+    fn open_practice_math(self: &Rc<Self>) {
+        let target = self
+            .practice
+            .borrow()
+            .as_ref()
+            .filter(|session| {
+                !session.answered
+                    && !session.prepared.knowledge_only
+                    && session.prepared.mode == AnswerMode::Input
+            })
+            .map(|session| {
+                let input = session.window.get_answer_text().to_string();
+                let seed = if input.contains('\\') {
+                    crate::structured_math::Seed::Latex(input)
+                } else if let Some(node) = math_answer::recognize(&input, true) {
+                    crate::structured_math::Seed::Latex(node.tex())
+                } else {
+                    crate::structured_math::Seed::Typing(input)
+                };
+                (MathTarget::Practice(session.diagnostic_id), seed)
+            });
+        if let Some((target, seed)) = target {
+            self.open_structured_math(target, seed);
+        }
+    }
+
+    fn open_structured_math(&self, target: MathTarget, seed: crate::structured_math::Seed) {
+        if let Some((target, _)) = self.structured_math.borrow().as_ref() {
+            self.with_math_ui(matches!(target, MathTarget::Practice(_)), |ui, _| {
+                ui.set_keypad_expanded(true);
+                ui.set_focus_request(ui.get_focus_request() + 1);
+            });
+            return;
+        }
+        self.answer_preview_timer.stop();
+        match crate::structured_math::Session::new(seed) {
+            Ok(session) => {
+                let practice = matches!(target, MathTarget::Practice(_));
+                self.structured_math.replace(Some((target, session)));
+                self.with_math_ui(practice, |ui, _| {
+                    ui.set_categories(crate::structured_math::categories());
+                    ui.set_category(0);
+                    ui.set_catalog(crate::structured_math::catalog(0));
+                });
+                self.refresh_structured_math();
+                self.with_math_ui(practice, |ui, _| {
+                    ui.set_keypad_expanded(true);
+                    ui.set_open(true);
+                });
+            }
+            Err(error) => {
+                if matches!(target, MathTarget::Practice(_)) {
+                    self.toggle_answer_entry();
+                    if let Some(session) = self.practice.borrow().as_ref() {
+                        session.window.set_entry_error(error.into());
+                    }
+                } else if let Some(window) = self.main_window.borrow().as_ref() {
+                    window.set_math_error(error.into());
+                }
+            }
+        }
+    }
+
+    fn apply_structured_math(&self, latex: &str) -> AppResult<()> {
+        let active = self.structured_math.borrow();
+        let Some((target, _)) = active.as_ref() else {
+            return Err(tr!("窗口已关闭。").into());
+        };
+        let practice_target = matches!(target, MathTarget::Practice(_));
+        match target {
+            MathTarget::Content {
+                index,
+                original,
+                input,
+                path,
+            } => {
+                let mut fields = self.math_fields.borrow_mut();
+                let field = fields
+                    .get_mut(*index)
+                    .filter(|field| {
+                        field.root == *original
+                            && field.input() == *input
+                            && field.selection == *path
+                    })
+                    .ok_or_else(|| tr!("原内容已改变，请关闭公式输入后重新打开。").to_owned())?;
+                field.select(path.clone());
+                field.replace_formula(latex)?;
+                self.math_pending.set(false);
+            }
+            MathTarget::Practice(id) => {
+                let mut practice = self.practice.borrow_mut();
+                let session = practice
+                    .as_mut()
+                    .filter(|session| session.diagnostic_id == *id && !session.answered)
+                    .ok_or_else(|| tr!("原内容已改变，请关闭公式输入后重新打开。").to_owned())?;
+                let input = crate::structured_math::plain(latex);
+                session.input_history.borrow_mut().record(&input);
+                session.window.set_answer_text(input.into());
+                session.window.set_entry_error("".into());
+                session.inline_input = None;
+            }
+        }
+        drop(active);
+        self.close_structured_math();
+        self.refresh_math(true);
+        self.refresh_answer_entry(true);
+        if practice_target && let Some(session) = self.practice.borrow().as_ref() {
+            session.window.invoke_focus_answer();
+        }
+        Ok(())
     }
 
     fn preview_image(self: &Rc<Self>, image: slint::Image) {
@@ -3411,6 +3793,7 @@ impl App {
         let native_ready = Rc::new(Cell::new(!awaiting_interaction));
         let reshape_ready = native_ready.clone();
         let applied_theme = Cell::new(None);
+        let floating = self.floating.clone();
         window.window().on_winit_window_event(move |window, event| {
             crate::window_repaint::prepare(window, event);
             if matches!(
@@ -3467,13 +3850,14 @@ impl App {
                 let reshape = !matches!(event, WindowEvent::Moved(_));
                 let weak_window = weak_window.clone();
                 let ready = reshape_ready.clone();
+                let floating = floating.clone();
                 Timer::single_shot(Duration::ZERO, move || {
                     if !ready.get() {
                         return;
                     }
                     if let Some(window) = weak_window.upgrade() {
                         if reshape {
-                            FloatingWindow::reshape_and_clamp(window.window());
+                            floating.reshape_and_clamp(window.window());
                         }
                         if let Some(on_right) = FloatingWindow::tag_on_right(window.window()) {
                             window.set_tag_on_right(on_right);
@@ -3493,6 +3877,13 @@ impl App {
         window.on_toggle_entry(move || {
             if let Some(app) = weak.upgrade() {
                 app.toggle_answer_entry();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.bind_structured_math(window.global::<crate::MathInputState>());
+        window.on_open_structured_entry(move || {
+            if let Some(app) = weak.upgrade() {
+                app.open_practice_math();
             }
         });
         let weak = Rc::downgrade(self);
@@ -3610,7 +4001,6 @@ impl App {
             entry: None,
             inline_input: None,
             input_history: RefCell::default(),
-            initial_position: Cell::new(None),
         }));
         if let Err(error) = window.show() {
             self.practice.borrow_mut().take();
@@ -3707,9 +4097,6 @@ impl App {
         if let Some(on_right) = FloatingWindow::tag_on_right(session.window.window()) {
             session.window.set_tag_on_right(on_right);
         }
-        session
-            .initial_position
-            .set(FloatingWindow::position(session.window.window()));
     }
 
     fn begin_practice_interaction(&self, id: u64, origin: LearningOrigin) {
@@ -4267,6 +4654,7 @@ impl App {
     }
 
     fn close_practice(self: &Rc<Self>) {
+        self.close_structured_math_for(true);
         self.close_image_preview();
         self.answer_preview_timer.stop();
         self.feedback_timer.stop();
@@ -4279,9 +4667,7 @@ impl App {
                 FloatingWindow::position(session.window.window())
             );
             if self.library.borrow().settings.remember_position
-                && FloatingWindow::position(session.window.window())
-                    != session.initial_position.get()
-                && let Some(position) = FloatingWindow::remember(session.window.window())
+                && let Some(position) = self.floating.moved_position(session.window.window())
             {
                 let result = self.commit(|library| {
                     library.settings.popup_position = Some(position);
@@ -4387,6 +4773,7 @@ impl App {
     }
 
     fn quit(self: &Rc<Self>) {
+        self.close_structured_math();
         self.close_image_preview();
         log::info!(target: "try::app", "event=quit_requested");
         self.close_practice();

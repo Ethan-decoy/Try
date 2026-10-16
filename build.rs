@@ -10,6 +10,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/content.slint");
     println!("cargo:rerun-if-changed=ui/formula_input.slint");
     println!("cargo:rerun-if-changed=ui/inline_formula_input.slint");
+    println!("cargo:rerun-if-changed=ui/structured_math.slint");
     println!("cargo:rerun-if-changed=ui/licenses.slint");
     println!("cargo:rerun-if-changed=ui/math_palette.slint");
     println!("cargo:rerun-if-changed=ui/controls.slint");
@@ -23,10 +24,37 @@ fn main() {
         "ui/app.slint",
         slint_build::CompilerConfiguration::new()
             .with_style("fluent-light".into())
+            .with_library_paths(std::collections::HashMap::from([(
+                "math_caption_font".into(),
+                math_caption_font_library(),
+            )]))
             .with_default_translation_context(slint_build::DefaultTranslationContext::None)
             .with_bundled_translations(translations),
     )
     .expect("Slint UI compilation failed");
+}
+
+fn math_caption_font_library() -> std::path::PathBuf {
+    // Resolve the font from the same pinned package as the editor. Slint embeds
+    // it in the executable; no checkout or installed font is needed at runtime.
+    let entry = slint_math_input::slint_library_path();
+    let font = entry
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("assets/STIXTwoMath-Regular.ttf");
+    println!("cargo:rerun-if-changed={}", font.display());
+    let module = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap())
+        .join("math_caption_font.slint");
+    let source = format!(
+        "import {:?};\nexport global MathCaptionFont {{ out property <string> family: \"STIX Two Math\"; }}\n",
+        font.to_string_lossy().replace('\\', "/")
+    );
+    if std::fs::read_to_string(&module).ok().as_deref() != Some(source.as_str()) {
+        std::fs::write(&module, source).expect("Math caption font module must be writable");
+    }
+    module
 }
 
 fn compile_translations() -> std::path::PathBuf {
@@ -53,6 +81,7 @@ fn compile_translations() -> std::path::PathBuf {
         "ui/answer_pad.slint",
         "ui/formula_input.slint",
         "ui/inline_formula_input.slint",
+        "ui/structured_math.slint",
         "ui/licenses.slint",
         "ui/math_palette.slint",
         "src/app.rs",
@@ -66,6 +95,7 @@ fn compile_translations() -> std::path::PathBuf {
         "src/math_answer.rs",
         "src/math_editor.rs",
         "src/math_input.rs",
+        "src/structured_math.rs",
         "src/autostart.rs",
         "src/reminder_schedule.rs",
         "src/practice.rs",

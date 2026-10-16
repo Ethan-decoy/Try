@@ -1,0 +1,229 @@
+// Inline Try surfaces for slint-math-input. No additional native window is created.
+import { ComboBox, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { ToolButton } from "controls.slint";
+import { MathCaptionFont } from "@math_caption_font";
+
+export struct MathInputView {
+    image: image, content-width: float, content-height: float,
+    caret-x: float, caret-y: float, caret-height: float,
+    font-size: float, accessible-text: string,
+}
+export struct MathKey { label: string, token: string, hint: string, image: image }
+
+// Each host component has its own state; the App owns the active editing session.
+export global MathInputState {
+    in-out property <bool> open;
+    in-out property <bool> keypad-expanded;
+    in-out property <MathInputView> formula;
+    in-out property <string> error;
+    in-out property <bool> complete;
+    in-out property <[string]> categories;
+    in-out property <[MathKey]> catalog;
+    in-out property <int> category;
+    in-out property <int> focus-request;
+    in-out property <float> keypad-left;
+    in-out property <float> keypad-top;
+    in-out property <float> keypad-width;
+    in-out property <float> apply-center-x;
+    in-out property <float> apply-center-y;
+    in-out property <float> cancel-center-x;
+    in-out property <float> cancel-center-y;
+    callback committed(string);
+    callback key(string, bool, bool, bool) -> bool;
+    callback seek(float, float, bool);
+    callback keypad(string, bool);
+    callback choose-category(int);
+    callback apply();
+    callback dismiss();
+    callback refresh-view();
+    callback reveal(float, float);
+    in-out property <float> pad-bottom;
+}
+
+export component StructuredMathSurface inherits Rectangle {
+    in property <MathInputView> view: MathInputState.formula;
+    in property <bool> framed: true;
+    in property <int> focus-request: MathInputState.focus-request;
+    changed focus-request => { input.focus(); }
+    init => { input.focus(); }
+    committed(text) => { MathInputState.committed(text); }
+    command(text, control, shift, alt) => { return MathInputState.key(text, control, shift, alt); }
+    seek(x, y, extend) => { MathInputState.seek(x, y, extend); }
+    submitted => { MathInputState.apply(); }
+    callback committed(string);
+    callback command(string, bool, bool, bool) -> bool;
+    callback seek(float, float, bool);
+    callback submitted();
+    forward-focus: input;
+    out property <bool> has-focus: input.has-focus;
+    private property <bool> cursor-visible: true;
+    private property <float> scroll-x: max(0, view.caret-x - (self.width / 1px - 42));
+    private property <float> scroll-y: max(0, view.caret-y + view.caret-height - (self.height / 1px - 24));
+    private property <length> image-y: max(0px, (self.height - view.content-height * 1px) / 2) - scroll-y * 1px;
+    background: root.framed ? Theme.soft : transparent; border-radius: 7px;
+    border-width: root.framed ? 1px : 0px; border-color: input.has-focus ? Theme.focus : Theme.border;
+    clip: true;
+    changed view => { cursor-visible = true; }
+    Image {
+        x: 12px - root.scroll-x * 1px; y: root.image-y;
+        width: root.view.content-width * 1px; height: root.view.content-height * 1px;
+        source: root.view.image; image-fit: contain;
+    }
+    if input.has-focus && root.cursor-visible : Rectangle {
+        x: 12px + (root.view.caret-x - root.scroll-x) * 1px;
+        y: root.image-y + root.view.caret-y * 1px;
+        width: 1.5px; height: root.view.caret-height * 1px; background: Theme.ink;
+    }
+    input := TextInput {
+        x: 12px + (root.view.caret-x - root.scroll-x) * 1px;
+        y: root.image-y + root.view.caret-y * 1px;
+        width: max(16px, root.width - self.x - 12px); height: max(22px, root.view.caret-height * 1px);
+        color: Theme.ink; font-size: root.view.font-size * 1px;
+        text-cursor-width: 0px; single-line: true;
+        accessible-label: @tr("公式输入") + ": " + root.view.accessible-text;
+        edited => { if self.text != "" { root.committed(self.text); self.text = ""; } }
+        key-pressed(event) => {
+            root.cursor-visible = true;
+            if event.text == Key.Return { root.submitted(); return accept; }
+            if event.text == Key.Escape { MathInputState.dismiss(); return accept; }
+            if root.command(event.text, event.modifiers.control || event.modifiers.meta, event.modifiers.shift, event.modifiers.alt) { return accept; }
+            return reject;
+        }
+    }
+    TouchArea {
+        mouse-cursor: text;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                root.seek((self.mouse-x - 12px) / 1px + root.scroll-x, (self.mouse-y - root.image-y) / 1px, event.modifiers.shift);
+                input.focus(); root.cursor-visible = true;
+            }
+        }
+        moved => { if self.pressed { root.seek((self.mouse-x - 12px) / 1px + root.scroll-x, (self.mouse-y - root.image-y) / 1px, true); } }
+    }
+    Timer { interval: 500ms; running: input.has-focus; triggered => { root.cursor-visible = !root.cursor-visible; } }
+}
+
+export component StructuredMathPad inherits Rectangle {
+    out property <length> natural-height: layout.preferred-height;
+    height: self.natural-height;
+    vertical-stretch: 0;
+    private property <int> page;
+    private property <bool> uppercase;
+    private property <bool> selecting;
+    private property <length> keys-left: keys.absolute-position.x;
+    private property <length> keys-top: keys.absolute-position.y;
+    private property <length> keys-width: keys.visible-width;
+    private property <length> apply-x: apply-button.absolute-position.x + apply-button.width / 2;
+    private property <length> apply-y: apply-button.absolute-position.y + apply-button.height / 2;
+    private property <length> cancel-x: cancel-button.absolute-position.x + cancel-button.width / 2;
+    private property <length> pad-bottom: root.absolute-position.y + root.height;
+    changed pad-bottom => { root.measure(); }
+    private property <length> cancel-y: cancel-button.absolute-position.y + cancel-button.height / 2;
+    changed keys-left => { root.measure(); }
+    changed keys-top => { root.measure(); }
+    changed keys-width => { root.measure(); }
+    changed apply-x => { root.measure(); }
+    changed apply-y => { root.measure(); }
+    changed cancel-x => { root.measure(); }
+    changed cancel-y => { root.measure(); }
+    init => { root.measure(); }
+    function measure() {
+        MathInputState.pad-bottom = root.pad-bottom / 1px;
+        MathInputState.keypad-left = root.keys-left / 1px;
+        MathInputState.keypad-top = root.keys-top / 1px;
+        MathInputState.keypad-width = root.keys-width / 1px;
+        MathInputState.apply-center-x = root.apply-x / 1px;
+        MathInputState.apply-center-y = root.apply-y / 1px;
+        MathInputState.cancel-center-x = root.cancel-x / 1px;
+        MathInputState.cancel-center-y = root.cancel-y / 1px;
+    }
+    function refocus() { MathInputState.focus-request += 1; }
+    function press(token: string) {
+        MathInputState.keypad(token, root.selecting);
+        if token != "key:left" && token != "key:right" && token != "key:up" && token != "key:down" { root.selecting = false; }
+        root.refocus();
+    }
+    layout := VerticalLayout {
+        spacing: 6px;
+        HorizontalLayout {
+            height: 32px; spacing: 6px;
+            ToolButton { label: "123"; name: "123"; font-size: 14px; border-width: 1px; border-color: root.page == 0 ? Theme.ink : Theme.border; activated => { root.page = 0; root.refocus(); } }
+            ToolButton { label: "ABC"; name: "ABC"; font-size: 14px; border-width: 1px; border-color: root.page == 1 ? Theme.ink : Theme.border; activated => { root.page = 1; root.refocus(); } }
+            ToolButton { label: @tr("函数"); name: @tr("函数"); font-size: 14px; border-width: 1px; border-color: root.page == 2 ? Theme.ink : Theme.border; activated => { root.page = 2; root.refocus(); } }
+        }
+        if root.page == 2 : ComboBox {
+            height: 32px;
+            model: MathInputState.categories; current-index: MathInputState.category;
+            selected(value) => { MathInputState.choose-category(self.current-index); root.refocus(); }
+        }
+        keys := ScrollView {
+            height: 144px; vertical-stretch: 0;
+            horizontal-scrollbar-policy: always-off;
+            content-width: self.visible-width;
+            private property <[string]> numbers: ["7", "8", "9", "/", "√", "4", "5", "6", "*", "^", "1", "2", "3", "-", "(", "0", ".", "π", "+", ")"];
+            private property <[string]> letters: ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"];
+            private property <[string]> upper-letters: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+            private property <int> count: root.page == 2 ? MathInputState.catalog.length : root.page == 1 ? 26 : self.numbers.length;
+            private property <int> columns: root.page == 2 ? (self.visible-width < 360px ? 3 : 4) : root.page == 1 ? 7 : 5;
+            content-height: ceil(self.count / self.columns) * 36px;
+            for index in self.count : Rectangle {
+                x: mod(index, parent.columns) * (parent.content-width / parent.columns);
+                y: floor(index / parent.columns) * 36px;
+                width: parent.content-width / parent.columns - 4px; height: 32px;
+                private property <string> label: root.page == 2 ? MathInputState.catalog[index].label : root.page == 1 ? (root.uppercase ? parent.upper-letters[index] : parent.letters[index]) : parent.numbers[index];
+                private property <string> token: root.page == 2 ? MathInputState.catalog[index].token : self.label;
+                background: key-touch.has-hover ? Theme.hover : Theme.soft;
+                border-radius: 5px; border-width: 1px; border-color: key-focus.has-focus ? Theme.focus : Theme.border;
+                accessible-role: button; accessible-label: self.label;
+                accessible-action-default => { root.press(self.token); }
+                forward-focus: key-focus;
+                Text { visible: root.page != 2 || MathInputState.catalog[index].image.width == 0; text: parent.label; color: Theme.ink; font-size: 15px; font-family: root.page == 2 ? MathCaptionFont.family : ""; horizontal-alignment: center; vertical-alignment: center; }
+                Image { visible: root.page == 2; x: 6px; y: 3px; width: parent.width - 12px; height: parent.height - 6px; source: MathInputState.catalog[index].image; image-fit: contain; colorize: Theme.ink; }
+                key-focus := FocusScope {
+                    key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.press(parent.token); return accept; } return reject; }
+                }
+                key-touch := TouchArea { mouse-cursor: pointer; clicked => { root.press(parent.token); } }
+            }
+        }
+        HorizontalLayout {
+            height: 28px; spacing: 4px;
+            if root.page == 1 : ToolButton { height: 28px; label: "Aa"; name: @tr("切换大小写"); activated => { root.uppercase = !root.uppercase; root.refocus(); } }
+            ToolButton { height: 28px; label: root.selecting ? "●" : "选"; name: @tr("扩展选择"); activated => { root.selecting = !root.selecting; root.refocus(); } }
+            ToolButton { height: 28px; label: "←"; name: @tr("上一个公式位置"); activated => { root.press("key:left"); } }
+            ToolButton { height: 28px; label: "→"; name: @tr("下一个公式位置"); activated => { root.press("key:right"); } }
+            ToolButton { height: 28px; label: "↑"; name: @tr("向上移动"); activated => { root.press("key:up"); } }
+            ToolButton { height: 28px; label: "↓"; name: @tr("向下移动"); activated => { root.press("key:down"); } }
+            ToolButton { height: 28px; label: "↗"; name: @tr("在结构后继续输入"); activated => { root.press("key:next"); } }
+        }
+        HorizontalLayout {
+            height: 28px; spacing: 4px;
+            ToolButton { height: 28px; glyph: @image-url("../assets/backspace.svg"); icon-only: true; name: @tr("退格"); activated => { root.press("key:backspace"); } }
+            ToolButton { height: 28px; glyph: @image-url("../assets/undo.svg"); icon-only: true; name: @tr("撤销"); activated => { root.press("key:undo"); } }
+            ToolButton { height: 28px; glyph: @image-url("../assets/redo.svg"); icon-only: true; name: @tr("重做"); activated => { root.press("key:redo"); } }
+            ToolButton { height: 28px; label: "C"; name: @tr("清空此输入框"); activated => { root.press("key:clear"); } }
+        }
+        if MathInputState.error != "" : Text { text: MathInputState.error; color: Theme.wrong-ink; font-size: 12px; wrap: word-wrap; }
+        HorizontalLayout {
+            height: 32px; spacing: 8px;
+            cancel-button := ToolButton { label: @tr("取消"); name: @tr("取消"); font-size: 14px; border-width: 1px; border-color: Theme.border; activated => { MathInputState.dismiss(); } }
+            apply-button := ToolButton { label: @tr("应用公式"); name: @tr("应用公式"); font-size: 14px; border-width: 1px; border-color: Theme.ink; activated => { MathInputState.apply(); } }
+        }
+    }
+}
+
+export component StructuredMathPane inherits Rectangle {
+    height: layout.preferred-height;
+    // Reveal once after expansion; subsequent manual scrolling stays untouched.
+    Timer {
+        interval: 1ms; running: true;
+        triggered => { MathInputState.reveal(root.absolute-position.y / 1px, root.height / 1px); self.running = false; }
+    }
+    layout := VerticalLayout {
+        spacing: 10px;
+        StructuredMathSurface {
+            height: max(64px, min(128px, MathInputState.formula.content-height * 1px + 24px)); vertical-stretch: 0;
+        }
+        StructuredMathPad { }
+    }
+}

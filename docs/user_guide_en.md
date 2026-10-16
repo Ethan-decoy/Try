@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers `0.3.2` for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers `0.4.0` for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -71,7 +71,9 @@ Type common expressions such as `sin(pi/3)`, `sqrt(3)/2`, or supported LaTeX. Co
 
 Click a numerator, denominator or exponent to position the caret. Arrow keys move through layout; Shift plus arrows or dragging selects. Clipboard operations retain source input, and Ctrl+Z / Ctrl+Y undo and redo. Normalization supports written forms without arbitrary algebraic simplification or approximate numeric comparison.
 
-ƒ opens formula tools. The editor supports functions, symbols, fractions, roots, powers, integrals, sums, limits, matrices, cases and mixed text/math. Click the preview to edit a parameter or cell. The answer pad offers common structures and numeric operators: ✓ or Enter submits, ƒ applies and closes the pad, and Esc cancels pad edits.
+ƒ opens formula tools. The editor supports functions, symbols, fractions, roots, powers, integrals, sums, limits, matrices, cases and mixed text/math. Click the preview to edit a parameter or cell. On the practice card, click ƒ again to collapse or expand the formula keyboard, retaining unfinished formulas, the caret and undo history. You can keep typing while it is collapsed; collapsing does not check your answer. Apply formula or Enter returns the formula to the answer field; press Enter again to check it. Esc cancels the current formula edit.
+
+Expanding and collapsing follows the selected screen corner or your manually placed position. Temporary movement to fit the screen does not overwrite the remembered position.
 
 The move-out and unwrap controls adjust scope while retaining contents. C clears the current field; undo restores the previous draft and position. Clearing does not submit. Structural tools use the caret and selection; ↑ selects the outer structure and ↗ continues after it. Empty templates can be revisited.
 

@@ -288,3 +288,35 @@ export component Disclosure inherits Rectangle {
     }
     disclosure-touch := TouchArea { mouse-cursor: pointer; clicked => { root.activated(); } }
 }
+
+export component ToolButton inherits Rectangle {
+    in property <string> label;
+    in property <string> name;
+    in property <image> glyph;
+    in property <bool> icon-only;
+    in property <bool> enabled: true;
+    in property <length> font-size: 16px;
+    callback activated();
+    forward-focus: tool-focus;
+    preferred-width: 32px;
+    min-width: 28px;
+    horizontal-stretch: 1;
+    height: 32px;
+    border-radius: 4px;
+    background: tool-touch.has-hover && root.enabled ? Theme.hover : Theme.soft;
+    opacity: root.enabled ? 1 : 0.4;
+    border-width: tool-focus.has-focus ? 1px : 0px;
+    border-color: Theme.focus;
+    accessible-role: button;
+    accessible-label: root.name;
+    accessible-enabled: root.enabled;
+    Text { visible: !root.icon-only; text: root.label; color: Theme.ink; font-size: root.font-size; horizontal-alignment: center; vertical-alignment: center; }
+    Image { visible: root.icon-only; source: root.glyph; width: 18px; height: 18px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; colorize: Theme.ink; }
+    Tooltip { text: @markdown("\{root.name}"); }
+    tool-focus := FocusScope {
+        width: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; } return reject; }
+    }
+    tool-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.activated(); } }
+}

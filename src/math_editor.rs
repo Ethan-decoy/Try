@@ -700,6 +700,15 @@ impl Field {
         self.caret_to_end();
         parsed.map(|_| ())
     }
+    /// Apply an explicitly accepted external formula to the selected slot.
+    /// Import/validation happens before the original field is changed.
+    pub fn replace_formula(&mut self, latex: &str) -> Result<(), String> {
+        let node = from_latex(latex).unwrap_or_else(|_| Node::leaf(Kind::Raw, latex));
+        node.validate()?;
+        self.replace(node);
+        self.caret_to_end();
+        Ok(())
+    }
     pub fn select(&mut self, path: Vec<usize>) {
         if self.root.at(&path).is_some() {
             self.selection = path;
@@ -1930,6 +1939,22 @@ fn ungroup(node: Node) -> Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accepted_external_formula_preserves_context_and_undo() {
+        let mut field = Field::new("提示：1/2", r"\text{提示：}\frac{1}{2}");
+        let original = field.root.clone();
+        field.select(vec![1]);
+        field.replace_formula(r"\sqrt{x}").unwrap();
+        let (_, latex) = field.content().unwrap();
+        assert!(latex.contains(r"\text{提示：}"));
+        assert!(latex.contains(r"\sqrt{x}"));
+        field.undo(false);
+        assert_eq!(field.root, original);
+        let before = field.root.clone();
+        assert!(field.replace_formula(r"\frac{").is_err());
+        assert_eq!(field.root, before);
+    }
 
     #[test]
     fn empty_templates_remain_navigable_without_becoming_answers() {

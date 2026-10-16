@@ -37,9 +37,10 @@ $taskComponents.Add([ordered]@{
 Try's own source code and logo are MIT licensed. Bundled components and fonts retain their own licenses.
 Slint 1.18.1 is used under its Royalty-free 2.0 license; Try provides the official Made with Slint badge in its project README.
 STIX Two Math 2.13 is used under the SIL Open Font License 1.1.
+Structured formula editing uses slint-math-input under MIT OR Apache-2.0.
 The default FSRS 6 scalar inference subset is adapted from fsrs-rs 6.6.2 under BSD-3-Clause.
 This notice collection covers enabled normal and build dependencies for the platforms in the inventory. It is not a count of linked runtime libraries.
-The Source entry for each component identifies its exact published source archive. option-ext 0.2.0 source is available at https://crates.io/api/v1/crates/option-ext/0.2.0/download under MPL-2.0.
+The Source entry for each component identifies its published source archive or fixed source revision. option-ext 0.2.0 source is available at https://crates.io/api/v1/crates/option-ext/0.2.0/download under MPL-2.0.
 Third-party license and NOTICE text is reproduced below without changing its terms. Listing alternate upstream licenses does not change Try's selected Slint license.
 '@ }
     )

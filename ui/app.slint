@@ -5,6 +5,8 @@ import { AnswerOption, ContentForm, FormulaLabel, MathRegion, NativeText, ToolBu
 export { ImagePreviewWindow } from "image_preview.slint";
 import { AnswerPad } from "answer_pad.slint";
 import { InlineFormulaInput } from "inline_formula_input.slint";
+import { MathInputState, StructuredMathSurface, StructuredMathPad } from "structured_math.slint";
+export { MathInputState, MathInputView, MathKey } from "structured_math.slint";
 import { FormulaNavigation, FormulaPosition } from "content.slint";
 export { FormulaNavigation, FormulaPosition } from "content.slint";
 export { AnswerOption, MathRegion, NativeText } from "content.slint";
@@ -299,6 +301,8 @@ export component MainWindow inherits Window {
     in property <AnswerOption> editor-prompt-preview;
     in property <AnswerOption> editor-answer-preview;
     in property <[AnswerOption]> editor-fields;
+    in-out property <float> math-viewport-top;
+    in-out property <float> math-viewport-height;
     in property <int> math-active-field: -1;
     in property <AnswerOption> math-preview;
     in property <[MathRegion]> math-regions;
@@ -382,7 +386,7 @@ export component MainWindow inherits Window {
     out property <length> reminder-focus-top: settings-page.reminder-focus-top;
     out property <length> automatic-update-left: settings-page.automatic-update-left;
     out property <length> automatic-update-top: settings-page.automatic-update-top;
-    changed pixel-scale => { if root.editor-visible { root.preview-editor(); } }
+    changed pixel-scale => { if root.editor-visible { root.preview-editor(); } MathInputState.refresh-view(); }
 
     callback select-pack(int);
     callback toggle-pack(string, bool);
@@ -407,6 +411,7 @@ export component MainWindow inherits Window {
     callback activate-content(int);
     callback select-math-region(int);
     callback edit-math-input(string);
+    callback open-structured-math();
     callback math-position-changed(string, int, int);
     callback math-tool(string);
     callback math-parent();
@@ -788,6 +793,10 @@ export component MainWindow inherits Window {
                                 x: 12px; y: 12px; width: parent.width - 24px; height: 36px; overflow: elide;
                             }
                             if root.current-tab == 0 && root.editor-visible && !root.card-delete-pending : ScrollView {
+                                private property <float> viewport-top: self.absolute-position.y / 1px;
+                                changed viewport-top => { root.math-viewport-top = self.viewport-top; }
+                                changed height => { root.math-viewport-height = self.height / 1px; }
+                                init => { root.math-viewport-top = self.viewport-top; root.math-viewport-height = self.height / 1px; }
                                 width: parent.width; height: parent.height;
                                 horizontal-scrollbar-policy: always-off;
                                 content-width: self.visible-width;
@@ -842,6 +851,7 @@ export component MainWindow inherits Window {
                                         edited(input) => { root.edit-math-input(input); }
                                         position-changed(value, anchor, caret) => { root.math-position-changed(value, anchor, caret); }
                                         tool(name) => { root.math-tool(name); }
+                                        open-structured-math => { root.open-structured-math(); }
                                         parent => { root.math-parent(); }
                                         undo(redo) => { root.undo-math(redo); }
                                         resize-grid(rows, columns) => { root.resize-math-grid(rows, columns); }
@@ -1123,7 +1133,7 @@ export component PracticeWindow inherits Window {
     private property <length> picture-area-height: root.question-image-width > 0 ? min(220px, (root.width - 48px) * root.question-image-height / root.question-image-width) + 14px : 0px;
     private property <length> practice-content-height: max(48px, practice-prompt.preferred-height) + root.picture-area-height + 20px + root.answer-row-height + root.answer-footer-height;
     private property <length> knowledge-content-height: max(48px, practice-prompt.preferred-height) + (root.question-image-width > 0 ? root.picture-area-height + 2px : 0px) + 32px + (root.standard-answer != "" ? 16px + max(32px, standard-label.preferred-height) : 0px);
-    private property <length> answer-footer-height: root.entry-open ? root.entry-area-height : root.feedback == 2 ? max(64px, standard-label.preferred-height + 39px) : 64px;
+    private property <length> answer-footer-height: MathInputState.open ? (MathInputState.keypad-expanded ? root.structured-pad-height + 13px : max(64px, structured-error.preferred-height + 26px)) : root.entry-open ? root.entry-area-height : root.feedback == 2 ? max(64px, standard-label.preferred-height + 39px) : 64px;
     private property <length> desired-height: min(560px, max(230px, root.knowledge-only ? root.knowledge-content-height + 48px : root.practice-content-height + 42px) + root.tag-space);
     height: root.desired-height;
     // Native resize events assign height. Retain the content-derived target
@@ -1160,7 +1170,7 @@ export component PracticeWindow inherits Window {
     in property <[AnswerOption]> options;
     in property <float> option-formula-height;
     in property <int> selected-option: -1;
-    private property <length> answer-row-height: root.answer-mode == 0 ? max(48px, !root.entry-open ? min(144px, root.input-preview.formula-height * 1px + 20px) : 48px) : max(48px, root.option-formula-height * 1px + 16px);
+    private property <length> answer-row-height: MathInputState.open ? max(64px, min(112px, MathInputState.formula.content-height * 1px + 20px)) : root.answer-mode == 0 ? max(48px, !root.entry-open ? min(144px, root.input-preview.formula-height * 1px + 20px) : 48px) : max(48px, root.option-formula-height * 1px + 16px);
     in-out property <string> answer-text;
     in property <AnswerOption> input-preview;
     in property <FormulaPosition> answer-position;
@@ -1186,6 +1196,7 @@ export component PracticeWindow inherits Window {
     out property <length> answer-footer-top: answer-footer.absolute-position.y;
     out property <length> answer-footer-left: answer-footer.absolute-position.x;
     out property <length> answer-footer-width: answer-footer.width;
+    private property <length> structured-pad-height: 290px;
     private property <length> entry-area-height: max(54px, min(96px, root.input-preview.formula-height * 1px + 16px)) + 257px;
     callback answer-edited(string);
     callback entry-position-changed(string, int, int);
@@ -1193,6 +1204,7 @@ export component PracticeWindow inherits Window {
     callback input-move-caret(int, bool);
     callback input-command(string);
     callback toggle-entry();
+    callback open-structured-entry();
     callback cancel-entry();
     callback entry-command(string);
     callback select-entry-region(int);
@@ -1200,10 +1212,11 @@ export component PracticeWindow inherits Window {
     callback choose-answer(int);
     callback dismiss();
     callback rasterize-formulas(float);
-    changed pixel-scale => { root.rasterize-formulas(root.pixel-scale); }
+    changed pixel-scale => { root.rasterize-formulas(root.pixel-scale); MathInputState.refresh-view(); }
 
     public function focus-answer() {
-        if root.answer-mode == 0 && !root.knowledge-only && root.feedback == 0 { answer-input.focus(); }
+        if MathInputState.open { MathInputState.focus-request += 1; }
+        else if root.answer-mode == 0 && !root.knowledge-only && root.feedback == 0 { answer-input.focus(); }
         else { card-focus.focus(); }
     }
     init => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
@@ -1211,6 +1224,7 @@ export component PracticeWindow inherits Window {
     tag-measure := Text { visible: false; text: root.pack-tag; font-size: 11px; }
     card-focus := FocusScope {
         capture-key-pressed(event) => {
+            if event.text == Key.Escape && MathInputState.open { MathInputState.dismiss(); return accept; }
             if event.text == Key.Escape && root.entry-open { root.cancel-entry(); return accept; }
             if event.text == Key.Escape && root.feedback == 2 { return accept; }
             if event.text == Key.Escape || ((root.feedback != 0 || root.knowledge-only) && event.text == Key.Return) {
@@ -1303,11 +1317,12 @@ export component PracticeWindow inherits Window {
                         background: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft : Theme.soft;
                         border-radius: 7px;
                         border-width: root.feedback == 0 ? 1px : 2px;
-                        border-color: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 || root.entry-error != "" ? Theme.wrong-ink : answer-input.has-focus ? Theme.focus : Theme.control-border;
+                        border-color: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 || root.entry-error != "" ? Theme.wrong-ink : answer-input.has-focus || MathInputState.open ? Theme.focus : Theme.control-border;
                         accessible-role: text-input;
                         accessible-label: @tr("你的答案");
                         if !root.entry-open && root.entry-error != "" : Tooltip { text: @markdown("\{root.entry-error}"); }
                         answer-input := InlineFormulaInput {
+                            visible: !MathInputState.open;
                             x: 12px; y: 8px;
                             width: parent.width - 62px;
                             height: parent.height - 16px;
@@ -1326,12 +1341,22 @@ export component PracticeWindow inherits Window {
                             move-caret(direction, extend) => { root.input-move-caret(direction, extend); }
                             accepted => { root.submit-answer(root.answer-text); }
                         }
+                        if MathInputState.open : StructuredMathSurface {
+                            x: 0px; y: 0px; width: parent.width - 42px; height: parent.height;
+                            framed: false;
+                        }
                         formula-toggle := ToolButton {
                             x: parent.width - 38px; y: (parent.height - 32px) / 2;
                             width: 32px; height: 32px;
-                            label: "ƒ"; name: root.entry-open ? @tr("收起公式输入") : @tr("公式输入");
+                            label: "ƒ"; name: root.entry-open || (MathInputState.open && MathInputState.keypad-expanded) ? @tr("收起公式输入") : @tr("公式输入");
                             enabled: root.feedback == 0;
-                            activated => { root.toggle-entry(); }
+                            activated => {
+                                if MathInputState.open {
+                                    MathInputState.keypad-expanded = !MathInputState.keypad-expanded;
+                                    MathInputState.focus-request += 1;
+                                } else if root.entry-open { root.toggle-entry(); }
+                                else { root.open-structured-entry(); }
+                            }
                         }
                     }
                     HorizontalLayout {
@@ -1352,7 +1377,18 @@ export component PracticeWindow inherits Window {
                     height: root.answer-footer-height;
                     vertical-stretch: 0;
                     background: transparent;
-                    if root.entry-open : answer-pad := AnswerPad {
+                    if MathInputState.open : StructuredMathPad {
+                        visible: MathInputState.keypad-expanded;
+                        x: 0px; y: 13px; width: parent.width;
+                        changed natural-height => { root.structured-pad-height = self.natural-height; }
+                        init => { root.structured-pad-height = self.natural-height; }
+                    }
+                    structured-error := Text {
+                        visible: MathInputState.open && !MathInputState.keypad-expanded && MathInputState.error != "";
+                        x: 0px; y: 13px; width: parent.width; height: self.preferred-height;
+                        text: MathInputState.error; color: Theme.wrong-ink; font-size: 12px; wrap: word-wrap;
+                    }
+                    if root.entry-open && !MathInputState.open : answer-pad := AnswerPad {
                         x: 0px; y: 13px; width: parent.width; height: parent.height - 13px;
                         preview: root.input-preview; regions: root.entry-regions;
                         selection: root.entry-selection; error: root.entry-error;

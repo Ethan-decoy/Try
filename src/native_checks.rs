@@ -1686,6 +1686,495 @@ fn key(window: &slint::Window, text: slint::SharedString) {
     window.dispatch_event(WindowEvent::KeyReleased { text });
 }
 
+fn scroll_math_catalog(card: &PracticeWindow, delta_y: f32) {
+    let ui = card.global::<crate::MathInputState>();
+    let position = slint::LogicalPosition::new(
+        ui.get_keypad_left() + ui.get_keypad_width() / 2.0,
+        ui.get_keypad_top() + 70.0,
+    );
+    card.window()
+        .dispatch_event(WindowEvent::PointerMoved { position });
+    card.window().dispatch_event(WindowEvent::PointerScrolled {
+        position,
+        delta_x: 0.0,
+        delta_y,
+    });
+}
+
+fn practice_bottom(card: &PracticeWindow) -> i32 {
+    let (_, y) = FloatingWindow::position(card.window()).unwrap();
+    y + card.window().size().height as i32
+}
+
+fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase: u8) {
+    let delay = if phase >= 17 { 140 } else { 450 };
+    Timer::single_shot(Duration::from_millis(delay), move || {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let app = &checks.app;
+            match phase {
+                0 => {
+                    let main = main_window(app);
+                    main.invoke_edit_card(0);
+                    main.invoke_activate_content(1);
+                    main.invoke_open_structured_math();
+                    assert!(main.global::<crate::MathInputState>().get_open());
+                }
+                1 => {
+                    let main = main_window(app);
+                    let ui = main.global::<crate::MathInputState>();
+                    ui.invoke_keypad("key:clear".into(), false);
+                    key(main.window(), "2/".into());
+                    assert!(!ui.get_complete());
+                    ui.invoke_apply();
+                    assert!(!ui.get_error().is_empty());
+                    main.invoke_set_editor_answer_mode(2);
+                    assert_eq!(main.get_editor_answer_mode(), 0);
+                    assert!(ui.get_open());
+                    assert_eq!(
+                        app.math_fields.borrow()[1].content().unwrap().1,
+                        r"\frac{1}{2}"
+                    );
+                    snapshot(
+                        main.window(),
+                        checks.output.join("authoring_incomplete.png"),
+                    );
+                }
+                2 => {
+                    let main = main_window(app);
+                    let ui = main.global::<crate::MathInputState>();
+                    key(main.window(), "3".into());
+                    assert!(ui.get_complete());
+                    ui.invoke_key("a".into(), true, false, false);
+                    snapshot(main.window(), checks.output.join("authoring_inline.png"));
+                    ui.invoke_apply();
+                    assert!(!ui.get_open());
+                    assert!(app.structured_math.borrow().is_none());
+                    assert!(
+                        app.math_fields.borrow()[1]
+                            .content()
+                            .unwrap()
+                            .1
+                            .contains(r"\frac{2}{3}")
+                    );
+                }
+                3 => {
+                    let main = main_window(app);
+                    main.invoke_undo_math(false);
+                    assert_eq!(app.math_fields.borrow()[1].root.plain(), "1/2");
+                    main.invoke_undo_math(true);
+                    assert_eq!(app.math_fields.borrow()[1].root.plain(), "2/3");
+                    main.invoke_save_editor();
+                    assert!(!main.get_editor_visible(), "{}", main.get_editor_error());
+                    let saved = app.store.load().unwrap();
+                    assert!(
+                        saved.packs[0].cards[0]
+                            .answer_latex
+                            .as_ref()
+                            .unwrap()
+                            .contains(r"\frac{2}{3}")
+                    );
+                    main.invoke_edit_card(0);
+                    main.invoke_activate_content(1);
+                    main.invoke_open_structured_math();
+                }
+                4 => {
+                    let main = main_window(app);
+                    let ui = main.global::<crate::MathInputState>();
+                    ui.invoke_keypad("key:clear".into(), false);
+                    key(main.window(), "9".into());
+                    key(main.window(), Key::Escape.into());
+                    assert!(!ui.get_open());
+                    assert_eq!(app.math_fields.borrow()[1].root.plain(), "2/3");
+                    main.invoke_cancel_editor();
+                    app.show_practice().unwrap();
+                }
+                5 => {
+                    let card = practice_window(app);
+                    bottom.set(practice_bottom(&card));
+                    assert!(!card.global::<crate::MathInputState>().get_open());
+                    click_structured_formula_button(&card);
+                    assert!(card.global::<crate::MathInputState>().get_open());
+                    assert!(card.global::<crate::MathInputState>().get_keypad_expanded());
+                }
+                6 => {
+                    let card = practice_window(app);
+                    assert_eq!(
+                        practice_bottom(&card),
+                        bottom.get(),
+                        "expansion keeps the bottom edge anchored"
+                    );
+                    let ui = card.global::<crate::MathInputState>();
+                    let size = card
+                        .window()
+                        .size()
+                        .to_logical(card.window().scale_factor());
+                    assert!((size.width - 320.0).abs() < 2.0);
+                    assert!(size.height > 400.0 && size.height <= 561.0, "{size:?}");
+                    assert!(
+                        ui.get_apply_center_y() + 16.0 <= ui.get_pad_bottom() + 0.5,
+                        "inline buttons must fit their panel"
+                    );
+                    assert!(ui.get_keypad_width() > 200.0 && ui.get_keypad_width() <= 272.0);
+                    click_structured_formula_button(&card);
+                    assert!(ui.get_open(), "collapsing must retain the active editor");
+                    assert!(!ui.get_keypad_expanded());
+                    assert!(!ui.get_complete());
+                    assert!(
+                        ui.get_error().is_empty(),
+                        "collapse must not validate an empty draft"
+                    );
+                    assert_eq!(card.get_feedback(), 0);
+                }
+                7 => {
+                    let card = practice_window(app);
+                    assert_eq!(
+                        practice_bottom(&card),
+                        bottom.get(),
+                        "collapse returns the card to the bottom edge"
+                    );
+                    assert!(
+                        card.window()
+                            .size()
+                            .to_logical(card.window().scale_factor())
+                            .height
+                            < 320.0,
+                        "collapsing an empty formula must shrink the card"
+                    );
+                    snapshot(
+                        card.window(),
+                        checks.output.join("practice_collapsed_empty.png"),
+                    );
+                    click_structured_formula_button(&card);
+                    assert!(card.global::<crate::MathInputState>().get_keypad_expanded());
+                }
+                8 => {
+                    let card = practice_window(app);
+                    let ui = card.global::<crate::MathInputState>();
+                    for (column, row) in [(1.0, 2.0), (3.0, 0.0)] {
+                        pointer_click(
+                            card.window(),
+                            slint::LogicalPosition::new(
+                                ui.get_keypad_left() + (column + 0.5) * ui.get_keypad_width() / 5.0,
+                                ui.get_keypad_top() + row * 36.0 + 16.0,
+                            ),
+                        );
+                    }
+                    key(card.window(), Key::Return.into());
+                    assert!(!ui.get_error().is_empty());
+                    assert_eq!(card.get_feedback(), 0);
+                    assert!(!app.practice.borrow().as_ref().unwrap().answered);
+                    snapshot(card.window(), checks.output.join("practice_incomplete.png"));
+                    let draft = ui.get_formula().accessible_text;
+                    let error = ui.get_error();
+                    click_structured_formula_button(&card);
+                    assert!(ui.get_open());
+                    assert!(!ui.get_keypad_expanded());
+                    assert_eq!(ui.get_formula().accessible_text, draft);
+                    assert_eq!(ui.get_error(), error, "collapse must not apply the draft");
+                }
+                9 => {
+                    let card = practice_window(app);
+                    assert_eq!(
+                        practice_bottom(&card),
+                        bottom.get(),
+                        "an incomplete formula also returns to the bottom edge"
+                    );
+                    let ui = card.global::<crate::MathInputState>();
+                    assert!(!ui.get_keypad_expanded());
+                    assert!(
+                        card.window()
+                            .size()
+                            .to_logical(card.window().scale_factor())
+                            .height
+                            < 320.0
+                    );
+                    snapshot(
+                        card.window(),
+                        checks.output.join("practice_collapsed_incomplete.png"),
+                    );
+                    // The same controller and caret remain live without the pad.
+                    key(card.window(), "3".into());
+                    ui.invoke_key("z".into(), true, false, false);
+                    assert!(!ui.get_complete());
+                    ui.invoke_key("y".into(), true, false, false);
+                    assert!(ui.get_complete());
+                    assert_eq!(
+                        crate::structured_math::plain(
+                            &app.structured_math
+                                .borrow()
+                                .as_ref()
+                                .unwrap()
+                                .1
+                                .complete()
+                                .unwrap()
+                        ),
+                        "2/3"
+                    );
+                    assert_eq!(card.get_feedback(), 0);
+                    assert_eq!(card.get_answer_text(), "");
+                    click_structured_formula_button(&card);
+                    assert!(ui.get_keypad_expanded());
+                }
+                10 => {
+                    let card = practice_window(app);
+                    let ui = card.global::<crate::MathInputState>();
+                    snapshot(
+                        card.window(),
+                        checks.output.join("practice_inline_dark.png"),
+                    );
+                    pointer_click(
+                        card.window(),
+                        slint::LogicalPosition::new(
+                            ui.get_keypad_left() + ui.get_keypad_width() * 5.0 / 6.0,
+                            ui.get_keypad_top() - 22.0,
+                        ),
+                    );
+                }
+                11 => {
+                    let card = practice_window(app);
+                    let ui = card.global::<crate::MathInputState>();
+                    ui.invoke_choose_category(2);
+                    assert!(ui.get_catalog().row_count() > 0);
+                    snapshot(
+                        card.window(),
+                        checks.output.join("practice_inline_functions.png"),
+                    );
+                    key(card.window(), Key::Escape.into());
+                    assert!(!ui.get_open());
+                    assert_eq!(card.get_answer_text(), "");
+                    click_structured_formula_button(&card);
+                    card.global::<crate::MathInputState>()
+                        .invoke_committed("2/3".into());
+                    app.library.borrow_mut().settings.appearance = Appearance::Light;
+                    app.sync_appearance();
+                }
+                12 => {
+                    let card = practice_window(app);
+                    assert!(!card.get_dark_theme());
+                    snapshot(
+                        card.window(),
+                        checks.output.join("practice_inline_light.png"),
+                    );
+                    click_structured_formula_button(&card);
+                    let ui = card.global::<crate::MathInputState>();
+                    assert!(ui.get_open());
+                    assert!(!ui.get_keypad_expanded());
+                    assert!(ui.get_complete());
+                    assert_eq!(card.get_feedback(), 0, "collapsing does not grade");
+                    assert_eq!(card.get_answer_text(), "");
+                }
+                13 => {
+                    let card = practice_window(app);
+                    assert_eq!(
+                        practice_bottom(&card),
+                        bottom.get(),
+                        "a complete formula also returns to the bottom edge"
+                    );
+                    assert!(
+                        card.window()
+                            .size()
+                            .to_logical(card.window().scale_factor())
+                            .height
+                            < 320.0
+                    );
+                    snapshot(
+                        card.window(),
+                        checks.output.join("practice_collapsed_complete.png"),
+                    );
+                    key(card.window(), Key::Return.into());
+                    let ui = card.global::<crate::MathInputState>();
+                    assert!(!ui.get_open());
+                    assert!(!ui.get_keypad_expanded());
+                    assert_eq!(card.get_answer_text(), "2/3");
+                    assert_eq!(card.get_feedback(), 0, "applying does not grade");
+                }
+                14 => {
+                    let card = practice_window(app);
+                    key(card.window(), Key::Return.into());
+                    assert_eq!(card.get_feedback(), 1);
+                    snapshot(card.window(), checks.output.join("practice_correct.png"));
+                    app.close_practice();
+                    app.show_practice().unwrap();
+                    practice_window(app).invoke_open_structured_entry();
+                }
+                15 => {
+                    let card = practice_window(app);
+                    assert!(app.structured_math.borrow().is_some());
+                    app.close_practice();
+                    assert!(app.structured_math.borrow().is_none());
+                    assert!(
+                        app.store.load().unwrap().settings.popup_position.is_none(),
+                        "automatic resize placement must not be saved as a manual position"
+                    );
+                    assert!(!card.global::<crate::MathInputState>().get_open());
+                    assert!(!card.global::<crate::MathInputState>().get_keypad_expanded());
+                    app.library.borrow_mut().settings.appearance = Appearance::Dark;
+                    app.sync_appearance();
+                    app.show_practice().unwrap();
+                    let card = practice_window(app);
+                    card.set_prompt("公式工具".into());
+                    card.set_prompt_formula_width(0.0);
+                    card.invoke_open_structured_entry();
+                }
+                16 => {
+                    let card = practice_window(app);
+                    let ui = card.global::<crate::MathInputState>();
+                    pointer_click(
+                        card.window(),
+                        slint::LogicalPosition::new(
+                            ui.get_keypad_left() + ui.get_keypad_width() * 5.0 / 6.0,
+                            ui.get_keypad_top() - 22.0,
+                        ),
+                    );
+                }
+                17..=46 => {
+                    let card = practice_window(app);
+                    let ui = card.global::<crate::MathInputState>();
+                    let group = i32::from((phase - 17) / 2);
+                    if (phase - 17).is_multiple_of(2) {
+                        ui.invoke_choose_category(group);
+                        scroll_math_catalog(&card, 800.0);
+                        for key in ui.get_catalog().iter() {
+                            if key.label.chars().any(
+                                |c| matches!(c, '\u{2e80}'..='\u{9fff}' | '\u{f900}'..='\u{faff}'),
+                            ) {
+                                assert_eq!(
+                                    key.image.size().width,
+                                    0,
+                                    "{} must use native text",
+                                    key.label
+                                );
+                            } else {
+                                assert!(
+                                    key.image.size().width > 0,
+                                    "{} has no math preview",
+                                    key.label
+                                );
+                            }
+                        }
+                        snapshot(
+                            card.window(),
+                            checks.output.join(format!("catalog_{group:02}_top.png")),
+                        );
+                        scroll_math_catalog(&card, -800.0);
+                    } else {
+                        snapshot(
+                            card.window(),
+                            checks.output.join(format!("catalog_{group:02}_bottom.png")),
+                        );
+                    }
+                }
+                47 => {
+                    let card = practice_window(app);
+                    app.library.borrow_mut().settings.appearance = Appearance::Light;
+                    app.sync_appearance();
+                    card.global::<crate::MathInputState>()
+                        .invoke_choose_category(0);
+                    scroll_math_catalog(&card, 800.0);
+                }
+                48 => {
+                    let card = practice_window(app);
+                    snapshot(
+                        card.window(),
+                        checks.output.join("catalog_light_basic_top.png"),
+                    );
+                    scroll_math_catalog(&card, -800.0);
+                }
+                49 => {
+                    let card = practice_window(app);
+                    let ui = card.global::<crate::MathInputState>();
+                    snapshot(
+                        card.window(),
+                        checks.output.join("catalog_light_basic_bottom.png"),
+                    );
+                    // Basic catalog index 15 is the native "文字" caption, now
+                    // on the second visible row after scrolling to the end.
+                    pointer_click(
+                        card.window(),
+                        slint::LogicalPosition::new(
+                            ui.get_keypad_left() + ui.get_keypad_width() / 6.0,
+                            ui.get_keypad_top() + 36.0 + 16.0,
+                        ),
+                    );
+                    assert_eq!(
+                        app.structured_math
+                            .borrow()
+                            .as_ref()
+                            .unwrap()
+                            .1
+                            .complete()
+                            .unwrap(),
+                        r"\text{text}"
+                    );
+                    ui.invoke_dismiss();
+                    assert_eq!(card.get_answer_text(), "");
+                    checks.finished.set(true);
+                    println!(
+                        "Structured math: inline editing, empty/incomplete/complete formula toggling, collapsed typing and undo/redo, persistence, height, corner anchoring without saving temporary moves, lifecycle and all 319 catalog captions in 15 groups passed; Chinese/native labels, structural scripts and both themes verified."
+                    );
+                    app.quit();
+                    return;
+                }
+                _ => unreachable!(),
+            }
+            structured_math_phase(checks.clone(), bottom, phase + 1);
+        }));
+        if outcome.is_err() {
+            checks.app.quit();
+        }
+    });
+}
+
+#[test]
+#[ignore = "opens isolated authoring and practice windows with inline math"]
+fn native_structured_math() {
+    let output =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("local_artifacts/structured_math_check");
+    std::fs::create_dir_all(&output).unwrap();
+    let profile = tempfile::tempdir_in(&output).unwrap();
+    let store = open_regression_profile(profile.path());
+    let mut library = store.load().unwrap();
+    library.settings.pause = PracticePause::UntilResumed;
+    library.settings.feedback_seconds = 60;
+    library.settings.popup_corner = PopupCorner::BottomRight;
+    library.settings.remember_position = true;
+    library.settings.popup_position = None;
+    library.set_pack_enabled("test_pack", false).unwrap();
+    let id = library.packs[0].cards[0].id.clone().unwrap();
+    library.set_card_enabled("test_pack", &id, true).unwrap();
+    library
+        .set_card_answer_mode("test_pack", &id, AnswerMode::Input)
+        .unwrap();
+    store.save(&library).unwrap();
+    let floating = Rc::new(FloatingWindow::new(&library.settings));
+    let hook = floating.clone();
+    let mut builder = EventLoop::<slint::winit_030::SlintEvent>::with_user_event();
+    builder.with_any_thread(true);
+    slint::BackendSelector::new()
+        .backend_name("winit".into())
+        .renderer_name("software".into())
+        .with_winit_event_loop_builder(builder)
+        .with_winit_window_attributes_hook(move |attributes| hook.attributes(attributes))
+        .select()
+        .unwrap();
+    let app = App::new(store, library, floating).unwrap();
+    app.start(false).unwrap();
+    let checks = Rc::new(AnswerChecks {
+        app,
+        output,
+        finished: Cell::new(false),
+        focus_probe: RefCell::new(None),
+    });
+    structured_math_phase(checks.clone(), Rc::new(Cell::new(0)), 0);
+    let watchdog = checks.app.clone();
+    Timer::single_shot(Duration::from_secs(20), move || watchdog.quit());
+    slint::run_event_loop_until_quit().unwrap();
+    assert!(
+        checks.finished.get(),
+        "Structured math integration failed or timed out"
+    );
+}
+
 fn click_option(window: &PracticeWindow, index: usize) {
     let size = window
         .window()
@@ -3867,7 +4356,13 @@ fn native_multi_pack_participation() {
     );
 }
 
-fn click_formula_button(card: &PracticeWindow) {
+fn open_legacy_formula_pad(card: &PracticeWindow) {
+    // This path remains for older mixed-content/unsupported-formula fallbacks.
+    // The visible ƒ button is exercised by native_structured_math instead.
+    card.invoke_toggle_entry();
+}
+
+fn click_structured_formula_button(card: &PracticeWindow) {
     pointer_click(
         card.window(),
         slint::LogicalPosition::new(
@@ -4022,7 +4517,7 @@ fn formula_editing_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 4 => {
                     let card = practice_window(app);
                     key(card.window(), "12+34".into());
-                    click_formula_button(&card);
+                    open_legacy_formula_pad(&card);
                     assert!(card.get_entry_open());
                 }
                 5 => {
@@ -4269,7 +4764,7 @@ fn formula_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 }
                 5 => {
                     let card = practice_window(app);
-                    click_formula_button(&card);
+                    open_legacy_formula_pad(&card);
                     assert!(card.get_entry_open());
                     assert!(card.get_entry_input().is_empty());
                 }
@@ -4345,7 +4840,7 @@ fn formula_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 9 => {
                     let card = practice_window(app);
                     key(card.window(), "sqrt(3)/2".into());
-                    click_formula_button(&card);
+                    open_legacy_formula_pad(&card);
                     click_formula_key(&card, 0);
                     key(card.window(), Key::Escape.into());
                     assert!(!card.get_entry_open());
@@ -4632,7 +5127,7 @@ fn inline_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         snapshot(card.window(), checks.output.join("inline_correct.png"));
                         app.close_practice();
                         app.show_practice().unwrap();
-                        click_formula_button(&practice_window(app));
+                        open_legacy_formula_pad(&practice_window(app));
                     }
                     10 => {
                         assert!(card.get_entry_open());
@@ -4640,7 +5135,7 @@ fn inline_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     }
                     11 => {
                         assert_eq!(card.get_entry_input(), "sqrt(3)/2");
-                        click_formula_button(&card);
+                        open_legacy_formula_pad(&card);
                     }
                     12 => {
                         assert!(!card.get_entry_open());
@@ -5986,11 +6481,15 @@ struct LicenseChecks {
 fn assert_notice_panel(main: &MainWindow, visible: bool) {
     let buffer = main.window().take_snapshot().unwrap();
     let scale = main.window().scale_factor();
-    let x = ((main.get_about_left() + 280.0) * scale) as usize;
+    // Sample above the shorter About popup and over the sidebar: its background
+    // differs from the notice panel, unlike the same-colored workspace at x+280.
+    let x = ((main.get_about_left() + 20.0) * scale) as usize;
     let y = ((main.get_notices_top() + 60.0) * scale) as usize;
     let offset = (y * buffer.width() as usize + x) * 4;
     let pixel = &buffer.as_bytes()[offset..offset + 3];
-    if (pixel == [41, 41, 41]) != visible {
+    // Regression profiles use the dark Theme.panel (#1c1c1c). Keep an exact
+    // pixel check; the former #292929 expectation also fails on older builds.
+    if (pixel == [28, 28, 28]) != visible {
         snapshot(
             main.window(),
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -5998,7 +6497,7 @@ fn assert_notice_panel(main: &MainWindow, visible: bool) {
         );
     }
     assert_eq!(
-        pixel == [41, 41, 41],
+        pixel == [28, 28, 28],
         visible,
         "Notice popup visibility at ({x}, {y}), pixel {pixel:?}"
     );
@@ -6062,7 +6561,7 @@ fn license_phase(checks: Rc<LicenseChecks>, phase: u8) {
                     let offset = (y * buffer.width() as usize + x) * 4;
                     assert_ne!(
                         &buffer.as_bytes()[offset..offset + 3],
-                        [41, 41, 41],
+                        [28, 28, 28],
                         "Resizing dismisses the old popup"
                     );
                     main.invoke_show_about();

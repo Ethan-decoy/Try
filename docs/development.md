@@ -63,6 +63,10 @@ Windows 在提醒到期时调用 [SHQueryUserNotificationState](https://learn.mi
 
 `native_update_check` 覆盖中英文进度、取消、窗口重建、就绪状态、编辑保护、退出交接和关于页固定几何。`python scripts/check_in_app_update.py --executable <程序> --output <记录.json>` 在临时目录中验证实际替换、重启、配置／题库／图片保留及失败回退；macOS 传入 app，Linux 另以 `--helper` 指定 AppImage 内原生程序。Windows 使用 `./scripts/build_windows.ps1 -Action build -Distribution -Example update_driver` 构建独立交接样例，再给检查脚本传入 `--driver local_artifacts/target/x86_64-pc-windows-msvc/release/examples/update_driver.exe`，可同时验证父进程的真实暂存、握手与退出。该检查已接入三平台打包流程。生成的 job、截图、备份与记录不进入源码仓库。
 
+## 公式输入接入
+
+从 `0.4.0` 起，公式输入通过 `src/structured_math.rs` 连接独立的 `slint-math-input`：编辑、导航、结构选区、排版与历史由该模块管理，Try 提供主题、内容校验与应用策略。题目和练习卡片的 ƒ 在当前字段下方展开公式键盘，直接编辑排版后的公式，不创建独立窗口，也不显示 LaTeX 查看按钮。卡片随内容增高，高内容使用内部滚动；应用后再写回选中的内容或答案；取消保留原稿，未完成公式不能应用，应用到答案框不会直接判分。普通文字与旧格式兼容路径仍保留。按钮中的说明使用原生文字与字体回退，界面从同一固定依赖内嵌 STIX Two Math，补全混合标签里的数学符号；数学预览将 Unicode 上下标简写转换为对应结构，避免把缺字方框画进图标。可运行 `./scripts/build_windows.ps1 -Action test -NativeChecks -NativeTest native_structured_math` 检查接入；ƒ 可以展开或收起键盘并保留未完成草稿；收起不应用或判题。卡片尺寸变化时保留角落或手动位置，临时边界避让不写成记忆位置。
+
 ## 翻译
 
 界面使用 [English 目录](../translations/en.json)。新增 `@tr`／`tr!` 文案时同步目录，保持占位符不变。原始目录为 JSON，构建生成的 gettext 文件留在 Cargo 输出目录；知识包内容保持作者原语言。

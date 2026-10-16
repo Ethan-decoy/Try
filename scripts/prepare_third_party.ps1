@@ -139,10 +139,16 @@ foreach ($taskPackage in ($taskMetadata.packages | Where-Object source | Sort-Ob
         }
     }
     if ($taskTexts.Count -eq 0 -or -not $taskPackage.license) { $taskUnresolved += "$($taskPackage.name) $($taskPackage.version)" }
+    $taskSource = "https://crates.io/api/v1/crates/$($taskPackage.name)/$($taskPackage.version)/download"
+    if ($taskPackage.source -match '^git\+(https://github\.com/[^?#]+?)(?:\?[^#]*)?#([a-f0-9]{40})$') {
+        $taskSource = ($Matches[1] -replace '\.git$', '') + '/tree/' + $Matches[2]
+    } elseif (-not $taskPackage.source.StartsWith('registry+')) {
+        throw "Unsupported dependency source for $taskKey."
+    }
     $taskRecords += [ordered]@{
         name = $taskPackage.name; version = $taskPackage.version
         declared_license = $taskPackage.license
-        source = "https://crates.io/api/v1/crates/$($taskPackage.name)/$($taskPackage.version)/download"
+        source = $taskSource
         repository = $taskPackage.repository; texts = $taskTexts
     }
 }

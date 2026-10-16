@@ -6,6 +6,8 @@ Try 自有代码使用 MIT，Slint 1.18.1 使用 Royalty-free 2.0；其他组件
 
 Slint 许可原文见 [Royalty-free 2.0](../third_party_licenses/slint_royalty_free_2_0.md)。MIT 授权 Try 自有代码不会改变 Slint 的署名与分发条件。当前精简关于采用公开网页署名路径，中英文 README 保留官方 badge；公开下载前核对页面已经公开且 badge 容易找到。
 
+结构化公式输入使用 [slint-math-input 0.1.0-preview.1 的固定公开提交](https://github.com/Ethan-decoy/slint_math_input/tree/9574fd2dbd5fc4a445ebdebc820702705c096ef7)。组件采用 MIT OR Apache-2.0，两个许可原文及其字体声明随程序内嵌；输入与排版在本地完成。
+
 单题记忆使用固定默认参数的 FSRS 6 标量推断子集，改编自 [fsrs-rs 6.6.2 的固定提交](https://github.com/open-spaced-repetition/fsrs-rs/tree/6088949b99d44f46f5328fd7289d209b9a842b68)。保留原始版权与完整 [BSD-3-Clause](../third_party_licenses/fsrs_bsd_3_clause.txt)，声明随二进制内嵌。该子集不包含参数训练；Try 的提醒与加权选题是独立策略。内容指纹使用 `sha2 0.10.9`，其许可与传递依赖由最终清单收集。
 
 `option-ext 0.2.0` 使用 [MPL-2.0](../third_party_licenses/option_ext_mpl_2_0.txt)，对应程序条目保留 [固定发布源码入口](https://crates.io/api/v1/crates/option-ext/0.2.0/download)。`dispatch 0.2.0` 的 MIT 声明特殊来源见 [参考说明](../third_party_licenses/dispatch_0_2_0_notice.txt)。
@@ -18,7 +20,7 @@ Slint 许可原文见 [Royalty-free 2.0](../third_party_licenses/slint_royalty_f
 
 该版本内嵌 STIX Two Math 2.13，字体为 SIL Open Font License 1.1，原始字体许可及版权声明见 [STIX OFL](../third_party_licenses/stix_two_math_ofl.txt)。STIX Fonts 是 The Institute of Electrical and Electronics Engineers, Inc. 的商标。
 
-以上文件复制自已下载的固定发布包；单文件分发将这些声明与字体许可证内嵌为可查看的文本。当前项目尚未公开发布。
+以上文件复制自已下载的固定发布包；单文件分发将这些声明与字体许可证内嵌为可查看的文本。
 
 日志使用 `log 0.4.34` 与 `flexi_logger 0.31.10`，均为 MIT OR Apache-2.0，保留从对应发布包原样复制并核对校验值的许可：
 
