@@ -1,8 +1,10 @@
 # Changelog
 
-Notable changes are recorded here using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See the [release policy](docs/release_policy.md) for Try's conventions during `0.x` development. Versions through `0.4.0` were published as GitHub prereleases.
+Notable changes are recorded here using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See the [release policy](docs/release_policy.md) for Try's conventions during `0.x` development. Try's `0.x` releases are published as GitHub prereleases.
 
 ## [Unreleased]
+
+## [0.4.1] - 2026-10-19
 
 ### Fixed
 
@@ -80,7 +82,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Ethan-decoy/Try/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Ethan-decoy/Try/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/Ethan-decoy/Try/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Ethan-decoy/Try/compare/v0.3.0...v0.3.1
