@@ -41,6 +41,10 @@ Windows 辅助脚本会定位工具链、MSVC 和 SDK，并将产物留在 `loca
 
 `src/` 包含题库、练习、学习状态、公式、窗口和持久化逻辑；`ui/` 定义 Slint 界面；`knowledge_packs/` 提供五个领域的入门示例与三份进阶模板；`scripts/` 负责构建、分发和检查。回归测试使用独立构造的数据，不读取个人题库。
 
+`src/app.rs` 负责应用生命周期、托盘和共享资源。其私有模块放在 `src/app/`，按主窗口、知识包、题目编辑、图片、公式接入、练习窗口、设置和更新组织。功能通过 `App` 内部协作，题库、判分、学习调度、存储和更新安装等领域逻辑仍由独立库模块负责。
+
+`src/structured_math.rs` 负责结构化编辑器的宿主接入；其剪贴板适配与整段输入共用表达式规范化，保留组件的结构、选区与撤销语义。`src/text_history.rs` 只维护普通文字的有界撤销记录。原生检查按功能放在 `src/native_checks/`，`mod.rs` 保留共享窗口与输入驱动；测试通过当前可见的输入框和 ƒ 入口验证练习，不保留已退役的公式面板入口。
+
 知识包使用稳定的包与题目标识。导入、编辑和参与范围配置在校验、保存成功后生效，失败保留此前数据。公式判分保留绝对值、范数和有意义的分组。
 
 动态选题使用固定默认参数的 FSRS 6 标量子集，时间和随机源由调用方提供；知识展示在读取学习状态前分流。个人状态独立保存，不随知识包导出。上游源码与许可见 [第三方声明](third_party_notices.md)。
@@ -52,6 +56,8 @@ Windows 在提醒到期时调用 [SHQueryUserNotificationState](https://learn.mi
 静态题面由 `src/media.rs` 管理：源 PNG／JPEG 在后台规范化为有界 PNG，以内容哈希保存到数据目录的 `media/`。库和草稿只记录资源标识，显示时只解码当前题；收起窗口释放像素。`Store` 负责将含图包组装为单个 JSON 或从中安装资源，`media` 传输字段不进入 `state.json`。导入、编辑失败保留原题库；清理只处理已识别且未被库、当前草稿或待确认导入引用的自有文件。修改图片改变各题型的学习指纹，未添加图片的题目保留原指纹。格式与配额见 [知识包格式](knowledge_pack_format.md#题面图片与可携带资源)。Windows 可用 `./scripts/build_windows.ps1 -Action test -NativeChecks -NativeTest native_picture_questions` 验证隔离题库中的编辑、取消、保存、显示、放大与资源清理；生成的截图留在 `local_artifacts/`。
 
 版本检查使用固定 GitHub Release 源，忽略草稿。预发布通道的 REST API 请求受限时，沿用系统代理检查同一仓库的公开 Atom 订阅源，并确认 `checksums.sha256` 已可匿名访问；只有标签、没有公开分发附件的候选不会提示更新。订阅源限制为 1 MiB／10000 个 XML 节点，最多探测三个版本的附件，不跟随下载重定向；正式版本通道保留 API 的预发布过滤规则。两条路径均失败时保留受限错误，关于页显示稍后重试。自动检查默认开启，启动后延迟至少 30 秒，每 24 小时最多一次；手动检查可覆盖预算，同时只运行一个检查任务。缓存受大小限制，结果安静显示在关于页。显式网络验证可分别运行 `update_check::tests::live_release_check` 与 `update_check::tests::live_rate_limited_api_fallback`，后者模拟 API 403 后通过实际传输检查公开源，不反复请求已耗尽的 API 额度。
+
+Windows 窗口激活直接调用 [SetForegroundWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)，避免 Winit 0.30 的 `focus_window()` 为取得前台权限而模拟 Alt 按下／释放，误触其他软件的全局快捷键。系统拒绝激活时仅请求窗口注意提示，保留系统焦点限制；自动提醒的聚焦开关与非聚焦输入保护继续生效。
 
 ## 应用内更新
 
@@ -65,7 +71,7 @@ Windows 在提醒到期时调用 [SHQueryUserNotificationState](https://learn.mi
 
 ## 公式输入接入
 
-从 `0.4.0` 起，公式输入通过 `src/structured_math.rs` 连接独立的 `slint-math-input`：编辑、导航、结构选区、排版与历史由该模块管理，Try 提供主题、内容校验与应用策略。题目和练习卡片的 ƒ 在当前字段下方展开公式键盘，直接编辑排版后的公式，不创建独立窗口，也不显示 LaTeX 查看按钮。卡片随内容增高，高内容使用内部滚动；应用后再写回选中的内容或答案；取消保留原稿，未完成公式不能应用，应用到答案框不会直接判分。普通文字与旧格式兼容路径仍保留。按钮中的说明使用原生文字与字体回退，界面从同一固定依赖内嵌 STIX Two Math，补全混合标签里的数学符号；数学预览将 Unicode 上下标简写转换为对应结构，避免把缺字方框画进图标。可运行 `./scripts/build_windows.ps1 -Action test -NativeChecks -NativeTest native_structured_math` 检查接入；ƒ 可以展开或收起键盘并保留未完成草稿；收起不应用或判题。卡片尺寸变化时保留角落或手动位置，临时边界避让不写成记忆位置。
+从 `0.4.0` 起，公式输入通过 `src/structured_math.rs` 连接独立的 `slint-math-input`：编辑、导航、结构选区、排版与历史由该模块管理，Try 提供主题、内容校验与应用策略。题目和练习卡片的 ƒ 在当前字段下方展开公式键盘，直接编辑排版后的公式，不创建独立窗口，也不显示 LaTeX 查看按钮。卡片随内容增高，高内容使用内部滚动；题目编辑器应用后写回选中内容，取消保留原稿。练习作答在同一个输入控件中直接编辑公式，ƒ 仅开合键盘；Enter 核对答案，未完成的结构提示补齐。普通文字继续使用原生输入和输入法。按钮中的说明使用原生文字与字体回退，界面从同一固定依赖内嵌 STIX Two Math，补全混合标签里的数学符号；数学预览将 Unicode 上下标简写转换为对应结构，避免把缺字方框画进图标。可运行 `./scripts/build_windows.ps1 -Action test -NativeChecks -NativeTest native_structured_math` 检查接入；ƒ 可以展开或收起键盘并保留未完成草稿；收起不应用或判题。卡片尺寸变化时保留角落或手动位置，临时边界避让不写成记忆位置。
 
 ## 翻译
 
@@ -100,13 +106,11 @@ Windows 在提醒到期时调用 [SHQueryUserNotificationState](https://learn.mi
 ./scripts/setup_git.ps1
 ```
 
-macOS/Linux 或 Git Bash 使用 `sh scripts/setup_git.sh`。提交标题使用中文 Conventional Commits，例如 `fix(ui): 修复菜单宽度`。新路径使用小写 ASCII snake_case。
+macOS/Linux 或 Git Bash 使用 `sh scripts/setup_git.sh`。提交、版本选择与变更日志统一按[提交与发布规范](release_policy.md)执行。新路径使用小写 ASCII snake_case。
 
-反馈和调试先在工作区整理，需要检查点时保存在 `local_artifacts/`。用户要求保存里程碑或准备发布后，将一个完整功能、修复或文档批次的实现、必要说明和验证结论一起提交；单次生成记录按 [仓库内容](#仓库内容) 保存。提交前运行与改动有关的检查，文档修改检查链接与一致性，代码修改执行相关测试、Clippy 和格式检查。
+提交前运行与改动有关的检查：文档修改检查链接与一致性，代码修改执行相关测试、Clippy 和格式检查。单次生成记录按[仓库内容](#仓库内容)保存。
 
-首次公开前可将已验证首版整理为一个完整提交。公开或共享主分支后，以有意义的增量提交保存后续批次，保持已有历史稳定。使用短期分支和 PR 时，可通过 Squash and merge 将同一改动的调试提交合成一个主分支提交；一个版本可以包含多个完整批次。
-
-版本标签固定发布来源，主分支可继续维护文档。未影响程序或必要分发内容的说明、开发约定或测试数据修改，无需重建已有发布包。具体来源与校验要求见 [发布说明](release_checklist.md#构建来源)。
+版本标签与程序来源的核对方式见[构建来源](release_checklist.md#构建来源)。
 
 ## 诊断
 

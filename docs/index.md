@@ -13,4 +13,5 @@
 
 - [许可](licensing.md) · [第三方声明](third_party_notices.md)。
 - [开发说明](development.md) · [贡献说明](../contributing.md)：构建、检查、提交与仓库内容的保留范围。
+- [提交与发布规范](release_policy.md) · [变更日志](../changelog.md)：提交格式、版本选择与版本变化记录。
 - [发布与平台范围](release_checklist.md)：分发要求与当前平台边界。

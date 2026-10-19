@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers `0.4.0` for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers the current development source, including unreleased changes, for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -67,11 +67,13 @@ Export still produces one JSON file, with the pictures included. Importing it on
 
 ## Formulas
 
-Type common expressions such as `sin(pi/3)`, `sqrt(3)/2`, or supported LaTeX. Complete formulas are typeset after a brief typing pause. Ordinary text and incomplete drafts such as `sqrt(` remain editable text. Submitting an unfinished formula in a math question keeps the draft open with a completion hint.
+Type common expressions such as `sin(pi/3)`, `sqrt(3)/2`, or supported LaTeX without opening the keypad first. Recognized structures are edited directly in their typeset layout. Unfinished fractions, roots and other structures in math questions remain drafts; submitting them shows a completion hint. Ordinary text retains native text input and input methods.
 
-Click a numerator, denominator or exponent to position the caret. Arrow keys move through layout; Shift plus arrows or dragging selects. Clipboard operations retain source input, and Ctrl+Z / Ctrl+Y undo and redo. Normalization supports written forms without arbitrary algebraic simplification or approximate numeric comparison.
+Click a numerator, denominator or exponent to position the caret. Arrow keys move through layout; Shift plus arrows or dragging selects. Formula clipboard operations exchange supported LaTeX; ordinary text keeps its source. Ctrl+Z / Ctrl+Y undo and redo. Normalization supports written forms without arbitrary algebraic simplification or approximate numeric comparison.
 
-ƒ opens formula tools. The editor supports functions, symbols, fractions, roots, powers, integrals, sums, limits, matrices, cases and mixed text/math. Click the preview to edit a parameter or cell. On the practice card, click ƒ again to collapse or expand the formula keyboard, retaining unfinished formulas, the caret and undo history. You can keep typing while it is collapsed; collapsing does not check your answer. Apply formula or Enter returns the formula to the answer field; press Enter again to check it. Esc cancels the current formula edit.
+ƒ opens the keypad below the field, with functions, symbols, fractions, roots, powers, integrals, sums, limits, matrices and cases. Practice uses the same input control with the keypad open or closed, retaining unfinished formulas, the caret, selection and undo history. Enter checks the answer directly; unfinished formulas show a completion hint. Esc collapses an open keypad; with it closed, Esc dismisses an unanswered card.
+
+In the question editor, ƒ edits the selected formula content. Apply formula or Enter writes it back to that field; Esc cancels that edit. Ordinary text and mixed text/math remain available in the content editor.
 
 Expanding and collapsing follows the selected screen corner or your manually placed position. Temporary movement to fit the screen does not overwrite the remembered position.
 

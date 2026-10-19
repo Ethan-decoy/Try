@@ -373,6 +373,9 @@ impl FloatingWindow {
     pub fn activate(window: &slint::Window) {
         window.with_winit_window(|native| {
             log::debug!(target: "try::floating_window", "event=window_activation_requested window={:?}", native.id());
+            #[cfg(target_os = "windows")]
+            windows::activate(native);
+            #[cfg(not(target_os = "windows"))]
             native.focus_window();
         });
     }
@@ -535,6 +538,23 @@ mod windows {
         match native.window_handle().ok()?.as_raw() {
             RawWindowHandle::Win32(handle) => Some(handle.hwnd.get() as HWND),
             _ => None,
+        }
+    }
+
+    pub fn activate(native: &winit::window::Window) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, SetForegroundWindow,
+        };
+        let Some(hwnd) = handle(native) else {
+            return;
+        };
+        // Winit 0.30's focus_window injects an extended Alt press/release to
+        // bypass foreground restrictions. Global hotkeys observe those events.
+        // Request activation directly and respect the system's focus decision.
+        // SAFETY: hwnd is borrowed from this live window on its owning thread.
+        if unsafe { GetForegroundWindow() != hwnd && SetForegroundWindow(hwnd) == 0 } {
+            native.request_user_attention(Some(winit::window::UserAttentionType::Informational));
+            log::debug!(target: "try::floating_window", "event=window_activation_deferred");
         }
     }
 

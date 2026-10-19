@@ -4,6 +4,8 @@ use slint::{ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
 use slint_math_input::gui::MathInputController;
 use r#try::{knowledge::AppResult, math_editor, tr};
 
+mod clipboard;
+
 pub struct Session {
     controller: MathInputController,
 }
@@ -15,7 +17,14 @@ pub enum Seed {
 
 impl Session {
     pub fn new(seed: Seed) -> AppResult<Self> {
-        let mut controller = MathInputController::new();
+        Self::with_clipboard(seed, clipboard::SystemClipboard::default())
+    }
+
+    fn with_clipboard(
+        seed: Seed,
+        access: impl slint_math_input::gui::ClipboardAccess + 'static,
+    ) -> AppResult<Self> {
+        let mut controller = MathInputController::with_clipboard(clipboard::normalize(access));
         controller.editor.font_size = 22.0;
         match seed {
             Seed::Latex(latex) if !latex.trim().is_empty() => controller
@@ -23,7 +32,7 @@ impl Session {
                 .import_latex(&latex)
                 .map_err(|e| e.to_string())?,
             Seed::Typing(text) if !text.is_empty() => {
-                controller.insert(&text);
+                insert_text(&mut controller, &text);
                 if let Some(error) = &controller.error {
                     return Err(error.to_string());
                 }
@@ -33,7 +42,7 @@ impl Session {
         Ok(Self { controller })
     }
     pub fn insert(&mut self, text: &str) {
-        self.controller.insert(text);
+        insert_text(&mut self.controller, text);
     }
     pub fn key(&mut self, text: &str, control: bool, shift: bool, alt: bool) -> bool {
         self.controller.key(text, control, shift, alt)
@@ -46,6 +55,9 @@ impl Session {
     }
     pub fn complete(&self) -> AppResult<String> {
         complete(&self.controller)
+    }
+    pub fn source(&self) -> String {
+        plain(&self.controller.editor.latex_preview())
     }
     pub fn error(&self) -> String {
         self.controller
@@ -69,6 +81,19 @@ impl Session {
             font_size: view.font_size,
             accessible_text: view.spoken.into(),
         })
+    }
+}
+
+fn insert_text(controller: &mut MathInputController, text: &str) {
+    // A whole expression arrives from native editing or an IME commit. Parse
+    // its written grouping before inserting: replaying sqrt(3)/2 as shortcut
+    // keystrokes would create parentheses inside the root and divide there.
+    // Single keystrokes and unfinished structures still use the editor's live
+    // structural shortcuts. Paste records one undoable edit at the selection.
+    if let Some(latex) = clipboard::expression_latex(text) {
+        controller.error = controller.editor.paste(&latex).err();
+    } else {
+        controller.insert(text);
     }
 }
 
@@ -205,6 +230,62 @@ pub fn plain(latex: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use slint_math_input::gui::ClipboardAccess;
+    use std::{cell::RefCell, rc::Rc};
+
+    struct TestClipboard(Rc<RefCell<String>>);
+
+    impl ClipboardAccess for TestClipboard {
+        fn read_text(&mut self) -> Result<String, slint_math_input::Error> {
+            Ok(self.0.borrow().clone())
+        }
+        fn write_text(&mut self, text: String) -> Result<(), slint_math_input::Error> {
+            *self.0.borrow_mut() = text;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn clipboard_and_committed_expressions_share_grouping_and_undo() {
+        let content = Rc::new(RefCell::new("sqrt(3)/2".to_owned()));
+        let mut session =
+            Session::with_clipboard(Seed::Typing("x+1".into()), TestClipboard(content.clone()))
+                .unwrap();
+        session.key("a", true, false, false);
+        assert!(session.key("v", true, false, false));
+        assert_eq!(session.complete().unwrap(), r"\frac{\sqrt{3}}{2}");
+        session.key("z", true, false, false);
+        assert_eq!(session.source(), "x+1");
+        session.key("y", true, false, false);
+        assert_eq!(session.source(), "sqrt(3)/2");
+        session.key("a", true, false, false);
+        session.key("x", true, false, false);
+        assert_eq!(content.borrow().as_str(), r"\frac{\sqrt{3}}{2}");
+        assert!(session.complete().is_err());
+        session.key("v", true, false, false);
+        assert_eq!(session.source(), "sqrt(3)/2");
+        *content.borrow_mut() = r"\frac{".into();
+        session.key("a", true, false, false);
+        session.key("v", true, false, false);
+        assert!(!session.error().is_empty());
+        assert_eq!(
+            session.source(),
+            "sqrt(3)/2",
+            "a failed paste preserves the formula"
+        );
+    }
+
+    #[test]
+    fn whole_expressions_keep_grouping_when_seeded_and_replaced() {
+        let mut session = Session::new(Seed::Typing("sqrt(3)/2".into())).unwrap();
+        assert_eq!(session.complete().unwrap(), r"\frac{\sqrt{3}}{2}");
+        assert_eq!(session.source(), "sqrt(3)/2");
+        session.key("a", true, false, false);
+        session.insert("sqrt(5)/4");
+        assert_eq!(session.complete().unwrap(), r"\frac{\sqrt{5}}{4}");
+        session.key("z", true, false, false);
+        assert_eq!(session.complete().unwrap(), r"\frac{\sqrt{3}}{2}");
+    }
 
     #[test]
     fn host_rejects_incomplete_or_oversized_formulas_and_keeps_draft() {

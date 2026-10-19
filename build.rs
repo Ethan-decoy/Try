@@ -9,7 +9,6 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/theme.slint");
     println!("cargo:rerun-if-changed=ui/content.slint");
     println!("cargo:rerun-if-changed=ui/formula_input.slint");
-    println!("cargo:rerun-if-changed=ui/inline_formula_input.slint");
     println!("cargo:rerun-if-changed=ui/structured_math.slint");
     println!("cargo:rerun-if-changed=ui/licenses.slint");
     println!("cargo:rerun-if-changed=ui/math_palette.slint");
@@ -59,7 +58,6 @@ fn math_caption_font_library() -> std::path::PathBuf {
 
 fn compile_translations() -> std::path::PathBuf {
     println!("cargo:rerun-if-changed=translations/en.json");
-    println!("cargo:rerun-if-changed=ui/answer_pad.slint");
     let catalog: std::collections::BTreeMap<String, String> = serde_json::from_slice(
         &std::fs::read("translations/en.json").expect("Translation catalog must be readable"),
     )
@@ -71,16 +69,14 @@ fn compile_translations() -> std::path::PathBuf {
             "Translation placeholders must match: {source}"
         );
     }
-    for path in [
+    let mut sources: Vec<String> = [
         "ui/app.slint",
         "ui/image_preview.slint",
         "ui/settings.slint",
         "ui/content.slint",
         "ui/controls.slint",
         "ui/quick_answer.slint",
-        "ui/answer_pad.slint",
         "ui/formula_input.slint",
-        "ui/inline_formula_input.slint",
         "ui/structured_math.slint",
         "ui/licenses.slint",
         "ui/math_palette.slint",
@@ -94,7 +90,7 @@ fn compile_translations() -> std::path::PathBuf {
         "src/formula.rs",
         "src/math_answer.rs",
         "src/math_editor.rs",
-        "src/math_input.rs",
+        "src/text_history.rs",
         "src/structured_math.rs",
         "src/autostart.rs",
         "src/reminder_schedule.rs",
@@ -103,9 +99,24 @@ fn compile_translations() -> std::path::PathBuf {
         "src/learning_store.rs",
         "src/updater.rs",
         "src/update_install.rs",
-    ] {
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    for directory in ["src/app", "src/structured_math"] {
+        println!("cargo:rerun-if-changed={directory}");
+        sources.extend(
+            std::fs::read_dir(directory)
+                .expect("Source directory must be readable")
+                .map(|entry| entry.expect("Source entry must be readable").path())
+                .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+                .map(|path| path.to_string_lossy().replace('\\', "/")),
+        );
+    }
+    sources.sort();
+    for path in sources {
         println!("cargo:rerun-if-changed={path}");
-        let source = std::fs::read_to_string(path).expect("Translation source must be readable");
+        let source = std::fs::read_to_string(&path).expect("Translation source must be readable");
         let production = source.split("#[cfg(test)]").next().unwrap();
         for marker in ["@tr(", "tr!("] {
             for rest in production.split(marker).skip(1) {

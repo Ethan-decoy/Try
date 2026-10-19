@@ -14,6 +14,7 @@ export struct MathKey { label: string, token: string, hint: string, image: image
 // Each host component has its own state; the App owns the active editing session.
 export global MathInputState {
     in-out property <bool> open;
+    in-out property <bool> practice;
     in-out property <bool> keypad-expanded;
     in-out property <MathInputView> formula;
     in-out property <string> error;
@@ -43,10 +44,40 @@ export global MathInputState {
 
 export component StructuredMathSurface inherits Rectangle {
     in property <MathInputView> view: MathInputState.formula;
+    in property <bool> structured: true;
+    in property <bool> enabled: true;
+    in property <string> plain-input;
+    in property <int> plain-anchor;
+    in property <int> plain-caret;
+    in property <int> plain-revision;
+    callback plain-edited(string);
+    callback plain-position-changed(string, int, int);
+    callback plain-command(string);
+    private property <bool> restoring;
+    changed plain-input => {
+        if !root.structured {
+            root.restoring = true;
+            input.text = root.plain-input;
+            root.restoring = false;
+        }
+    }
+    changed plain-revision => { root.restore-plain(); }
+    changed structured => {
+        if root.structured { input.text = ""; }
+        else { root.restore-plain(); }
+    }
+    function restore-plain() {
+        if !root.structured {
+            root.restoring = true;
+            input.text = root.plain-input;
+            input.set-selection-offsets(root.plain-anchor, root.plain-caret);
+            root.restoring = false;
+        }
+    }
     in property <bool> framed: true;
     in property <int> focus-request: MathInputState.focus-request;
     changed focus-request => { input.focus(); }
-    init => { input.focus(); }
+    init => { root.restore-plain(); if root.structured { input.focus(); } }
     committed(text) => { MathInputState.committed(text); }
     command(text, control, shift, alt) => { return MathInputState.key(text, control, shift, alt); }
     seek(x, y, extend) => { MathInputState.seek(x, y, extend); }
@@ -57,41 +88,71 @@ export component StructuredMathSurface inherits Rectangle {
     callback submitted();
     forward-focus: input;
     out property <bool> has-focus: input.has-focus;
+    out property <length> canvas-left: root.absolute-position.x + 12px - root.scroll-x * 1px;
+    out property <length> canvas-top: root.absolute-position.y + root.image-y;
+    out property <float> canvas-scale: 1;
     private property <bool> cursor-visible: true;
-    private property <float> scroll-x: max(0, view.caret-x - (self.width / 1px - 42));
-    private property <float> scroll-y: max(0, view.caret-y + view.caret-height - (self.height / 1px - 24));
+    private property <length> plain-scroll;
+    private property <float> scroll-x: root.structured ? max(0, view.caret-x - (self.width / 1px - 42)) : 0;
+    private property <float> scroll-y: root.structured ? max(0, view.caret-y + view.caret-height - (self.height / 1px - 24)) : 0;
     private property <length> image-y: max(0px, (self.height - view.content-height * 1px) / 2) - scroll-y * 1px;
     background: root.framed ? Theme.soft : transparent; border-radius: 7px;
     border-width: root.framed ? 1px : 0px; border-color: input.has-focus ? Theme.focus : Theme.border;
     clip: true;
     changed view => { cursor-visible = true; }
     Image {
+        visible: root.structured;
         x: 12px - root.scroll-x * 1px; y: root.image-y;
         width: root.view.content-width * 1px; height: root.view.content-height * 1px;
         source: root.view.image; image-fit: contain;
     }
-    if input.has-focus && root.cursor-visible : Rectangle {
+    if root.structured && input.has-focus && root.cursor-visible : Rectangle {
         x: 12px + (root.view.caret-x - root.scroll-x) * 1px;
         y: root.image-y + root.view.caret-y * 1px;
         width: 1.5px; height: root.view.caret-height * 1px; background: Theme.ink;
     }
     input := TextInput {
-        x: 12px + (root.view.caret-x - root.scroll-x) * 1px;
-        y: root.image-y + root.view.caret-y * 1px;
-        width: max(16px, root.width - self.x - 12px); height: max(22px, root.view.caret-height * 1px);
-        color: Theme.ink; font-size: root.view.font-size * 1px;
-        text-cursor-width: 0px; single-line: true;
-        accessible-label: @tr("公式输入") + ": " + root.view.accessible-text;
-        edited => { if self.text != "" { root.committed(self.text); self.text = ""; } }
+        x: root.structured ? 12px + (root.view.caret-x - root.scroll-x) * 1px : 12px + root.plain-scroll;
+        y: root.structured ? root.image-y + root.view.caret-y * 1px : 0px;
+        width: root.structured ? max(16px, root.width - self.x - 12px) : root.width - 24px;
+        height: root.structured ? max(22px, root.view.caret-height * 1px) : root.height;
+        enabled: root.enabled;
+        color: Theme.ink; font-size: root.structured ? root.view.font-size * 1px : 22px;
+        vertical-alignment: center;
+        horizontal-alignment: root.structured ? left : center;
+        text-cursor-width: root.structured ? 0px : 1px; single-line: true;
+        accessible-label: root.structured ? @tr("公式输入") + ": " + root.view.accessible-text : @tr("你的答案");
+        edited => {
+            if root.structured {
+                if self.text != "" { root.committed(self.text); self.text = ""; }
+            } else {
+                root.plain-edited(self.text);
+                if !root.structured && !root.restoring { root.plain-position-changed(self.text, self.anchor-position-byte-offset, self.cursor-position-byte-offset); }
+            }
+        }
+        cursor-position-changed(position) => {
+            if !root.structured {
+                if !root.restoring { root.plain-position-changed(self.text, self.anchor-position-byte-offset, self.cursor-position-byte-offset); }
+                if position.x + root.plain-scroll < 0px { root.plain-scroll = -position.x; }
+                else if position.x + root.plain-scroll > self.width - 1px { root.plain-scroll = self.width - position.x - 1px; }
+                if root.plain-scroll > 0px { root.plain-scroll = 0px; }
+            }
+        }
         key-pressed(event) => {
             root.cursor-visible = true;
             if event.text == Key.Return { root.submitted(); return accept; }
-            if event.text == Key.Escape { MathInputState.dismiss(); return accept; }
-            if root.command(event.text, event.modifiers.control || event.modifiers.meta, event.modifiers.shift, event.modifiers.alt) { return accept; }
+            if root.structured {
+                if event.text == Key.Escape { MathInputState.dismiss(); return accept; }
+                if root.command(event.text, event.modifiers.control || event.modifiers.meta, event.modifiers.shift, event.modifiers.alt) { return accept; }
+            } else if !event.modifiers.alt && (event.modifiers.control || event.modifiers.meta) {
+                if event.text == "z" || event.text == "Z" { root.plain-command(event.modifiers.shift ? "redo" : "undo"); return accept; }
+                if event.text == "y" || event.text == "Y" { root.plain-command("redo"); return accept; }
+            }
             return reject;
         }
     }
     TouchArea {
+        enabled: root.structured && root.enabled;
         mouse-cursor: text;
         pointer-event(event) => {
             if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
@@ -206,8 +267,8 @@ export component StructuredMathPad inherits Rectangle {
         if MathInputState.error != "" : Text { text: MathInputState.error; color: Theme.wrong-ink; font-size: 12px; wrap: word-wrap; }
         HorizontalLayout {
             height: 32px; spacing: 8px;
-            cancel-button := ToolButton { label: @tr("取消"); name: @tr("取消"); font-size: 14px; border-width: 1px; border-color: Theme.border; activated => { MathInputState.dismiss(); } }
-            apply-button := ToolButton { label: @tr("应用公式"); name: @tr("应用公式"); font-size: 14px; border-width: 1px; border-color: Theme.ink; activated => { MathInputState.apply(); } }
+            cancel-button := ToolButton { visible: !MathInputState.practice; label: @tr("取消"); name: @tr("取消"); font-size: 14px; border-width: 1px; border-color: Theme.border; activated => { MathInputState.dismiss(); } }
+            apply-button := ToolButton { label: MathInputState.practice ? @tr("收起公式输入") : @tr("应用公式"); name: self.label; font-size: 14px; border-width: 1px; border-color: Theme.ink; activated => { MathInputState.apply(); } }
         }
     }
 }

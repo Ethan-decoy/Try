@@ -1,5 +1,5 @@
 //! Formula recognition and notation matching; no numeric approximation or algebraic evaluation.
-use crate::math_editor::{self, Field, Kind, Node};
+use crate::math_editor::{self, Kind, Node};
 
 pub fn recognize(input: &str, math_hint: bool) -> Option<Node> {
     let input = input.trim();
@@ -52,14 +52,34 @@ pub fn recognize_inline(input: &str, math_hint: bool) -> Option<Node> {
         .flatten()
 }
 
-pub fn editor(input: &str) -> Field {
-    if let Some(node) = recognize(input, true) {
-        return Field::new(input, &node.tex());
+/// Start structural editing as soon as notation needs it. Plain words and
+/// source-code answers retain native text/IME editing rather than a math overlay.
+pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
+    // Keep a partly written function call native until its parentheses close.
+    // Importing its complete expression avoids replaying written parentheses
+    // as an extra group inside the editor's automatic function shortcut.
+    if !input.contains('\\') && input.contains('(') && recognize_inline(input, math_hint).is_none()
+    {
+        return false;
     }
-    let mut field = Field::new("", "");
-    field.insert("math").expect("an empty math slot is valid");
-    let _ = field.update(input);
-    field
+    // A trailing operator without mathematical context is ambiguous (C++,
+    // command flags, word fragments). Wait for a complete expression instead.
+    if !math_hint
+        && input
+            .trim_end()
+            .ends_with(['+', '-', '*', '×', '/', '^', '_', '='])
+    {
+        return false;
+    }
+    if input.chars().any(|c| {
+        matches!(c, '\u{3040}'..='\u{30ff}' | '\u{3400}'..='\u{9fff}' | '\u{ac00}'..='\u{d7af}')
+    }) {
+        return false;
+    }
+    let notation = math_editor::looks_mathematical(input)
+        || input.starts_with('\\')
+        || input.contains(['+', '-', '−', '*', '×']);
+    notation && (math_hint || recognize_inline(input, false).is_some() || input.starts_with('\\'))
 }
 
 /// A partially typed formula stays a draft when Enter is pressed. Ordinary
@@ -173,6 +193,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn structural_editing_starts_without_a_keypad_and_preserves_plain_answers() {
+        for text in [
+            "Paris",
+            "犹豫",
+            "1 海里",
+            "well-being",
+            "&mut T",
+            "C++",
+            "Vec<T>",
+            "123",
+        ] {
+            assert!(!starts_structured_edit(text, false), "{text}");
+        }
+        for text in ["1/2", "sqrt(3)/2", "x+y", "x^2", r"\frac{1}{2}"] {
+            assert!(starts_structured_edit(text, false), "{text}");
+        }
+        for text in ["sqrt(", "sqrt(3", "sin("] {
+            assert!(!starts_structured_edit(text, true), "{text}");
+        }
+        for text in ["1/", "x^", r"\frac{1}{"] {
+            assert!(starts_structured_edit(text, true), "{text}");
+        }
+    }
+
+    #[test]
     fn inline_recognition_preserves_prose_and_unfinished_drafts() {
         for text in [
             "Paris",
@@ -276,18 +321,5 @@ mod tests {
         assert!(!matches("sqrt(", "√3/2", None, &[]));
         assert!(recognize("hesitate", false).is_none());
         assert!(recognize(&"1".repeat(1001), true).is_none());
-    }
-
-    #[test]
-    fn mouse_structures_keep_unfilled_slots_and_build_a_complete_answer() {
-        let mut field = editor("");
-        field.insert("fraction").unwrap();
-        field.update("2").unwrap();
-        assert!(field.content().is_err());
-        field.select(vec![0]);
-        field.insert("root").unwrap();
-        field.update("3").unwrap();
-        let (text, tex) = field.content().unwrap();
-        assert!(matches(&text, "√3/2", Some(&tex), &[]));
     }
 }

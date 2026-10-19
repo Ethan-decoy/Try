@@ -36,10 +36,12 @@ python scripts/check_in_app_update.py --executable ./local_artifacts/releases/wi
 
 ## 发布条件
 
+- 按[提交与发布规范](release_policy.md)审阅本批次的改动类型与兼容性，选择版本；`Cargo.toml`、锁文件中的本项目版本、标签和内嵌版本一致。
+- 整理 `changelog.md` 的 `Unreleased` 条目与分类；公开发布时记录实际 UTC 日期、更新版本比较链接，Release 正文取自本版本条目。不兼容变化须提供迁移或替代方法。
 - 先通过相关功能检查，再从干净源码构建，完成包、架构、声明与隔离启动校验。
 - 发布新版本时同步中英文 README 的版本页和平台下载链接。预发布版使用明确的版本链接；正式版可使用 GitHub 的 [`releases/latest` 入口](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases)。
 - 软件包只包含程序与必要分发内容，个人题库、设置、学习记录和日志留在本地。
 - 公开下载前确认 README／下载页的 Made with Slint badge 可见。[许可说明](licensing.md)
-- 仓库公开与 Release 发布分别由维护者决定；提交组织与首次公开前的历史审阅按 [开发约定](development.md#提交规范) 执行。
+- 仓库公开与 Release 发布分别由维护者决定；提交组织按[提交与发布规范](release_policy.md)执行，首次公开前同时审阅将公开的文件与历史。
 
 公开仓库的 GitHub Actions 已启用，检查 `main` 和 Pull Request，也可从固定版本标签手动启动三平台构建。构建产物先校验并整理到 Release 草稿，正式发布另行确认。

@@ -10,7 +10,6 @@ pub mod learning;
 pub mod learning_store;
 pub mod math_answer;
 pub mod math_editor;
-pub mod math_input;
 pub mod math_palette;
 mod math_vocabulary;
 pub mod media;
@@ -19,6 +18,7 @@ pub mod reminder_schedule;
 pub mod storage;
 #[cfg(any(test, feature = "native_checks"))]
 pub mod test_fixtures;
+pub mod text_history;
 pub mod update_check;
 pub mod update_install;
 pub mod update_schedule;
