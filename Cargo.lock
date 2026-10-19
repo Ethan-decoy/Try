@@ -4022,7 +4022,7 @@ dependencies = [
 [[package]]
 name = "slint-math-input"
 version = "0.1.0-preview.1"
-source = "git+https://github.com/Ethan-decoy/slint_math_input.git?rev=9574fd2dbd5fc4a445ebdebc820702705c096ef7#9574fd2dbd5fc4a445ebdebc820702705c096ef7"
+source = "git+https://github.com/Ethan-decoy/slint_math_input.git?rev=ba783b79dba4dd5ff5fc8193c5e3a05f1a2d85b6#ba783b79dba4dd5ff5fc8193c5e3a05f1a2d85b6"
 dependencies = [
  "arboard",
  "serde",

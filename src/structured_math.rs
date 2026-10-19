@@ -246,6 +246,41 @@ mod tests {
     }
 
     #[test]
+    fn host_clipboard_paste_resets_vertical_navigation_column() {
+        let clipboard = Rc::new(RefCell::new(r"\frac{1}{a}".to_owned()));
+        let mut session =
+            Session::with_clipboard(Seed::Typing("1/2".into()), TestClipboard(clipboard)).unwrap();
+        let up = char::from(slint::platform::Key::UpArrow).to_string();
+        assert!(session.key(&up, false, false, false));
+        assert!(session.key("v", true, false, false));
+        assert!(session.error().is_empty());
+        assert!(session.key(&up, false, false, false));
+        assert_eq!(session.controller.editor.cursor().offset, 1);
+    }
+
+    #[test]
+    fn host_home_and_end_reset_vertical_navigation_column() {
+        use slint::platform::Key;
+        for end in [false, true] {
+            let mut session = Session::new(Seed::Typing("12/34".into())).unwrap();
+            if end {
+                assert!(session.key(&char::from(Key::Home).to_string(), false, false, false));
+            }
+            for key in [
+                Key::UpArrow,
+                if end { Key::End } else { Key::Home },
+                Key::DownArrow,
+            ] {
+                assert!(session.key(&char::from(key).to_string(), false, false, false));
+            }
+            assert_eq!(
+                session.controller.editor.cursor().offset,
+                if end { 2 } else { 0 }
+            );
+        }
+    }
+
+    #[test]
     fn clipboard_and_committed_expressions_share_grouping_and_undo() {
         let content = Rc::new(RefCell::new("sqrt(3)/2".to_owned()));
         let mut session =

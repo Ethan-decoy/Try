@@ -6,7 +6,7 @@ Try 自有代码使用 MIT，Slint 1.18.1 使用 Royalty-free 2.0；其他组件
 
 Slint 许可原文见 [Royalty-free 2.0](../third_party_licenses/slint_royalty_free_2_0.md)。MIT 授权 Try 自有代码不会改变 Slint 的署名与分发条件。当前精简关于采用公开网页署名路径，中英文 README 保留官方 badge；公开下载前核对页面已经公开且 badge 容易找到。
 
-结构化公式输入使用 [slint-math-input 0.1.0-preview.1 的固定公开提交](https://github.com/Ethan-decoy/slint_math_input/tree/9574fd2dbd5fc4a445ebdebc820702705c096ef7)。组件采用 MIT OR Apache-2.0，两个许可原文及其字体声明随程序内嵌；输入与排版在本地完成。
+结构化公式输入使用 [slint-math-input 0.1.0-preview.1 及后续光标导航修复的固定公开提交](https://github.com/Ethan-decoy/slint_math_input/tree/ba783b79dba4dd5ff5fc8193c5e3a05f1a2d85b6)。组件采用 MIT OR Apache-2.0，两个许可原文及其字体声明随程序内嵌；输入与排版在本地完成。
 
 单题记忆使用固定默认参数的 FSRS 6 标量推断子集，改编自 [fsrs-rs 6.6.2 的固定提交](https://github.com/open-spaced-repetition/fsrs-rs/tree/6088949b99d44f46f5328fd7289d209b9a842b68)。保留原始版权与完整 [BSD-3-Clause](../third_party_licenses/fsrs_bsd_3_clause.txt)，声明随二进制内嵌。该子集不包含参数训练；Try 的提醒与加权选题是独立策略。内容指纹使用 `sha2 0.10.9`，其许可与传递依赖由最终清单收集。
 
