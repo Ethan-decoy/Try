@@ -10,7 +10,7 @@ import urllib.request
 
 
 SOURCES = [
-    ("runtime_source.tar.gz", "https://codeload.github.com/AppImage/type2-runtime/tar.gz/8f39b89e2ac31e1640b3d3f7e9a5108e6ce805fa", "c449eb42c2190820872631f5e22f8e15b1e985a36dc4a9e2de3585bb7536c785"),
+    ("runtime_source.tar.gz", "https://codeload.github.com/AppImage/type2-runtime/tar.gz/fedfad51acc2860b2916a1eef32ba4a500ff31ef", "e27ea3c837e9c660e1a9a2993b673ae93bbb53077330efba8654031e302d4e8e"),
     ("fuse_3_15_0.tar.xz", "https://github.com/libfuse/libfuse/releases/download/fuse-3.15.0/fuse-3.15.0.tar.xz", "70589cfd5e1cff7ccd6ac91c86c01be340b227285c5e200baa284e401eea2ca0"),
     ("squashfuse_0_5_2.tar.gz", "https://github.com/vasi/squashfuse/archive/0.5.2.tar.gz", "db0238c5981dabbd80ee09ae15387f390091668ca060a7bc38047912491443d3"),
     ("musl_copyright.txt", "https://git.musl-libc.org/cgit/musl/plain/COPYRIGHT?h=v1.2.5", "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"),

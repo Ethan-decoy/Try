@@ -15,6 +15,7 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 ### Fixed
 
 - Update the pinned formula input component to correct vertical caret placement after pasting, Home/End and structural edits, while retaining consecutive vertical navigation and preserving the draft when an edit is rejected.
+- Refresh the verified Linux AppImage runtime and its corresponding source archive after the upstream continuous build changed.
 
 ## [0.4.1] - 2026-10-19
 

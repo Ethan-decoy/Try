@@ -34,8 +34,9 @@ download_verified() {
 # Continuous release URLs are guarded by exact digests: upstream replacement fails closed.
 download_verified 'https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage' "$task_tools/linuxdeploy-x86_64.AppImage" '8aea8da0f7f7039d2a2cecb14657d752a222a5e1d3825caeef186c82f751cdd1'
 download_verified 'https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage' "$task_tools/linuxdeploy-plugin-appimage-x86_64.AppImage" '49d6a17160675a6bd1781699aae6bdf7692d98552e02a3671d2183d10547842e'
-download_verified 'https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64' "$task_tools/runtime-x86_64" '156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074'
-curl --fail --location --retry 3 'https://raw.githubusercontent.com/AppImage/type2-runtime/8f39b89e2ac31e1640b3d3f7e9a5108e6ce805fa/LICENSE' --output "$task_appdir/usr/share/doc/try/appimage_runtime_license"
+# Keep this binary digest and license commit aligned with prepare_appimage_runtime.py.
+download_verified 'https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64' "$task_tools/runtime-x86_64" '617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46'
+curl --fail --location --retry 3 'https://raw.githubusercontent.com/AppImage/type2-runtime/fedfad51acc2860b2916a1eef32ba4a500ff31ef/LICENSE' --output "$task_appdir/usr/share/doc/try/appimage_runtime_license"
 python3 scripts/prepare_appimage_runtime.py --source-dir "$task_output/runtime_sources" --notice-dir "$task_appdir/usr/share/doc/try/appimage_runtime"
 mkdir "$task_output/sources_download"
 task_sources="$task_output/sources_download/try_linux_x64_runtime_sources_${task_version}.tar.gz"
