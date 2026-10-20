@@ -150,7 +150,7 @@ impl App {
             UpdateStatus::Finished(Err(_)) => (2, tr!("暂时无法检查").to_owned(), false),
         };
         let transfer = self.update_transfer.lock().unwrap();
-        let mut action = tr!("下载更新").to_owned();
+        let mut action = tr!("下载并重启").to_owned();
         let mut busy = false;
         let mut action_kind = 0;
         match &*transfer {
@@ -168,9 +168,15 @@ impl App {
                 busy = true;
             }
             UpdateTransfer::Ready(_) => {
-                action_kind = 2;
-                text = tr!("更新已就绪").into();
-                action = tr!("重启并更新").into();
+                if self.has_pending_update_edits() {
+                    action_kind = 1;
+                    text = tr!("等待编辑完成").into();
+                    action = tr!("取消").into();
+                } else {
+                    action_kind = 2;
+                    text = tr!("更新已就绪").into();
+                    action = tr!("重试更新").into();
+                }
                 download = true;
                 busy = true;
             }
@@ -238,6 +244,16 @@ impl App {
         + Send
         + 'static,
     ) {
+        if matches!(
+            *self.update_transfer.lock().unwrap(),
+            UpdateTransfer::Downloading { .. } | UpdateTransfer::Ready(_)
+        ) {
+            return;
+        }
+        if self.has_pending_update_edits() {
+            self.notify(tr!("请先保存或取消编辑，再更新。"), true);
+            return;
+        }
         let language = self.library.borrow().settings.interface_language;
         let cancel = Arc::new(AtomicBool::new(false));
         *self.update_transfer.lock().unwrap() = UpdateTransfer::Downloading {
@@ -267,7 +283,10 @@ impl App {
                     })
                 }))
                 .unwrap_or_else(|_| Err(tr!("更新下载失败，请重试。").into()));
-                *state.lock().unwrap() = if cancel.load(Ordering::Relaxed) {
+                // Serialize completion with cancellation so a late cancel cannot
+                // be overwritten by a verified update awaiting installation.
+                let mut transfer = state.lock().unwrap();
+                *transfer = if cancel.load(Ordering::Relaxed) {
                     UpdateTransfer::Idle
                 } else {
                     match result {
@@ -299,13 +318,43 @@ impl App {
                         if let Some(error) = error {
                             app.notify(&error, true);
                         }
-                        if !ready {
+                        if ready {
+                            app.restart_after_update();
+                        } else {
                             app.arm_automatic_update_check(false);
                         }
                     }
                 }
             },
         );
+    }
+
+    fn has_pending_update_edits(&self) -> bool {
+        self.editor.borrow().is_some()
+            || self.pending_import.borrow().is_some()
+            || self.structured_math.borrow().is_some()
+            || self.main_window.borrow().as_ref().is_some_and(|window| {
+                window.get_name_editing()
+                    || window.get_description_editing()
+                    || window.get_tag_editing()
+            })
+    }
+
+    pub(super) fn resume_ready_update(self: &Rc<Self>) {
+        if !matches!(
+            *self.update_transfer.lock().unwrap(),
+            UpdateTransfer::Ready(_)
+        ) {
+            return;
+        }
+        // Finish the editing callback and release its window/data borrows first.
+        // Recheck the state on delivery: cancellation or a new draft wins.
+        let weak = Rc::downgrade(self);
+        Timer::single_shot(Duration::ZERO, move || {
+            if let Some(app) = weak.upgrade() {
+                app.restart_after_update();
+            }
+        });
     }
 
     pub(super) fn restart_after_update(self: &Rc<Self>) {
@@ -315,14 +364,12 @@ impl App {
         ) {
             return;
         }
-        if self.editor.borrow().is_some()
-            || self.pending_import.borrow().is_some()
-            || self.structured_math.borrow().is_some()
-        {
-            self.notify(tr!("请先保存或取消编辑，再更新。"), true);
+        if self.has_pending_update_edits() {
+            self.refresh_update_status();
             return;
         }
         if let Err(error) = self.store.save(&self.library.borrow()) {
+            self.refresh_update_status();
             self.notify(&error, true);
             return;
         }

@@ -11,6 +11,8 @@ struct PictureChecks {
     source: PathBuf,
     original: String,
     imported: r#try::media::NormalizedImage,
+    captioned_height: Cell<f32>,
+    captioned_knowledge_height: Cell<f32>,
     finished: Cell<bool>,
 }
 
@@ -83,6 +85,10 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                     );
                 }
                 3 => {
+                    let window = practice_window(app);
+                    checks
+                        .captioned_height
+                        .set(window.window().size().height as f32 / window.window().scale_factor());
                     snapshot(
                         practice_window(app).window(),
                         checks.output.join("practice_dark.png"),
@@ -120,6 +126,10 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                     assert!(practice_window(app).get_question_image_width() > 0.0);
                 }
                 5 => {
+                    let window = practice_window(app);
+                    checks
+                        .captioned_knowledge_height
+                        .set(window.window().size().height as f32 / window.window().scale_factor());
                     snapshot(
                         practice_window(app).window(),
                         checks.output.join("knowledge_light.png"),
@@ -175,6 +185,104 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                     assert_eq!(window.get_feedback(), 1);
                     app.close_practice();
                     app.show_main().unwrap();
+                    app.commit(|library| {
+                        let pack = &library.packs[0];
+                        let (pack_id, card_id) =
+                            (pack.id.clone(), pack.cards[0].id.clone().unwrap());
+                        library.set_card_answer_mode(&pack_id, &card_id, AnswerMode::Input)
+                    })
+                    .unwrap();
+                    app.open_editor(Some(0), false, None);
+                    let main = main_window(app);
+                    main.invoke_activate_content(0);
+                    main.set_math_input("".into());
+                    main.invoke_edit_math_input("".into());
+                    assert!(app.flush_math(), "{}", main.get_math_error());
+                    app.save_editor();
+                    assert!(
+                        app.editor.borrow().is_none(),
+                        "Cleared image prompt saves through the real field editor"
+                    );
+                    assert!(app.library.borrow().packs[0].cards[0].prompt.is_empty());
+                    assert_eq!(app.store.load().unwrap().packs, app.library.borrow().packs);
+                    assert_eq!(
+                        main_window(app).get_cards().row_data(0).unwrap().prompt,
+                        tr!("图片题 {p0}", p0 = 1)
+                    );
+                    snapshot(
+                        main_window(app).window(),
+                        checks.output.join("image_only_list.png"),
+                    );
+                    app.show_practice().unwrap();
+                }
+                8 => {
+                    let window = practice_window(app);
+                    assert!(!window.get_has_prompt());
+                    assert!(window.get_prompt_area_height() <= 0.5);
+                    assert_eq!(window.get_prompt_natural_height(), 0.0);
+                    let height =
+                        window.window().size().height as f32 / window.window().scale_factor();
+                    assert!(
+                        height + 50.0 < checks.captioned_height.get(),
+                        "Pure image card removes the caption's height and gap"
+                    );
+                    assert!(
+                        window.get_visible_content_height() + 1.0 >= window.get_content_height()
+                    );
+                    snapshot(
+                        window.window(),
+                        checks.output.join("image_only_input_light.png"),
+                    );
+                    window.set_answer_text("wrong".into());
+                    app.submit_answer("wrong");
+                    assert_eq!(window.get_feedback(), 2);
+                }
+                9 => {
+                    snapshot(
+                        practice_window(app).window(),
+                        checks.output.join("image_only_wrong_answer.png"),
+                    );
+                    app.close_practice();
+                    app.knowledge_only.set(true);
+                    app.show_practice().unwrap();
+                }
+                10 => {
+                    let window = practice_window(app);
+                    assert!(!window.get_has_prompt());
+                    assert!(window.get_prompt_area_height() <= 0.5);
+                    let height =
+                        window.window().size().height as f32 / window.window().scale_factor();
+                    assert!(height + 50.0 < checks.captioned_knowledge_height.get());
+                    assert!(
+                        window.get_visible_content_height() + 1.0 >= window.get_content_height()
+                    );
+                    snapshot(
+                        window.window(),
+                        checks.output.join("image_only_knowledge_light.png"),
+                    );
+                    app.close_practice();
+                    app.knowledge_only.set(false);
+                    app.commit(|library| {
+                        let pack = &library.packs[0];
+                        let (pack_id, card_id) =
+                            (pack.id.clone(), pack.cards[0].id.clone().unwrap());
+                        library.set_card_answer_mode(&pack_id, &card_id, AnswerMode::MultipleChoice)
+                    })
+                    .unwrap();
+                    app.show_practice().unwrap();
+                }
+                11 => {
+                    let window = practice_window(app);
+                    assert!(!window.get_has_prompt());
+                    assert!(window.get_prompt_area_height() <= 0.5);
+                    snapshot(
+                        window.window(),
+                        checks.output.join("image_only_choice_light.png"),
+                    );
+                    app.close_practice();
+                    app.show_main().unwrap();
+                }
+                12 => {
                     app.open_editor(Some(0), false, None);
                     app.set_editor_image(None).unwrap();
                     app.close_editor();
@@ -184,6 +292,21 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                     );
                     app.open_editor(Some(0), false, None);
                     app.set_editor_image(None).unwrap();
+                    app.save_editor();
+                    assert!(
+                        app.editor.borrow().is_some(),
+                        "Removing the only cue fails validation"
+                    );
+                    assert!(
+                        app.library.borrow().packs[0].cards[0]
+                            .prompt_image
+                            .is_some()
+                    );
+                    assert!(!main_window(app).get_editor_error().is_empty());
+                    main_window(app).invoke_activate_content(0);
+                    main_window(app).set_math_input("图中是哪个函数？".into());
+                    main_window(app).invoke_edit_math_input("图中是哪个函数？".into());
+                    assert!(app.flush_math());
                     app.save_editor();
                     assert!(
                         app.library.borrow().packs[0].cards[0]
@@ -219,7 +342,7 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                         std::fs::read(app.store.directory().join("learning_state.json")).ok(),
                         before
                     );
-                    std::fs::write(checks.output.join("passed.txt"), "native_picture_questions: all editor, practice, knowledge, choice, judgment and media lifecycle checks passed\n").unwrap();
+                    std::fs::write(checks.output.join("passed.txt"), "native_picture_questions: image-only and captioned editor, practice, knowledge, choice, judgment and media lifecycle checks passed\n").unwrap();
                     checks.finished.set(true);
                     app.quit();
                     return;
@@ -271,6 +394,7 @@ fn native_picture_questions() {
     library.packs[0].cards[0].prompt_latex = None;
     library.packs[0].cards[0].answer = "sin(x)".into();
     library.packs[0].cards[0].answer_latex = None;
+    library.packs[0].cards[0].answer_latex = None;
     library.packs[0].cards[0].aliases = vec!["sinx".into()];
     library.packs[0].cards[0].distractors = vec![
         r#try::knowledge::AnswerContent {
@@ -310,6 +434,8 @@ fn native_picture_questions() {
         source,
         original: original.id,
         imported,
+        captioned_height: Cell::new(0.0),
+        captioned_knowledge_height: Cell::new(0.0),
         finished: Cell::new(false),
     });
     phase(checks.clone(), 0);

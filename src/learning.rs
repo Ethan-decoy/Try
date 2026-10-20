@@ -694,6 +694,44 @@ mod tests {
 
     const NOW: i64 = 1_790_000_000;
 
+    #[test]
+    fn image_only_conversion_keeps_the_learning_hash_protocol_stable() {
+        // Cross-language migration tools must match serde's field order, default
+        // omission and UTF-8 encoding, including formulas and Chinese aliases.
+        let mut card: Card = serde_json::from_value(serde_json::json!({
+            "prompt_image": "a".repeat(64), "id": "picture", "prompt": "识图",
+            "answer": "sin(x)", "answer_latex": "\\sin(x)", "aliases": ["正弦", "sin x"],
+            "distractors": [{"text": "cos(x)", "latex": "\\cos(x)"}, {"text": "tan(x)"}],
+            "true_false": {"statement": "图像对应 sin(x)", "is_true": true, "correction": "✓"}
+        }))
+        .unwrap();
+        assert_eq!(
+            AnswerMode::ALL.map(|mode| fingerprint(&card, mode)),
+            [
+                "e721c073487aa760659c08adaefdb83f9992132a553c103e9cd210e178fe6121",
+                "31e8e70a6a7529e21ec22e885c26dc751091ea33cc03765e67263a39139f53bf",
+                "830d6afa536ed9bdd282d9edc4a41c4d17664d17b5070467589503eb58fe7380",
+            ]
+        );
+        assert_eq!(
+            content_stamp(&card),
+            "1aeb9f6faa65e25f925bf93d023da69f308dbedd90adb3ff68569bd8c92683a9"
+        );
+        card.prompt.clear();
+        assert_eq!(
+            AnswerMode::ALL.map(|mode| fingerprint(&card, mode)),
+            [
+                "624890a386b1faddf364306eaaf68658f99cde6bc9ad591153d172f95888a577",
+                "f9116cb6304a42751412651a26bac5c481418e93dafb60d0acc0796fa4aa780a",
+                "830d6afa536ed9bdd282d9edc4a41c4d17664d17b5070467589503eb58fe7380",
+            ]
+        );
+        assert_eq!(
+            content_stamp(&card),
+            "421a19beae337712e9834b594f096928db1ae43abd4f480609dfa25add7d4a08"
+        );
+    }
+
     fn library(sizes: &[usize]) -> Library {
         let packs: Vec<_> = sizes
             .iter()

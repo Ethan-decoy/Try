@@ -284,9 +284,16 @@ impl App {
             .and_then(|pack| {
                 pack.cards
                     .iter()
-                    .find(|card| card.id.as_deref() == Some(&key.card_id))
+                    .enumerate()
+                    .find(|(_, card)| card.id.as_deref() == Some(&key.card_id))
             })
-            .map(|card| card.prompt.clone())
+            .map(|(index, card)| {
+                if card.prompt.trim().is_empty() {
+                    tr!("图片题 {p0}", p0 = index + 1)
+                } else {
+                    card.prompt.clone()
+                }
+            })
             .unwrap_or_default();
         self.pending_card_delete.replace(Some(key));
         if let Some(window) = self.main_window.borrow().as_ref() {

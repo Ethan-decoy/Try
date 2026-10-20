@@ -83,6 +83,12 @@ impl App {
                 app.restart_after_update();
             }
         });
+        let weak = Rc::downgrade(self);
+        window.on_update_editing_changed(move || {
+            if let Some(app) = weak.upgrade() {
+                app.resume_ready_update();
+            }
+        });
 
         let weak = Rc::downgrade(self);
         window.on_open_project_home(move || {
@@ -741,6 +747,7 @@ impl App {
         self.refresh_tray_navigation();
         self.collect_media();
         self.arm_reminder();
+        self.resume_ready_update();
     }
 
     pub(super) fn refresh(&self) {
@@ -860,6 +867,11 @@ impl App {
                         PreparedQuestion::new(card, display_mode, &mut rand::rng())
                             .expect("the selected mode has validated content")
                     };
+                    let prompt = if display.has_prompt() {
+                        display.prompt.text
+                    } else {
+                        tr!("图片题 {p0}", p0 = index + 1)
+                    };
                     let source = display.prompt.latex.unwrap_or_default();
                     let answer = if mode == AnswerMode::TrueFalse {
                         if card
@@ -880,7 +892,7 @@ impl App {
                         card.answer_latex.clone().unwrap_or_default()
                     };
                     let cached = existing.row_data(index).filter(|row| {
-                        row.prompt.as_str() == display.prompt.text
+                        row.prompt.as_str() == prompt
                             && row.formula_source.as_str() == source
                             && row.answer.as_str() == answer
                             && row.answer_formula_source.as_str() == answer_source
@@ -888,7 +900,7 @@ impl App {
                     CardRow {
                         id: card.id.clone().unwrap_or_default().into(),
                         pack_id: pack.id.clone().into(),
-                        prompt: display.prompt.text.into(),
+                        prompt: prompt.into(),
                         quick_answer: card.answer.clone().into(),
                         truth: card
                             .true_false

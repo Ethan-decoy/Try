@@ -290,8 +290,11 @@ impl KnowledgePack {
             {
                 return Err(tr!("第 {p0} 题的 id 无效或重复。", p0 = index + 1));
             }
-            for (field, value) in [(tr!("题面"), &card.prompt), (tr!("答案"), &card.answer)] {
-                if value.trim().is_empty() || value.chars().count() > 1000 {
+            for (field, value, allow_empty) in [
+                (tr!("题面"), &card.prompt, card.prompt_image.is_some()),
+                (tr!("答案"), &card.answer, false),
+            ] {
+                if (value.trim().is_empty() && !allow_empty) || value.chars().count() > 1000 {
                     return Err(tr!(
                         "第 {p0} 题的{field}须为 1 至 1000 个字符。",
                         p0 = index + 1,
@@ -1082,6 +1085,26 @@ fn card_content_key(card: &Card) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_prompts_require_a_valid_image_and_answers_stay_required() {
+        let mut pack = crate::test_fixtures::regression_library().packs.remove(0);
+        let card = &mut pack.cards[0];
+        card.prompt.clear();
+        card.prompt_latex = None;
+        assert!(pack.validate().is_err());
+        pack.cards[0].prompt_image = Some("not_an_image".into());
+        assert!(pack.validate().is_err());
+        pack.cards[0].prompt_image = Some("a".repeat(64));
+        assert!(pack.validate().is_ok());
+        let bytes = serde_json::to_vec(&pack).unwrap();
+        assert_eq!(KnowledgePack::from_json(&bytes).unwrap(), pack);
+        pack.cards[0].answer.clear();
+        assert!(pack.validate().is_err());
+        pack.cards[0].answer = "sin(x)".into();
+        pack.cards[0].prompt = "a".repeat(1001);
+        assert!(pack.validate().is_err());
+    }
 
     #[test]
     fn starter_packs_are_importable_and_support_all_answer_modes_across_domains() {

@@ -139,6 +139,7 @@ impl App {
         window.set_app_icon(self.icon.clone());
         window.set_answer_mode(prepared.mode.index());
         window.set_knowledge_only(prepared.knowledge_only);
+        window.set_has_prompt(prepared.has_prompt());
         window.set_prompt(prepared.prompt.text.clone().into());
         window.set_standard_answer(prepared.answer.text.clone().into());
         if let Some(image) = question_image {
@@ -653,6 +654,7 @@ impl App {
             let _ = session.window.hide();
         }
         self.arm_reminder();
+        self.resume_ready_update();
     }
 
     pub(super) fn arm_reminder(self: &Rc<Self>) {

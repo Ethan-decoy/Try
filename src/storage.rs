@@ -301,6 +301,8 @@ mod tests {
             .unwrap();
         let mut library = Library::default();
         library.packs[0].cards[0].prompt_image = Some(normalized.id.clone());
+        library.packs[0].cards[0].prompt.clear();
+        library.packs[0].cards[0].prompt_latex = None;
         library.packs[0].cards[1].prompt_image = Some(normalized.id.clone());
         store.save(&library).unwrap();
         fs::remove_file(&image_path).unwrap();
@@ -332,6 +334,9 @@ mod tests {
         invalid["cards"][0]["prompt_image"] = serde_json::json!("../../outside.png");
         fs::write(&bundle, serde_json::to_vec(&invalid).unwrap()).unwrap();
         assert!(other.import_pack(&bundle).is_err());
+        drop(store);
+        let reopened = Store::open(source.path().join("data")).unwrap();
+        assert_eq!(reopened.load().unwrap().packs, library.packs);
     }
 
     #[test]

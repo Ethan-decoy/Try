@@ -70,6 +70,15 @@ pub struct PreparedQuestion {
 }
 
 impl PreparedQuestion {
+    pub fn has_prompt(&self) -> bool {
+        !self.prompt.text.trim().is_empty()
+            || self
+                .prompt
+                .latex
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+    }
+
     pub fn new(card: &Card, mode: AnswerMode, rng: &mut impl Rng) -> AppResult<Self> {
         let mut result = Self {
             prompt_image: card.prompt_image.clone(),
@@ -190,6 +199,27 @@ impl PreparedQuestion {
 mod tests {
     use super::*;
     use rand::{SeedableRng, rngs::StdRng};
+
+    #[test]
+    fn image_only_questions_omit_the_prompt_but_retain_judgment_statements() {
+        let mut card = crate::test_fixtures::regression_library().packs[0].cards[0].clone();
+        card.prompt.clear();
+        card.prompt_latex = None;
+        card.prompt_image = Some("a".repeat(64));
+        let mut rng = StdRng::seed_from_u64(7);
+        for mode in [AnswerMode::Input, AnswerMode::MultipleChoice] {
+            let prepared = PreparedQuestion::new(&card, mode, &mut rng).unwrap();
+            assert!(!prepared.has_prompt());
+            assert_eq!(prepared.prompt_image, card.prompt_image);
+            assert_eq!(prepared.answer.text, card.answer);
+        }
+        let knowledge = PreparedQuestion::knowledge(&card);
+        assert!(!knowledge.has_prompt());
+        assert_eq!(knowledge.answer.text, card.answer);
+        let judgment = PreparedQuestion::new(&card, AnswerMode::TrueFalse, &mut rng).unwrap();
+        assert!(judgment.has_prompt());
+        assert_eq!(judgment.prompt.text, card.true_false.unwrap().statement);
+    }
 
     #[test]
     fn image_prompt_is_preserved_in_every_answer_and_knowledge_mode() {

@@ -111,7 +111,7 @@ impl CardDraft {
         if mode == AnswerMode::TrueFalse {
             self.has_judgment = true;
             let symbolic_answer = matches!(self.answer.trim(), "" | "✓" | "✕");
-            if self.prompt.trim().is_empty() || symbolic_answer {
+            if (self.prompt.trim().is_empty() && self.prompt_image.is_none()) || symbolic_answer {
                 self.prompt.clone_from(&self.statement);
                 self.prompt_latex.clone_from(&self.statement_latex);
             }
@@ -181,6 +181,21 @@ fn optional(text: String) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_only_prompts_survive_editing_in_every_mode() {
+        let mut card = crate::test_fixtures::regression_library().packs[0].cards[0].clone();
+        card.prompt.clear();
+        card.prompt_latex = None;
+        card.prompt_image = Some("a".repeat(64));
+        for mode in AnswerMode::ALL {
+            let saved = CardDraft::from(&card).into_card_for_mode(mode, 0);
+            assert!(saved.prompt.is_empty());
+            assert!(saved.prompt_latex.is_none());
+            assert_eq!(saved.prompt_image, card.prompt_image);
+            assert_eq!(saved.answer, card.answer);
+        }
+    }
 
     #[test]
     fn existing_content_round_trips_through_an_editor_draft() {

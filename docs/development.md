@@ -53,7 +53,9 @@ Windows 辅助脚本会定位工具链、MSVC 和 SDK，并将产物留在 `loca
 
 Windows 在提醒到期时调用 [SHQueryUserNotificationState](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shqueryusernotificationstate)；`QUNS_ACCEPTS_NOTIFICATIONS` 允许提醒，`QUNS_BUSY` 只允许不自动聚焦的题板，以兼容无边框全屏窗口。系统报告独占 Direct3D 全屏、演示、锁屏、未知状态或查询失败时继续等待下一个提醒间隔，不补弹积压。macOS/Linux 暂无对应的游戏鼠标保护与全屏查询。自动提醒失败仅记日志并重排提醒，避免用错误对话框打断其他应用。`native_practice_focus` 用独立窗口检查实际输入去向、题板可见性、隐藏／释放光标、鼠标捕获、悬停、直接点击作答、系统托盘激活、环境阻止与实际计时器错误路径。
 
-静态题面由 `src/media.rs` 管理：源 PNG／JPEG 在后台规范化为有界 PNG，以内容哈希保存到数据目录的 `media/`。库和草稿只记录资源标识，显示时只解码当前题；收起窗口释放像素。`Store` 负责将含图包组装为单个 JSON 或从中安装资源，`media` 传输字段不进入 `state.json`。导入、编辑失败保留原题库；清理只处理已识别且未被库、当前草稿或待确认导入引用的自有文件。修改图片改变各题型的学习指纹，未添加图片的题目保留原指纹。格式与配额见 [知识包格式](knowledge_pack_format.md#题面图片与可携带资源)。Windows 可用 `./scripts/build_windows.ps1 -Action test -NativeChecks -NativeTest native_picture_questions` 验证隔离题库中的编辑、取消、保存、显示、放大与资源清理；生成的截图留在 `local_artifacts/`。
+静态题面由 `src/media.rs` 管理：源 PNG／JPEG 在后台规范化为有界 PNG，以内容哈希保存到数据目录的 `media/`。库和草稿只记录资源标识，显示时只解码当前题；收起窗口释放像素。有图时文字题面可为空，列表保留带序号的图片题条目，练习与知识展示不保留文字高度和间距；判断模式仍显示其独立陈述。无图时继续要求非空题面，移除唯一题面图片时必须补回文字。
+
+`Store` 负责将含图包组装为单个 JSON 或从中安装资源，`media` 传输字段不进入 `state.json`。导入、编辑失败保留原题库；清理只处理已识别且未被库、当前草稿或待确认导入引用的自有文件。修改图片或文字仍按原规则改变学习指纹。若明确只删除同一图片的冗余提示并希望保留记忆，须基于修改前后的完整题目核对每种题型的旧指纹，再显式迁移匹配的进度、作答记录与呈现标记；不复用不匹配的旧指纹，不仅复制原记录文件，也不全局忽略题面。格式与配额见 [知识包格式](knowledge_pack_format.md#题面图片与可携带资源)。Windows 可用 `./scripts/build_windows.ps1 -Action test -NativeChecks -NativeTest native_picture_questions` 验证隔离题库中的编辑、取消、保存、纯图与含文字布局、放大与资源清理；生成的截图留在 `local_artifacts/`。
 
 版本检查使用固定 GitHub Release 源，忽略草稿。预发布通道的 REST API 请求受限时，沿用系统代理检查同一仓库的公开 Atom 订阅源，并确认 `checksums.sha256` 已可匿名访问；只有标签、没有公开分发附件的候选不会提示更新。订阅源限制为 1 MiB／10000 个 XML 节点，最多探测三个版本的附件，不跟随下载重定向；正式版本通道保留 API 的预发布过滤规则。两条路径均失败时保留受限错误，关于页显示稍后重试。自动检查默认开启，启动后延迟至少 30 秒，每 24 小时最多一次；手动检查可覆盖预算，同时只运行一个检查任务。缓存受大小限制，结果安静显示在关于页。显式网络验证可分别运行 `update_check::tests::live_release_check` 与 `update_check::tests::live_rate_limited_api_fallback`，后者模拟 API 403 后通过实际传输检查公开源，不反复请求已耗尽的 API 额度。
 
@@ -65,9 +67,9 @@ Windows 窗口激活直接调用 [SetForegroundWindow](https://learn.microsoft.c
 
 `update_install` 用当前程序的临时副本执行一次性交接，Windows 等待原进程退出，Unix 在原数据锁与窗口释放后接收交接。Windows 替换 exe，macOS 校验并替换完整 app，Linux 使用原始 AppImage 路径并管理其子进程组。暂存目录位于安装位置旁边以支持同文件系统重命名。内部 job 限定目录、来源摘要、平台、随机凭据和配置备份名单；重启显式传入原数据目录，并保留原启动路径的形式。
 
-新进程读入题库、建立窗口与托盘并进入事件循环后确认启动。确认前保留旧程序和三份 JSON 备份，推迟首次媒体清理；确认后回收暂存文件。安装位置旁的 `.try_update.lock` 使用文件锁串行化不同数据配置的更新，替换前再次核对原程序摘要。启动失败则停止本次新进程、在取得数据锁后恢复旧程序及 JSON，再启动旧版；恢复受阻时保留备份并显示位置。更新按钮在未保存编辑时阻止重启，自动检查仍不自动下载或重启。
+新进程读入题库、建立窗口与托盘并进入事件循环后确认启动。确认前保留旧程序和三份 JSON 备份，推迟首次媒体清理；确认后回收暂存文件。安装位置旁的 `.try_update.lock` 使用文件锁串行化不同数据配置的更新，替换前再次核对原程序摘要。启动失败则停止本次新进程、在取得数据锁后恢复旧程序及 JSON，再启动旧版；恢复受阻时保留备份并显示位置。用户点击「下载并重启」开始更新，下载校验完成后自动交接退出，无需第二次确认。已有编辑阻止开始下载；下载期间新开的题目、公式、知识包元数据编辑或待确认导入会暂缓交接，保存或取消后由编辑状态事件继续，等待期间不轮询。取消与下载完成通过同一状态锁串行化，取消已校验的暂存也不会重启。自动检查仍只提示，不自行开始下载。
 
-`native_update_check` 覆盖中英文进度、取消、窗口重建、就绪状态、编辑保护、退出交接和关于页固定几何。`python scripts/check_in_app_update.py --executable <程序> --output <记录.json>` 在临时目录中验证实际替换、重启、配置／题库／图片保留及失败回退；macOS 传入 app，Linux 另以 `--helper` 指定 AppImage 内原生程序。Windows 使用 `./scripts/build_windows.ps1 -Action build -Distribution -Example update_driver` 构建独立交接样例，再给检查脚本传入 `--driver local_artifacts/target/x86_64-pc-windows-msvc/release/examples/update_driver.exe`，可同时验证父进程的真实暂存、握手与退出。该检查已接入三平台打包流程。生成的 job、截图、备份与记录不进入源码仓库。
+`native_update_check` 覆盖中英文进度、取消、窗口重建、失败、编辑保护、下载后自动退出交接和关于页固定几何；`native_update_edit_guard` 验证下载期间的多种编辑阻止重启、等待不轮询和编辑结束后自动继续。`python scripts/check_in_app_update.py --executable <程序> --output <记录.json>` 在临时目录中验证实际替换、重启、配置／题库／图片保留及失败回退；macOS 传入 app，Linux 另以 `--helper` 指定 AppImage 内原生程序。Windows 使用 `./scripts/build_windows.ps1 -Action build -Distribution -Example update_driver` 构建独立交接样例，再给检查脚本传入 `--driver local_artifacts/target/x86_64-pc-windows-msvc/release/examples/update_driver.exe`，可同时验证父进程的真实暂存、握手与退出。该检查已接入三平台打包流程。生成的 job、截图、备份与记录不进入源码仓库。
 
 ## 公式输入接入
 

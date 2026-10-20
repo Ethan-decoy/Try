@@ -202,6 +202,7 @@ export component MainWindow inherits Window {
     callback open-update-download();
     callback cancel-update-download();
     callback restart-update();
+    callback update-editing-changed();
     callback open-project-home();
     callback open-notices();
     callback return-to-about();
@@ -239,6 +240,9 @@ export component MainWindow inherits Window {
     in-out property <bool> name-editing;
     in-out property <bool> description-editing;
     in-out property <bool> tag-editing;
+    private property <bool> update-editing: root.editor-visible || root.import-pending
+        || root.name-editing || root.description-editing || root.tag-editing || MathInputState.open;
+    changed update-editing => { root.update-editing-changed(); }
     in-out property <string> name-draft;
     in-out property <string> description-draft;
     in-out property <string> tag-draft;
@@ -1128,9 +1132,9 @@ export component PracticeWindow inherits Window {
     private property <length> tag-space: root.pack-tag-visible ? 26px : 0px;
     out property <length> pack-tag-left: tag-badge.x;
     out property <length> pack-tag-width: tag-badge.width;
-    private property <length> picture-area-height: root.question-image-width > 0 ? min(220px, (root.width - 48px) * root.question-image-height / root.question-image-width) + 14px : 0px;
-    private property <length> practice-content-height: max(48px, practice-prompt.preferred-height) + root.picture-area-height + 20px + root.answer-row-height + root.answer-footer-height;
-    private property <length> knowledge-content-height: max(48px, practice-prompt.preferred-height) + (root.question-image-width > 0 ? root.picture-area-height + 2px : 0px) + 32px + (root.standard-answer != "" ? 16px + max(32px, standard-label.preferred-height) : 0px);
+    private property <length> picture-height: root.question-image-width > 0 ? min(220px, (root.width - 48px) * root.question-image-height / root.question-image-width) : 0px;
+    private property <length> practice-content-height: (root.has-prompt ? max(48px, practice-prompt.preferred-height) : 0px) + root.picture-height + (root.has-prompt && root.question-image-width > 0 ? 14px : 0px) + 20px + root.answer-row-height + root.answer-footer-height;
+    private property <length> knowledge-content-height: (root.has-prompt ? max(48px, knowledge-prompt.preferred-height) + 32px : 0px) + root.picture-height + (root.has-prompt && root.question-image-width > 0 ? 16px : 0px) + (root.standard-answer != "" ? 16px + max(32px, standard-label.preferred-height) : 0px);
     private property <length> answer-footer-height: MathInputState.open ? (MathInputState.keypad-expanded ? root.structured-pad-height + 13px : max(64px, structured-error.preferred-height + 26px)) : root.feedback == 2 ? max(64px, standard-label.preferred-height + 39px) : 64px;
     private property <length> desired-height: min(560px, max(230px, root.knowledge-only ? root.knowledge-content-height + 48px : root.practice-content-height + 42px) + root.tag-space);
     height: root.desired-height;
@@ -1141,6 +1145,7 @@ export component PracticeWindow inherits Window {
     background: root.feedback == 1 ? Theme.correct : root.feedback == 2 ? Theme.wrong : Theme.panel;
 
     in property <string> prompt;
+    in property <bool> has-prompt: true;
     in property <string> standard-answer;
     in property <image> question-image;
     in property <float> question-image-width;
@@ -1150,7 +1155,7 @@ export component PracticeWindow inherits Window {
     in property <float> prompt-formula-width;
     in property <float> prompt-formula-height;
     in property <[NativeText]> prompt-texts;
-    out property <length> prompt-natural-height: root.knowledge-only ? knowledge-prompt.preferred-height : practice-prompt.preferred-height;
+    out property <length> prompt-natural-height: !root.has-prompt ? 0px : root.knowledge-only ? knowledge-prompt.preferred-height : practice-prompt.preferred-height;
     out property <length> prompt-area-height: root.knowledge-only ? knowledge-prompt.height : practice-prompt.height;
     out property <length> answer-natural-height: standard-label.preferred-height;
     out property <length> answer-area-height: standard-label.height;
@@ -1237,24 +1242,30 @@ export component PracticeWindow inherits Window {
                 x: 0px; y: 0px;
                 width: root.width - 48px;
                 height: knowledge-scroll.content-height;
-                spacing: 16px;
-                Rectangle { vertical-stretch: 1; background: transparent; }
+                spacing: 0px;
+                Rectangle { min-height: root.has-prompt ? 16px : 0px; vertical-stretch: 1; background: transparent; }
                 knowledge-prompt := FormulaLabel {
+                    visible: root.has-prompt;
                     fallback: root.prompt; formula: root.prompt-formula;
                     formula-width: root.prompt-formula-width; formula-height: root.prompt-formula-height;
-                    texts: root.prompt-texts; font-size: 24px; min-height: 48px; vertical-stretch: 0;
+                    texts: root.prompt-texts; font-size: 24px;
+                    min-height: root.has-prompt ? 48px : 0px;
+                    max-height: root.has-prompt ? max(48px, self.preferred-height) : 0px;
+                    vertical-stretch: 0;
                 }
+                if root.has-prompt && root.question-image-width > 0 : Rectangle { height: 16px; background: transparent; }
                 if root.question-image-width > 0 : QuestionPicture {
                     picture: root.question-image; picture-width: root.question-image-width; picture-height: root.question-image-height;
                     vertical-stretch: 0;
                     activated => { root.preview-question-image(); }
                 }
+                if root.standard-answer != "" : Rectangle { height: 16px; background: transparent; }
                 if root.standard-answer != "" : FormulaLabel {
                     fallback: root.standard-answer; formula: root.answer-formula;
                     formula-width: root.answer-formula-width; formula-height: root.answer-formula-height;
                     texts: root.answer-texts; font-size: 20px; min-height: 32px; vertical-stretch: 0;
                 }
-                Rectangle { vertical-stretch: 1; background: transparent; }
+                Rectangle { min-height: root.has-prompt ? 16px : 0px; vertical-stretch: 1; background: transparent; }
             }
         }
         practice-scroll := ScrollView {
@@ -1270,16 +1281,18 @@ export component PracticeWindow inherits Window {
                 height: practice-scroll.content-height;
                 spacing: 0px;
                 practice-prompt := FormulaLabel {
+                    visible: root.has-prompt;
                     fallback: root.prompt;
                     formula: root.prompt-formula;
                     formula-width: root.prompt-formula-width;
                     formula-height: root.prompt-formula-height;
                     texts: root.prompt-texts;
                     font-size: 24px;
-                    min-height: 48px;
-                    vertical-stretch: 1;
+                    min-height: root.has-prompt ? 48px : 0px;
+                    max-height: root.has-prompt ? max(48px, self.preferred-height) : 0px;
+                    vertical-stretch: root.has-prompt ? 1 : 0;
                 }
-                if root.question-image-width > 0 : Rectangle { height: 14px; vertical-stretch: 0; background: transparent; }
+                if root.has-prompt && root.question-image-width > 0 : Rectangle { height: 14px; vertical-stretch: 0; background: transparent; }
                 if root.question-image-width > 0 : QuestionPicture {
                     picture: root.question-image; picture-width: root.question-image-width; picture-height: root.question-image-height;
                     vertical-stretch: 0;

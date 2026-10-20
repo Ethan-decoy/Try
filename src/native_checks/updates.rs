@@ -3,11 +3,15 @@ use super::*;
 
 static AUTOMATIC_UPDATE_FETCHES: AtomicUsize = AtomicUsize::new(0);
 
+fn automatic_update_release() -> update_check::Release {
+    let mut version = semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
+    version.patch += 1;
+    update_check::Release::from_tag(&format!("v{version}")).unwrap()
+}
+
 fn automatic_update_fixture() -> Result<CheckOutcome, CheckError> {
     AUTOMATIC_UPDATE_FETCHES.fetch_add(1, Ordering::SeqCst);
-    Ok(CheckOutcome::Available(
-        update_check::Release::from_tag("v0.2.0").unwrap(),
-    ))
+    Ok(CheckOutcome::Available(automatic_update_release()))
 }
 
 struct AutomaticUpdateChecks {
@@ -34,6 +38,14 @@ fn automatic_update_phase(checks: Rc<AutomaticUpdateChecks>, phase: u8) {
                         "Background checks stay quiet"
                     );
                     assert!(app.practice.borrow().is_none());
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Idle
+                    ));
+                    assert!(
+                        app.restart_update.borrow().is_none(),
+                        "a background check never downloads or restarts"
+                    );
                     assert!(app.automatic_update_timer.running());
                     let mut restarted = UpdateSchedule::open(
                         app.store.directory(),
@@ -120,7 +132,10 @@ fn automatic_update_phase(checks: Rc<AutomaticUpdateChecks>, phase: u8) {
                         "Manual checks work while automatic checking is off and within the daily budget"
                     );
                     let main = main_window(app);
-                    assert_eq!(main.get_update_status(), "新版本 0.2.0");
+                    assert_eq!(
+                        main.get_update_status(),
+                        format!("新版本 {}", automatic_update_release().version)
+                    );
                     assert!(main.get_update_download());
                     snapshot(
                         main.window(),
@@ -147,12 +162,15 @@ fn automatic_update_phase(checks: Rc<AutomaticUpdateChecks>, phase: u8) {
                     let main = main_window(app);
                     assert_eq!(
                         main.get_update_status(),
-                        "新版本 0.2.0",
+                        format!("新版本 {}", automatic_update_release().version),
                         "A background failure retains an already discovered version"
                     );
                     assert!(main.get_update_download());
                     main.invoke_choose_language(2);
-                    assert_eq!(main.get_update_status(), "Version 0.2.0 available");
+                    assert_eq!(
+                        main.get_update_status(),
+                        format!("Version {} available", automatic_update_release().version)
+                    );
                     scroll_settings_to_bottom(&main);
                 }
                 6 => {
@@ -357,6 +375,7 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                     );
                     assert_eq!(main.get_update_status(), "Version 0.2.0 available");
                     assert!(main.get_update_download());
+                    assert_eq!(main.get_update_action(), "Update & restart");
                     assert!(main.get_about_top() >= 0.0);
                     // Resize notifications dismiss popups; reopen after layout settles.
                     main.invoke_show_about();
@@ -424,7 +443,8 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                         main.window(),
                         checks.output.join("about_rate_limited_zh.png"),
                     );
-                    app.begin_update_download(|cancel, progress| {
+                    let prepared = updater::ui_fixture(app.store.directory()).unwrap();
+                    app.begin_update_download(move |cancel, progress| {
                         progress(42, Some(100));
                         let deadline = std::time::Instant::now() + Duration::from_secs(10);
                         while !cancel.load(Ordering::Relaxed)
@@ -432,7 +452,7 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                         {
                             std::thread::sleep(Duration::from_millis(10));
                         }
-                        Err("cancelled fixture".into())
+                        Ok(prepared)
                     });
                 }
                 9 => {
@@ -455,13 +475,36 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                 12 => {
                     assert!(!main.get_update_busy());
                     assert_eq!(main.get_update_status(), "Check limited; try later");
+                    assert!(app.restart_update.borrow().is_none());
+                    assert!(
+                        !std::fs::read_dir(app.store.directory())
+                            .unwrap()
+                            .any(|entry| {
+                                entry
+                                    .unwrap()
+                                    .file_name()
+                                    .to_string_lossy()
+                                    .starts_with(".try_update_")
+                            }),
+                        "cancellation discards even a successfully verified download"
+                    );
+                    app.begin_update_download(|_, _| Err("download failure fixture".into()));
+                }
+                13 => {
+                    assert_eq!(main.get_update_status(), "Download failed; retry");
+                    assert_eq!(main.get_update_action(), "Retry");
+                    assert!(
+                        app.restart_update.borrow().is_none(),
+                        "failed downloads never restart"
+                    );
                     *app.update_transfer.lock().unwrap() =
                         UpdateTransfer::Ready(updater::ui_fixture(&checks.output).unwrap());
                     app.refresh_update_status();
                 }
-                13 => {
-                    assert_eq!(main.get_update_action(), "Restart & update");
+                14 => {
+                    assert_eq!(main.get_update_action(), "Retry update");
                     assert_eq!(main.get_update_status(), "Update ready");
+                    app.resume_ready_update();
                     main.invoke_cancel_update_download();
                     assert!(
                         app.restart_update.borrow().is_none(),
@@ -471,12 +514,18 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                         *app.update_transfer.lock().unwrap(),
                         UpdateTransfer::Idle
                     ));
+                    main.invoke_create_pack();
+                    let fetches = checks.fetches.clone();
+                    app.begin_update_download(move |_, _| {
+                        fetches.fetch_add(1, Ordering::SeqCst);
+                        Err("must not download with an unsaved draft".into())
+                    });
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Idle
+                    ));
                     *app.update_transfer.lock().unwrap() =
-                        UpdateTransfer::Ready(updater::ui_fixture(&checks.output).unwrap());
-                    app.refresh_update_status();
-                    app.editor.replace(Some(EditorTarget::NewPack {
-                        id: "update_fixture".into(),
-                    }));
+                        UpdateTransfer::Ready(updater::ui_fixture(app.store.directory()).unwrap());
                     main.invoke_restart_update();
                     assert!(
                         app.restart_update.borrow().is_none(),
@@ -486,27 +535,25 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                         *app.update_transfer.lock().unwrap(),
                         UpdateTransfer::Ready(_)
                     ));
-                    app.editor.borrow_mut().take();
                     main.invoke_choose_language(1);
                 }
-                14 => {
-                    assert_eq!(main.get_update_action(), "重启并更新");
-                    assert_eq!(main.get_update_status(), "更新已就绪");
+                15 => {
+                    assert_eq!(
+                        checks.fetches.load(Ordering::SeqCst),
+                        1,
+                        "an open draft blocks download before starting a worker"
+                    );
+                    assert_eq!(main.get_update_action(), "取消");
+                    assert_eq!(main.get_update_status(), "等待编辑完成");
                     assert_eq!(app.store.load().unwrap().packs, checks.original_packs);
-                    main.invoke_restart_update();
-                    assert!(
-                        app.restart_update.borrow().is_some(),
-                        "ready update is handed to shutdown"
-                    );
-                    assert!(matches!(
-                        *app.update_transfer.lock().unwrap(),
-                        UpdateTransfer::Idle
-                    ));
+                    main.invoke_cancel_update_download();
+                    main.invoke_cancel_editor();
+                    let prepared = updater::ui_fixture(app.store.directory()).unwrap();
+                    app.begin_update_download(move |_, _| Ok(prepared));
+                    // Completion must install without any second button, even if
+                    // the About window was closed while the worker finished.
+                    app.close_main();
                     checks.finished.set(true);
-                    println!(
-                        "Native update checking, transfer progress, cancellation, ready state, unsaved-editor guard, bilingual labels and stable about geometry passed."
-                    );
-                    app.quit();
                     return;
                 }
                 _ => unreachable!(),
@@ -519,11 +566,78 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
     });
 }
 
-#[test]
-#[ignore = "opens real update UI using fixtures and an isolated profile"]
-fn native_update_check() {
-    let output =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("local_artifacts/update_check_validation");
+fn update_edit_phase(checks: Rc<UpdateChecks>, phase: u8) {
+    Timer::single_shot(Duration::from_millis(450), move || {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let app = &checks.app;
+            let main = main_window(app);
+            match phase {
+                0 => {
+                    let prepared = updater::ui_fixture(app.store.directory()).unwrap();
+                    let (send, receive) = std::sync::mpsc::channel();
+                    app.begin_update_download(move |_, _| {
+                        receive.recv_timeout(Duration::from_secs(6)).unwrap();
+                        Ok(prepared)
+                    });
+                    main.invoke_create_pack();
+                    app.pending_import
+                        .replace(Some(checks.original_packs[0].clone()));
+                    main.set_tag_draft(main.get_selected_tag());
+                    main.set_tag_editing(true);
+                    app.refresh();
+                    send.send(()).unwrap();
+                }
+                1 => {
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Ready(_)
+                    ));
+                    assert!(
+                        !app.update_transfer_timer.running(),
+                        "waiting for edits does not poll"
+                    );
+                    assert!(app.restart_update.borrow().is_none());
+                    assert_eq!(main.get_update_status(), "等待编辑完成");
+                    assert_eq!(main.get_update_action(), "取消");
+                    main.invoke_cancel_editor();
+                }
+                2 => {
+                    assert!(
+                        app.restart_update.borrow().is_none(),
+                        "pending import still blocks installation"
+                    );
+                    assert!(app.editor.borrow().is_none());
+                    main.invoke_cancel_import();
+                    main.invoke_choose_language(2);
+                    assert_eq!(main.get_update_status(), "Waiting for edits");
+                    assert_eq!(main.get_update_action(), "Cancel");
+                }
+                3 => {
+                    assert!(app.pending_import.borrow().is_none());
+                    assert!(
+                        app.restart_update.borrow().is_none(),
+                        "inline metadata draft is also protected"
+                    );
+                    checks.finished.set(true);
+                    main.invoke_save_pack_tag();
+                    // Saving the final draft resumes the original download's
+                    // restart automatically; no restart/update confirmation.
+                    return;
+                }
+                _ => unreachable!(),
+            }
+            update_edit_phase(checks.clone(), phase + 1);
+        }));
+        if outcome.is_err() {
+            checks.app.quit();
+        }
+    });
+}
+
+fn run_update_check(output_name: &str, drive: fn(Rc<UpdateChecks>, u8)) {
+    let output = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("local_artifacts")
+        .join(output_name);
     std::fs::create_dir_all(&output).unwrap();
     let profile = tempfile::tempdir_in(&output).unwrap();
     let store = open_regression_profile(profile.path());
@@ -555,7 +669,7 @@ fn native_update_check() {
         original_packs,
         about_geometry: Cell::new(None),
     });
-    update_phase(checks.clone(), 0);
+    drive(checks.clone(), 0);
     let watchdog = Rc::downgrade(&checks.app);
     Timer::single_shot(Duration::from_secs(20), move || {
         if let Some(app) = watchdog.upgrade() {
@@ -567,4 +681,32 @@ fn native_update_check() {
         checks.finished.get(),
         "Native update check failed or timed out"
     );
+    assert!(
+        checks.app.take_restart_update().is_some(),
+        "verified download is automatically handed to shutdown"
+    );
+    assert!(matches!(
+        *checks.app.update_transfer.lock().unwrap(),
+        UpdateTransfer::Idle
+    ));
+    assert!(!checks.app.update_transfer_timer.running());
+    assert_eq!(
+        checks.app.store.load().unwrap().packs,
+        checks.original_packs
+    );
+    println!(
+        "Native update check passed: {output_name}; automatic restart, cancellation and draft preservation verified."
+    );
+}
+
+#[test]
+#[ignore = "opens real update UI using fixtures and an isolated profile"]
+fn native_update_check() {
+    run_update_check("update_check_validation", update_phase);
+}
+
+#[test]
+#[ignore = "opens real update UI using fixtures and an isolated profile"]
+fn native_update_edit_guard() {
+    run_update_check("update_edit_guard_validation", update_edit_phase);
 }

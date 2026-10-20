@@ -4,6 +4,14 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+### Added
+
+- Support image-only questions with an empty textual prompt, removing the caption and its spacing from practice and fact-viewing cards while keeping a numbered entry in the question list.
+
+### Changed
+
+- Install verified in-app updates and restart automatically after the user starts the download, without a second confirmation. Active edits defer restarting and the update resumes when they are saved or cancelled.
+
 ### Fixed
 
 - Update the pinned formula input component to correct vertical caret placement after pasting, Home/End and structural edits, while retaining consecutive vertical navigation and preserving the draft when an edit is rejected.
