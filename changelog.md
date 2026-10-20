@@ -4,6 +4,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.5.0]
+
 ### Added
 
 - Support image-only questions with an empty textual prompt, removing the caption and its spacing from practice and fact-viewing cards while keeping a numbered entry in the question list.
@@ -95,7 +97,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Ethan-decoy/Try/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Ethan-decoy/Try/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Ethan-decoy/Try/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/Ethan-decoy/Try/compare/v0.3.1...v0.3.2

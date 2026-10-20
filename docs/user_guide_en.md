@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers the current development source, including unreleased changes, for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 0.5.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -59,7 +59,7 @@ Updating retains existing packs and preferences without adding starter content o
 
 Try 0.2.0 supports one static PNG or JPEG per question. Version 0.1.0 does not include this feature. In the question editor, choose **Add image** to select a file, or drop an image file onto the main window while editing a question. You can replace or remove an existing picture, and click the preview to enlarge it. Save commits the complete question; cancel preserves its original picture.
 
-Practice uses the compact card: short prompt, picture, then the answer controls. The current development version also supports an empty prompt when a picture is present. Input, multiple-choice and knowledge cards then omit the caption and its spacing. A numbered “Picture question” entry remains in the main list for editing. Picture questions that need a text prompt keep it; true/false still shows the judgment statement. A prompt is required when there is no picture.
+Practice uses the compact card: short prompt, picture, then the answer controls. From 0.5.0, Try supports an empty prompt when a picture is present. Input, multiple-choice and knowledge cards then omit the caption and its spacing. A numbered “Picture question” entry remains in the main list for editing. Picture questions that need a text prompt keep it; true/false still shows the judgment statement. A prompt is required when there is no picture.
 
 Pictures keep their colors and aspect ratio, and work with input, multiple choice, true/false and knowledge display. Click a picture to open a larger window; Esc closes that window. Automatic dismissal pauses while viewing the enlarged picture; continue answering or dismiss the card manually afterwards. Incorrect answers still require Enter to acknowledge.
 
@@ -95,7 +95,7 @@ Daily quiet hours and launch at login are off by default. Quiet hours can span m
 
 Windows distribution builds create `data/` beside the executable, with settings and packs in `state.json` and personal practice state in `learning_state.json`. Existing profiles without history start as unassessed; fact viewing does not create learning records. Pack exports contain no personal history. Mac/Linux use system application data folders. Development profiles and custom directory arguments are in the [development guide](development.md).
 
-In-app updates are supported from `0.3.0`. In the current development version, choose **Update & restart** in About to start the download, view progress or cancel. After downloading and verification, Try installs the update and restarts automatically without another confirmation. Save or cancel open edits before starting. New edits or a pending import opened during the download defer restarting; saving or cancelling them resumes the update automatically. You can still cancel the update while it waits. Failed downloads or verification do not restart the application. Try replaces the program at its original location and restarts with the same data directory, preserving settings, packs, pictures and learning records. The previous program is kept until the updated application loads its profile and starts successfully. A failed replacement or startup attempts to restore the previous program and profile backups; if recovery is blocked, Try shows where the backups were preserved.
+In-app updates are supported from `0.3.0`. From 0.5.0, choose **Update & restart** in About to start the download, view progress or cancel. After downloading and verification, Try installs the update and restarts automatically without another confirmation. Save or cancel open edits before starting. New edits or a pending import opened during the download defer restarting; saving or cancelling them resumes the update automatically. You can still cancel the update while it waits. Failed downloads or verification do not restart the application. Try replaces the program at its original location and restarts with the same data directory, preserving settings, packs, pictures and learning records. The previous program is kept until the updated application loads its profile and starts successfully. A failed replacement or startup attempts to restore the previous program and profile backups; if recovery is blocked, Try shows where the backups were preserved.
 
 Version `0.2.1` and earlier need one manual upgrade: quit from the tray, replace `try.exe` in its original folder and keep `data/`. Opening the new executable in a different folder uses a new data folder there. Move the executable and data together when moving the portable app. If launch at login was enabled, turn it off and on at the new location to update the startup entry.
 
