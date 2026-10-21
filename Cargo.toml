@@ -1,6 +1,6 @@
 [package]
 name = "try"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 rust-version = "1.92"
 publish = false
@@ -21,7 +21,7 @@ required-features = ["native_checks", "distribution"]
 resolver = "3"
 
 [workspace.dependencies]
-slint-math-input = { git = "https://github.com/Ethan-decoy/slint_math_input.git", rev = "ba783b79dba4dd5ff5fc8193c5e3a05f1a2d85b6", default-features = false }
+slint-math-input = { git = "https://github.com/Ethan-decoy/slint_math_input.git", rev = "9d7290057cda3c0005450c35ac878d992ca761ba", default-features = false }
 
 [dependencies]
 slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "system-tray", "compat-1-18", "unstable-winit-030"] }

@@ -4021,8 +4021,8 @@ dependencies = [
 
 [[package]]
 name = "slint-math-input"
-version = "0.1.0-preview.1"
-source = "git+https://github.com/Ethan-decoy/slint_math_input.git?rev=ba783b79dba4dd5ff5fc8193c5e3a05f1a2d85b6#ba783b79dba4dd5ff5fc8193c5e3a05f1a2d85b6"
+version = "0.1.0-preview.2"
+source = "git+https://github.com/Ethan-decoy/slint_math_input.git?rev=9d7290057cda3c0005450c35ac878d992ca761ba#9d7290057cda3c0005450c35ac878d992ca761ba"
 dependencies = [
  "arboard",
  "serde",
@@ -4561,7 +4561,7 @@ dependencies = [
 
 [[package]]
 name = "try"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "arboard",
  "base64",

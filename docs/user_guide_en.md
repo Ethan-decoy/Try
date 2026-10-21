@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 0.5.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 0.5.1 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -72,6 +72,8 @@ Export still produces one JSON file, with the pictures included. Importing it on
 Type common expressions such as `sin(pi/3)`, `sqrt(3)/2`, or supported LaTeX without opening the keypad first. Recognized structures are edited directly in their typeset layout. Unfinished fractions, roots and other structures in math questions remain drafts; submitting them shows a completion hint. Ordinary text retains native text input and input methods.
 
 Click a numerator, denominator or exponent to position the caret. Arrow keys move through layout; Shift plus arrows or dragging selects. Formula clipboard operations exchange supported LaTeX; ordinary text keeps its source. Ctrl+Z / Ctrl+Y undo and redo. Normalization supports written forms without arbitrary algebraic simplification or approximate numeric comparison.
+
+Operators such as `+` and `-` stay in the current exponent or subscript. To continue outside it, press the right arrow at the end of that row or click ↗ first.
 
 ƒ opens the keypad below the field, with functions, symbols, fractions, roots, powers, integrals, sums, limits, matrices and cases. Practice uses the same input control with the keypad open or closed, retaining unfinished formulas, the caret, selection and undo history. Enter checks the answer directly; unfinished formulas show a completion hint. Esc collapses an open keypad; with it closed, Esc dismisses an unanswered card.
 

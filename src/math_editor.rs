@@ -1649,13 +1649,13 @@ impl Parser {
                 }
                 Token::Word(s)
                     if [
-                        "times", "div", "leq", "geq", "neq", "approx", "in", "notin", "subseteq",
-                        "cup", "cap", "pm", "mp", "to",
+                        "cdot", "times", "div", "leq", "geq", "neq", "approx", "in", "notin",
+                        "subseteq", "cup", "cap", "pm", "mp", "to",
                     ]
                     .contains(&vocabulary::symbol(s).unwrap_or("")) =>
                 {
                     (
-                        if ["times", "div"].contains(&vocabulary::symbol(s).unwrap()) {
+                        if ["cdot", "times", "div"].contains(&vocabulary::symbol(s).unwrap()) {
                             3
                         } else {
                             1
@@ -1701,7 +1701,7 @@ impl Parser {
                 Token::Word(s) if vocabulary::symbol(&s) == Some("div") => {
                     Node::branch(Kind::Fraction, vec![ungroup(left), ungroup(right)])
                 }
-                Token::Word(s) if vocabulary::symbol(&s) == Some("times") => {
+                Token::Word(s) if matches!(vocabulary::symbol(&s), Some("cdot" | "times")) => {
                     row(left, Node::leaf(Kind::Symbol, "cdot"), Some(right))
                 }
                 Token::Word(s) => row(
@@ -2348,6 +2348,24 @@ mod tests {
         visual.insert("fraction").unwrap();
         visual.update("2").unwrap();
         assert_eq!(visual.root, expression("sqrt(3)/2").unwrap());
+    }
+
+    #[test]
+    fn multiplication_dots_round_trip_with_product_precedence() {
+        for (input, canonical) in [
+            ("p^n⋅q^n", "p^n*q^n"),
+            ("p^n·q^n", "p^n*q^n"),
+            ("a⋅b+c", "a*b+c"),
+            ("a+b·c", "a+b*c"),
+            ("a⋅b/c", "a*b/c"),
+        ] {
+            let node = expression(input).unwrap_or_else(|error| panic!("{input}: {error}"));
+            assert_eq!(node, expression(canonical).unwrap());
+            assert_eq!(expression(&node.editor_input()).unwrap(), node);
+        }
+        let quoted = expression(r#""A·B""#).unwrap();
+        assert_eq!(quoted.kind, Kind::Text);
+        assert_eq!(quoted.value, "A·B");
     }
 
     #[test]

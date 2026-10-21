@@ -246,6 +246,34 @@ mod tests {
     }
 
     #[test]
+    fn host_keyboard_and_keypad_operators_stay_in_the_exponent() {
+        for keypad in [false, true] {
+            let mut session = Session::new(Seed::Typing(String::new())).unwrap();
+            for text in ["P", if keypad { "key:power" } else { "^" }, "n"] {
+                if keypad {
+                    session.keypad(text, false);
+                } else {
+                    session.insert(text);
+                }
+            }
+            let inside = session.controller.editor.cursor().row;
+            if keypad {
+                session.keypad("+", false);
+                session.keypad("m", false);
+            } else {
+                session.insert("+");
+                session.insert("m");
+            }
+            assert_eq!(session.controller.editor.cursor().row, inside);
+            assert_eq!(session.complete().unwrap(), "P^{n+m}");
+            session.keypad("key:next", false);
+            session.insert("+");
+            session.insert("q");
+            assert_eq!(session.complete().unwrap(), "P^{n+m}+q");
+        }
+    }
+
+    #[test]
     fn host_clipboard_paste_resets_vertical_navigation_column() {
         let clipboard = Rc::new(RefCell::new(r"\frac{1}{a}".to_owned()));
         let mut session =

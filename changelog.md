@@ -4,6 +4,13 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.5.1]
+
+### Fixed
+
+- Update the pinned formula input component so operators stay inside the active exponent or subscript until the caret explicitly leaves it.
+- Allow complete formulas containing multiplication dots (`⋅`, `·`, or `\text{⋅}`) to submit with Enter and match equivalent multiplication notation.
+
 ## [0.5.0] - 2026-10-20
 
 ### Added
@@ -97,7 +104,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Ethan-decoy/Try/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Ethan-decoy/Try/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Ethan-decoy/Try/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Ethan-decoy/Try/compare/v0.3.2...v0.4.0

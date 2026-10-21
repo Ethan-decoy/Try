@@ -94,6 +94,8 @@ const SYMBOLS: &[(&str, char)] = &[
     ("infty", '∞'),
     ("pm", '±'),
     ("mp", '∓'),
+    ("cdot", '⋅'),
+    ("cdot", '·'),
     ("times", '×'),
     ("div", '÷'),
     ("leq", '≤'),

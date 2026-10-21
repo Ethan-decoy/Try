@@ -1,6 +1,47 @@
 //! Explicit native checks for formulas.
 use super::*;
 
+fn check_script_operators(checks: &AnswerChecks, card: &PracticeWindow, keypad: bool) {
+    let ui = card.global::<crate::MathInputState>();
+    ui.invoke_keypad("key:clear".into(), false);
+    for token in ["P", if keypad { "key:power" } else { "^" }, "n", "+", "m"] {
+        if keypad {
+            ui.invoke_keypad(token.into(), false);
+        } else {
+            key(card.window(), token.into());
+        }
+    }
+    assert_eq!(
+        checks
+            .app
+            .structured_math
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .1
+            .complete()
+            .unwrap(),
+        "P^{n+m}",
+        "native script input, keypad={keypad}"
+    );
+    ui.invoke_keypad("key:next".into(), false);
+    key(card.window(), "+".into());
+    key(card.window(), "q".into());
+    assert_eq!(
+        checks
+            .app
+            .structured_math
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .1
+            .complete()
+            .unwrap(),
+        "P^{n+m}+q"
+    );
+    ui.invoke_keypad("key:clear".into(), false);
+}
+
 fn scroll_math_catalog(card: &PracticeWindow, delta_y: f32) {
     let ui = card.global::<crate::MathInputState>();
     let position = slint::LogicalPosition::new(
@@ -176,6 +217,7 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                     );
                     ui.invoke_keypad("key:clear".into(), false);
                     assert!(card.global::<crate::MathInputState>().get_open());
+                    check_script_operators(&checks, &card, false);
                     // Clearing changes the card height. Click after the native
                     // resize has updated hit testing and the button's position.
                     let app = checks.app.clone();
@@ -203,6 +245,7 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                         "inline buttons must fit their panel"
                     );
                     assert!(ui.get_keypad_width() > 200.0 && ui.get_keypad_width() <= 272.0);
+                    check_script_operators(&checks, &card, true);
                     click_structured_formula_button(&card);
                     assert!(ui.get_open(), "collapsing must retain the active editor");
                     assert!(!ui.get_keypad_expanded());
@@ -1144,6 +1187,47 @@ fn inline_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     snapshot(card.window(), checks.output.join("plain_rust_light.png"));
                     key(card.window(), Key::Return.into());
                     assert_eq!(card.get_feedback(), 1);
+                    app.close_practice();
+                    {
+                        let mut library = app.library.borrow_mut();
+                        let question = &mut library.packs[0].cards[2];
+                        question.answer = "p^n*q^n".into();
+                        question.answer_latex = Some(r"p^{n}\cdot q^{n}".into());
+                    }
+                    app.show_practice().unwrap();
+                }
+                11 => {
+                    key(card.window(), r"p^{n}\text{⋅}q^{n}".into());
+                    assert!(ui.get_open());
+                    assert!(ui.get_complete());
+                    key(card.window(), Key::Return.into());
+                    assert_eq!(
+                        card.get_feedback(),
+                        1,
+                        "complete dot product submits with one Enter"
+                    );
+                    assert!(card.get_input_error().is_empty());
+                    assert!(!ui.get_open());
+                    snapshot(
+                        card.window(),
+                        checks.output.join("multiplication_correct.png"),
+                    );
+                    app.close_practice();
+                    app.show_practice().unwrap();
+                }
+                12 => {
+                    key(card.window(), r"p^{m}\text{⋅}q^{n}".into());
+                    key(card.window(), Key::Return.into());
+                    assert_eq!(
+                        card.get_feedback(),
+                        2,
+                        "a wrong exponent reaches answer feedback"
+                    );
+                    assert!(card.get_input_error().is_empty());
+                    snapshot(
+                        card.window(),
+                        checks.output.join("multiplication_wrong.png"),
+                    );
                     checks.finished.set(true);
                     app.quit();
                     return;

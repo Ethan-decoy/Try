@@ -129,6 +129,11 @@ fn notation(node: &Node) -> String {
 }
 
 fn normalize(mut node: Node, grouped_slot: bool) -> Node {
+    // Some math keyboards export a multiplication dot in a text wrapper.
+    // Normalize that single glyph without rewriting other quoted content.
+    if node.kind == Kind::Text && matches!(node.value.as_str(), "⋅" | "·") {
+        return Node::leaf(Kind::Symbol, "cdot");
+    }
     if grouped_slot && matches!(&node.kind, Kind::Group(left, right) if left == "(" && right == ")")
     {
         return normalize(node.children.remove(0), true);
@@ -245,6 +250,35 @@ mod tests {
             assert!(incomplete_error(input, true).is_none(), "{input}");
         }
         assert!(incomplete_error("literal/", false).is_none());
+        assert!(incomplete_error("p^n⋅", true).is_some());
+    }
+
+    #[test]
+    fn structured_multiplication_survives_submission_and_notation_matching() {
+        let forms = [
+            r"p^{n}\text{⋅}q^{n}",
+            r"p^{n}\text{·}q^{n}",
+            r"p^{n}\cdot q^{n}",
+            r"p^{n}\times q^{n}",
+        ];
+        for latex in forms {
+            let plain = math_editor::from_latex(latex).unwrap().plain();
+            assert!(
+                incomplete_error(&plain, true).is_none(),
+                "complete structured answer must reach feedback: {latex} -> {plain}"
+            );
+            for expected in forms {
+                assert!(
+                    matches(&plain, "", Some(expected), &[]),
+                    "{plain}: {expected}"
+                );
+                assert!(
+                    matches(latex, "", Some(expected), &[]),
+                    "{latex}: {expected}"
+                );
+            }
+            assert!(!matches("p^m*q^n", "", Some(latex), &[]));
+        }
     }
 
     #[test]
