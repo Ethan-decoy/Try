@@ -423,7 +423,10 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                 }
                 7 => {
                     assert_eq!(main.get_update_status(), "Check limited; try later");
-                    *app.update_transfer.lock().unwrap() = UpdateTransfer::Failed("fixture".into());
+                    *app.update_transfer.lock().unwrap() = UpdateTransfer::Failed {
+                        phase: UpdatePhase::Downloading,
+                        error: "fixture".into(),
+                    };
                     app.begin_update_check(|| Err(CheckError::RateLimited));
                     assert!(
                         matches!(*app.update_transfer.lock().unwrap(), UpdateTransfer::Idle),
@@ -444,7 +447,7 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                         checks.output.join("about_rate_limited_zh.png"),
                     );
                     let prepared = updater::ui_fixture(app.store.directory()).unwrap();
-                    app.begin_update_download(move |cancel, progress| {
+                    app.begin_update_download(UpdatePhase::Downloading, move |cancel, progress| {
                         progress(42, Some(100));
                         let deadline = std::time::Instant::now() + Duration::from_secs(10);
                         while !cancel.load(Ordering::Relaxed)
@@ -452,7 +455,7 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                         {
                             std::thread::sleep(Duration::from_millis(10));
                         }
-                        Ok(prepared)
+                        Ok(Some(prepared))
                     });
                 }
                 9 => {
@@ -488,7 +491,9 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                             }),
                         "cancellation discards even a successfully verified download"
                     );
-                    app.begin_update_download(|_, _| Err("download failure fixture".into()));
+                    app.begin_update_download(UpdatePhase::Downloading, |_, _| {
+                        Err("download failure fixture".into())
+                    });
                 }
                 13 => {
                     assert_eq!(main.get_update_status(), "Download failed; retry");
@@ -516,7 +521,7 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                     ));
                     main.invoke_create_pack();
                     let fetches = checks.fetches.clone();
-                    app.begin_update_download(move |_, _| {
+                    app.begin_update_download(UpdatePhase::Downloading, move |_, _| {
                         fetches.fetch_add(1, Ordering::SeqCst);
                         Err("must not download with an unsaved draft".into())
                     });
@@ -549,7 +554,9 @@ fn update_phase(checks: Rc<UpdateChecks>, phase: u8) {
                     main.invoke_cancel_update_download();
                     main.invoke_cancel_editor();
                     let prepared = updater::ui_fixture(app.store.directory()).unwrap();
-                    app.begin_update_download(move |_, _| Ok(prepared));
+                    app.begin_update_download(UpdatePhase::Downloading, move |_, _| {
+                        Ok(Some(prepared))
+                    });
                     // Completion must install without any second button, even if
                     // the About window was closed while the worker finished.
                     app.close_main();
@@ -575,9 +582,9 @@ fn update_edit_phase(checks: Rc<UpdateChecks>, phase: u8) {
                 0 => {
                     let prepared = updater::ui_fixture(app.store.directory()).unwrap();
                     let (send, receive) = std::sync::mpsc::channel();
-                    app.begin_update_download(move |_, _| {
+                    app.begin_update_download(UpdatePhase::Downloading, move |_, _| {
                         receive.recv_timeout(Duration::from_secs(6)).unwrap();
-                        Ok(prepared)
+                        Ok(Some(prepared))
                     });
                     main.invoke_create_pack();
                     app.pending_import
@@ -695,7 +702,7 @@ fn run_update_check(output_name: &str, drive: fn(Rc<UpdateChecks>, u8)) {
         checks.original_packs
     );
     println!(
-        "Native update check passed: {output_name}; automatic restart, cancellation and draft preservation verified."
+        "Native update check passed: {output_name}; isolated profile preserved and verified download handed to shutdown."
     );
 }
 
@@ -709,4 +716,241 @@ fn native_update_check() {
 #[ignore = "opens real update UI using fixtures and an isolated profile"]
 fn native_update_edit_guard() {
     run_update_check("update_edit_guard_validation", update_edit_phase);
+}
+
+fn latest_download_fixture() -> Result<CheckOutcome, CheckError> {
+    Ok(CheckOutcome::Available(
+        update_check::Release::from_tag("v99.1.0").unwrap(),
+    ))
+}
+
+fn set_cached_download_hint(app: &App) {
+    let cached = CheckOutcome::Available(update_check::Release::from_tag("v99.0.0").unwrap());
+    {
+        let mut check = app.update_check.lock().unwrap();
+        check
+            .schedule
+            .record_attempt(chrono::Utc::now().timestamp())
+            .unwrap();
+        check.schedule.record_result(&cached).unwrap();
+        check.finish(Ok(cached), false);
+    }
+    app.refresh_update_status();
+}
+
+fn update_target_phase(checks: Rc<UpdateChecks>, phase: u8) {
+    Timer::single_shot(Duration::from_millis(450), move || {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let app = &checks.app;
+            let selected = checks.output.join("selected_release.txt");
+            match phase {
+                0 => {
+                    set_cached_download_hint(app);
+                    assert_eq!(main_window(app).get_update_status(), "新版本 99.0.0");
+                    let (send, receive) = std::sync::mpsc::channel();
+                    checks.gate.replace(Some(send));
+                    let calls = checks.fetches.clone();
+                    app.open_update_download_with(
+                        move || {
+                            receive.recv_timeout(Duration::from_secs(8)).unwrap();
+                            latest_download_fixture()
+                        },
+                        move |release, _, _| {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            std::fs::write(selected, release.version.to_string()).unwrap();
+                            Err("stop after recording the selected download".into())
+                        },
+                    );
+                    assert_eq!(
+                        main_window(app).get_update_status(),
+                        "正在检查…",
+                        "Resolving a fresh target must not be presented as downloading"
+                    );
+                    let repeated = checks.fetches.clone();
+                    app.open_update_download_with(
+                        move || {
+                            repeated.fetch_add(100, Ordering::SeqCst);
+                            latest_download_fixture()
+                        },
+                        |_, _, _| Err("must not start a second download".into()),
+                    );
+                }
+                1 => {
+                    let main = main_window(app);
+                    assert_eq!(main.get_update_state(), 1);
+                    assert!(main.get_update_busy());
+                    assert_eq!(main.get_update_action(), "取消");
+                    main.invoke_choose_language(2);
+                    assert_eq!(main.get_update_status(), "Checking…");
+                    assert_eq!(main.get_update_action(), "Cancel");
+                    app.close_main();
+                    drop(main);
+                    app.show_main().unwrap();
+                    let reopened = main_window(app);
+                    assert_eq!(reopened.get_update_status(), "Checking…");
+                    reopened.invoke_choose_language(1);
+                    checks.gate.borrow_mut().take().unwrap().send(()).unwrap();
+                }
+                2 => {
+                    assert_eq!(
+                        std::fs::read_to_string(selected).unwrap(),
+                        "99.1.0",
+                        "Download must refresh a cached target even within the daily check budget"
+                    );
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Failed {
+                            phase: UpdatePhase::Downloading,
+                            ..
+                        }
+                    ));
+                    assert_eq!(main_window(app).get_update_status(), "下载失败，请重试");
+                    assert_eq!(checks.fetches.load(Ordering::SeqCst), 1);
+                    let persisted = UpdateSchedule::open(
+                        app.store.directory(),
+                        env!("CARGO_PKG_VERSION"),
+                        chrono::Utc::now().timestamp(),
+                    );
+                    assert_eq!(
+                        persisted.cached_outcome(),
+                        Some(latest_download_fixture().unwrap())
+                    );
+                    let calls = checks.fetches.clone();
+                    app.open_update_download_with(
+                        || Err(CheckError::Network),
+                        move |_, _, _| {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            Err("must not download a cached target after a failed refresh".into())
+                        },
+                    );
+                }
+                3 => {
+                    assert_eq!(
+                        checks.fetches.load(Ordering::SeqCst),
+                        1,
+                        "Failed refresh must not fall back to the cached package"
+                    );
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Failed {
+                            phase: UpdatePhase::Checking,
+                            ..
+                        }
+                    ));
+                    assert!(main_window(app).get_update_download());
+                    assert_eq!(main_window(app).get_update_status(), "检查失败，请重试");
+                    main_window(app).invoke_choose_language(2);
+                    assert_eq!(main_window(app).get_update_status(), "Check failed; retry");
+                    assert_eq!(main_window(app).get_update_action(), "Retry");
+                    main_window(app).invoke_choose_language(1);
+                    assert!(app.restart_update.borrow().is_none());
+                    let calls = checks.fetches.clone();
+                    app.open_update_download_with(
+                        || Ok(CheckOutcome::UpToDate),
+                        move |_, _, _| {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            Err("must not download when no newer release is available".into())
+                        },
+                    );
+                }
+                4 => {
+                    assert_eq!(checks.fetches.load(Ordering::SeqCst), 1);
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Idle
+                    ));
+                    assert_eq!(main_window(app).get_update_status(), "已是最新");
+                    assert!(!main_window(app).get_update_download());
+                    set_cached_download_hint(app);
+                    let calls = checks.fetches.clone();
+                    app.open_update_download_with(
+                        || Ok(CheckOutcome::NoPublicRelease),
+                        move |_, _, _| {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            Err("must not download a withdrawn release".into())
+                        },
+                    );
+                }
+                5 => {
+                    assert_eq!(checks.fetches.load(Ordering::SeqCst), 1);
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Idle
+                    ));
+                    assert_eq!(main_window(app).get_update_status(), "尚无公开版本");
+                    assert!(!main_window(app).get_update_download());
+                    set_cached_download_hint(app);
+                    let (send, receive) = std::sync::mpsc::channel();
+                    checks.gate.replace(Some(send));
+                    let calls = checks.fetches.clone();
+                    app.open_update_download_with(
+                        move || {
+                            std::fs::write(selected, "checking").unwrap();
+                            receive.recv_timeout(Duration::from_secs(8)).unwrap();
+                            latest_download_fixture()
+                        },
+                        move |_, _, _| {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            Err("must not prepare a package after cancelling the check".into())
+                        },
+                    );
+                }
+                6 => {
+                    // Wait until the request really entered the blocked fetch.
+                    // Cancelling sooner can validly finish before any request.
+                    if !std::fs::read_to_string(selected).is_ok_and(|value| value == "checking") {
+                        update_target_phase(checks.clone(), phase);
+                        return;
+                    }
+                    app.cancel_update_download();
+                    app.cancel_update_download();
+                    assert_eq!(main_window(app).get_update_status(), "正在取消…");
+                    app.close_main();
+                    app.show_main().unwrap();
+                    let main = main_window(app);
+                    assert_eq!(main.get_update_status(), "正在取消…");
+                    main.invoke_choose_language(2);
+                    assert_eq!(main.get_update_status(), "Cancelling…");
+                    main.invoke_choose_language(1);
+                    checks.gate.borrow_mut().take().unwrap().send(()).unwrap();
+                }
+                7 => {
+                    if matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Running { .. }
+                    ) {
+                        update_target_phase(checks.clone(), phase);
+                        return;
+                    }
+                    assert_eq!(checks.fetches.load(Ordering::SeqCst), 1);
+                    assert!(matches!(
+                        *app.update_transfer.lock().unwrap(),
+                        UpdateTransfer::Idle
+                    ));
+                    assert!(!app.update_transfer_timer.running());
+                    assert!(app.restart_update.borrow().is_none());
+                    assert_eq!(main_window(app).get_update_status(), "新版本 99.1.0");
+                    let mut prepared = updater::ui_fixture(app.store.directory()).unwrap();
+                    app.open_update_download_with(latest_download_fixture, move |release, _, _| {
+                        assert_eq!(release.version.to_string(), "99.1.0");
+                        prepared.release = release;
+                        Ok(prepared)
+                    });
+                    checks.finished.set(true);
+                    return;
+                }
+                _ => unreachable!(),
+            }
+            update_target_phase(checks.clone(), phase + 1);
+        }));
+        if outcome.is_err() {
+            checks.app.quit();
+        }
+    });
+}
+
+#[test]
+#[ignore = "opens the real download coordinator with a stale cached release and an isolated profile"]
+fn native_update_latest_target() {
+    run_update_check("update_latest_target_validation", update_target_phase);
 }

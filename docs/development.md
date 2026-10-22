@@ -69,7 +69,9 @@ Windows 窗口激活直接调用 [SetForegroundWindow](https://learn.microsoft.c
 
 新进程读入题库、建立窗口与托盘并进入事件循环后确认启动。确认前保留旧程序和三份 JSON 备份，推迟首次媒体清理；确认后回收暂存文件。安装位置旁的 `.try_update.lock` 使用文件锁串行化不同数据配置的更新，替换前再次核对原程序摘要。启动失败则停止本次新进程、在取得数据锁后恢复旧程序及 JSON，再启动旧版；恢复受阻时保留备份并显示位置。用户点击「下载并重启」开始更新，下载校验完成后自动交接退出，无需第二次确认。已有编辑阻止开始下载；下载期间新开的题目、公式、知识包元数据编辑或待确认导入会暂缓交接，保存或取消后由编辑状态事件继续，等待期间不轮询。取消与下载完成通过同一状态锁串行化，取消已校验的暂存也不会重启。自动检查仍只提示，不自行开始下载。
 
-`native_update_check` 覆盖中英文进度、取消、窗口重建、失败、编辑保护、下载后自动退出交接和关于页固定几何；`native_update_edit_guard` 验证下载期间的多种编辑阻止重启、等待不轮询和编辑结束后自动继续。`python scripts/check_in_app_update.py --executable <程序> --output <记录.json>` 在临时目录中验证实际替换、重启、配置／题库／图片保留及失败回退；macOS 传入 app，Linux 另以 `--helper` 指定 AppImage 内原生程序。Windows 使用 `./scripts/build_windows.ps1 -Action build -Distribution -Example update_driver` 构建独立交接样例，再给检查脚本传入 `--driver local_artifacts/target/x86_64-pc-windows-msvc/release/examples/update_driver.exe`，可同时验证父进程的真实暂存、握手与退出。该检查已接入三平台打包流程。生成的 job、截图、备份与记录不进入源码仓库。
+下载入口在点击后会于后台重新检查最新公开版本，再固定该版本下载、校验和安装；这次主动检查不受每日自动检查预算限制。确认版本时显示检查状态，失败时区分检查与下载阶段，均可重试；检查过程中也可取消，结果迟到不会继续下载或重启。检查失败不退回安装旧缓存目标；已无更新或公开版本被撤回时结束本次操作。日志区分自动、手动与下载前的检查，记录当前版本、缓存提示、实际下载目标、取消、校验就绪、安装请求与更新后的启动确认。
+
+`native_update_check` 覆盖中英文进度、取消、窗口重建、失败、编辑保护、下载后自动退出交接和关于页固定几何；`native_update_edit_guard` 验证下载期间的多种编辑阻止重启、等待不轮询和编辑结束后自动继续；`native_update_latest_target` 验证旧缓存直接升级到新目标、每日预算不阻止主动检查、中英文阶段提示、重复点击合并、检查期间取消与窗口重建、检查失败不下载、无可用版本时结束及后续重试交接。`python scripts/check_in_app_update.py --executable <程序> --output <记录.json>` 在临时目录中验证实际替换、重启、配置／题库／图片保留及失败回退；macOS 传入 app，Linux 另以 `--helper` 指定 AppImage 内原生程序。Windows 使用 `./scripts/build_windows.ps1 -Action build -Distribution -Example update_driver` 构建独立交接样例，再给检查脚本传入 `--driver local_artifacts/target/x86_64-pc-windows-msvc/release/examples/update_driver.exe`，可同时验证父进程的真实暂存、握手与退出。该检查已接入三平台打包流程。生成的 job、截图、备份与记录不进入源码仓库。
 
 ## 公式输入接入
 
@@ -117,3 +119,5 @@ macOS/Linux 或 Git Bash 使用 `sh scripts/setup_git.sh`。提交、版本选�
 ## 诊断
 
 默认记录 Try 的 Info、Warning 和 Error，依赖仅记录 Warning 与 Error；`--diagnostics` 可启用 Try 的 Debug 日志。日志位于当前数据目录的 `logs/`，可能包含文件路径，分享前检查内容。用户配置、题库、学习状态与版本缓存的含义见 [使用说明](user_guide.md)。
+
+更新助手在持有数据锁时，将安装失败的目标版本、阶段和回退结果追加到同一日志，启动新旧程序前关闭本地写入器；不记录交接凭据。日志不可写时继续执行安装或恢复。检查失败与错误提示不重复记警告，主动取消不作为失败，未完成编辑仅记 Debug。

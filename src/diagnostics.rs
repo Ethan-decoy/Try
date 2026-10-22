@@ -20,17 +20,7 @@ pub fn initialize(data_directory: &Path, verbose: bool) -> Option<LoggerHandle> 
     } else {
         "warn,try=info"
     };
-    let requested = std::env::var("TRY_LOG");
-    let (spec, invalid_filter) = match &requested {
-        Ok(value) if !value.trim().is_empty() => match LogSpecification::parse(value) {
-            Ok(spec) => (spec, false),
-            Err(_) => (LogSpecification::parse(default_spec).unwrap(), true),
-        },
-        Err(std::env::VarError::NotUnicode(_)) => {
-            (LogSpecification::parse(default_spec).unwrap(), true)
-        }
-        _ => (LogSpecification::parse(default_spec).unwrap(), false),
-    };
+    let (spec, invalid_filter) = specification(default_spec);
     let directory = data_directory.join("logs");
     let handle = match file_logger(&directory, spec.clone(), MAX_LOG_BYTES, OLD_LOG_FILES).start() {
         Ok(handle) => handle,
@@ -65,6 +55,48 @@ pub fn initialize(data_directory: &Path, verbose: bool) -> Option<LoggerHandle> 
         log::warn!(target: "try::diagnostics", "event=invalid_log_filter fallback={default_spec}");
     }
     Some(handle)
+}
+
+fn specification(default_spec: &str) -> (LogSpecification, bool) {
+    match std::env::var("TRY_LOG") {
+        Ok(value) if !value.trim().is_empty() => match LogSpecification::parse(&value) {
+            Ok(spec) => (spec, false),
+            Err(_) => (LogSpecification::parse(default_spec).unwrap(), true),
+        },
+        Err(std::env::VarError::NotUnicode(_)) => {
+            (LogSpecification::parse(default_spec).unwrap(), true)
+        }
+        _ => (LogSpecification::parse(default_spec).unwrap(), false),
+    }
+}
+
+/// Append a helper event while the profile lock excludes the application's
+/// logger. Close this local writer before releasing the lock or starting a UI.
+/// Logging is best-effort and must never change installation or recovery.
+pub(crate) fn record_update(
+    store: &crate::storage::Store,
+    level: log::Level,
+    message: std::fmt::Arguments<'_>,
+) {
+    let (spec, _) = specification("warn,try=info");
+    let Ok((logger, handle)) = file_logger(
+        &store.directory().join("logs"),
+        spec,
+        MAX_LOG_BYTES,
+        OLD_LOG_FILES,
+    )
+    .build() else {
+        return;
+    };
+    let record = log::Record::builder()
+        .target("try::updates")
+        .level(level)
+        .args(message)
+        .build();
+    if logger.enabled(record.metadata()) {
+        logger.log(&record);
+    }
+    handle.shutdown();
 }
 
 fn file_logger(

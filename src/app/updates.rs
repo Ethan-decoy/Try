@@ -62,8 +62,8 @@ impl App {
         {
             let mut transfer = self.update_transfer.lock().unwrap();
             match &*transfer {
-                UpdateTransfer::Downloading { .. } | UpdateTransfer::Ready(_) => return,
-                UpdateTransfer::Failed(_) => *transfer = UpdateTransfer::Idle,
+                UpdateTransfer::Running { .. } | UpdateTransfer::Ready(_) => return,
+                UpdateTransfer::Failed { .. } => *transfer = UpdateTransfer::Idle,
                 UpdateTransfer::Idle => {}
             }
         }
@@ -90,12 +90,13 @@ impl App {
         let worker = std::thread::Builder::new()
             .name("try_update_check".into())
             .spawn(move || {
-                log::debug!(target: "try::updates", "event=check_started automatic={automatic}");
+                let origin = if automatic { "automatic" } else { "manual" };
+                log::info!(target: "try::updates", "event=check_started origin={origin}");
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(fetch))
                     .unwrap_or(Err(CheckError::Network));
                 match &result {
-                    Ok(outcome) => log::info!(target: "try::updates", "event=check_finished outcome={outcome:?}"),
-                    Err(error) => log::warn!(target: "try::updates", "event=check_failed reason={error}"),
+                    Ok(outcome) => log::info!(target: "try::updates", "event=check_finished origin={origin} outcome={outcome:?}"),
+                    Err(error) => log::warn!(target: "try::updates", "event=check_failed origin={origin} reason={error}"),
                 }
                 let observer = {
                     let mut check = state.lock().unwrap();
@@ -132,7 +133,7 @@ impl App {
             return;
         };
         let check = self.update_check.lock().unwrap();
-        let (state, mut text, mut download) = match &check.status {
+        let (mut state, mut text, mut download) = match &check.status {
             UpdateStatus::Idle => (0, String::new(), false),
             UpdateStatus::Checking => (1, tr!("正在检查…").to_owned(), false),
             UpdateStatus::Finished(Ok(CheckOutcome::Available(release))) => {
@@ -154,10 +155,19 @@ impl App {
         let mut busy = false;
         let mut action_kind = 0;
         match &*transfer {
-            UpdateTransfer::Downloading { percent, cancel } => {
+            UpdateTransfer::Running {
+                phase,
+                percent,
+                cancel,
+            } => {
                 action_kind = 1;
+                if *phase == UpdatePhase::Checking {
+                    state = 1;
+                }
                 text = if cancel.load(Ordering::Relaxed) {
                     tr!("正在取消…").into()
+                } else if *phase == UpdatePhase::Checking {
+                    tr!("正在检查…").into()
                 } else if let Some(percent) = percent {
                     tr!("正在下载 {percent}%", percent = percent)
                 } else {
@@ -180,8 +190,12 @@ impl App {
                 download = true;
                 busy = true;
             }
-            UpdateTransfer::Failed(_) => {
-                text = tr!("下载失败，请重试").into();
+            UpdateTransfer::Failed { phase, .. } => {
+                text = match phase {
+                    UpdatePhase::Checking => tr!("检查失败，请重试"),
+                    UpdatePhase::Downloading => tr!("下载失败，请重试"),
+                }
+                .into();
                 action = tr!("重试").into();
             }
             UpdateTransfer::Idle => {}
@@ -195,24 +209,84 @@ impl App {
     }
 
     pub(super) fn open_update_download(self: &Rc<Self>) {
+        self.open_update_download_with(self.update_fetch.get(), updater::prepare);
+    }
+
+    pub(super) fn open_update_download_with(
+        self: &Rc<Self>,
+        fetch: impl FnOnce() -> Result<CheckOutcome, CheckError> + Send + 'static,
+        prepare: impl FnOnce(
+            update_check::Release,
+            &AtomicBool,
+            &mut dyn FnMut(u64, Option<u64>),
+        ) -> AppResult<PreparedUpdate>
+        + Send
+        + 'static,
+    ) {
         {
             let transfer = self.update_transfer.lock().unwrap();
             if matches!(
                 *transfer,
-                UpdateTransfer::Downloading { .. } | UpdateTransfer::Ready(_)
+                UpdateTransfer::Running { .. } | UpdateTransfer::Ready(_)
             ) {
                 return;
             }
         }
-        let release = {
+        let hinted_release = {
             let check = self.update_check.lock().unwrap();
             match &check.status {
                 UpdateStatus::Finished(Ok(CheckOutcome::Available(release))) => release.clone(),
                 _ => return,
             }
         };
-        self.begin_update_download(move |cancel, progress| {
-            updater::prepare(release, cancel, progress)
+        let state = self.update_check.clone();
+        let transfer = self.update_transfer.clone();
+        self.begin_update_download(UpdatePhase::Checking, move |cancel, progress| {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(tr!("已取消更新下载。").into());
+            }
+            log::info!(target: "try::updates", "event=download_requested from={} cached_target={}",
+                env!("CARGO_PKG_VERSION"), hinted_release.version);
+            {
+                let mut check = state.lock().unwrap();
+                if let Err(error) = check
+                    .schedule
+                    .record_attempt(chrono::Utc::now().timestamp())
+                {
+                    log::warn!(target: "try::updates", "event=cache_attempt_save_failed reason={error}");
+                }
+            }
+            // The daily cache is a hint. Resolve the public target again at the
+            // user's download request, before fetching any package or checksum.
+            log::info!(target: "try::updates", "event=check_started origin=download");
+            let outcome = fetch().map_err(|error| {
+                log::warn!(target: "try::updates", "event=check_failed origin=download reason={error}");
+                if error == CheckError::RateLimited {
+                    tr!("检查受限，请稍后再试").to_owned()
+                } else {
+                    tr!("暂时无法检查").to_owned()
+                }
+            })?;
+            log::info!(target: "try::updates", "event=check_finished origin=download outcome={outcome:?}");
+            {
+                let mut check = state.lock().unwrap();
+                if let Err(error) = check.schedule.record_result(&outcome) {
+                    log::warn!(target: "try::updates", "event=cache_result_save_failed reason={error}");
+                }
+                check.finish(Ok(outcome.clone()), false);
+            }
+            if cancel.load(Ordering::Relaxed) {
+                return Err(tr!("已取消更新下载。").into());
+            }
+            let CheckOutcome::Available(release) = outcome else {
+                return Ok(None);
+            };
+            if let UpdateTransfer::Running { phase, .. } = &mut *transfer.lock().unwrap() {
+                *phase = UpdatePhase::Downloading;
+            }
+            log::info!(target: "try::updates", "event=download_started from={} target={}",
+                env!("CARGO_PKG_VERSION"), release.version);
+            prepare(release, cancel, progress).map(Some)
         });
     }
 
@@ -220,11 +294,14 @@ impl App {
         let idle = {
             let mut transfer = self.update_transfer.lock().unwrap();
             match &*transfer {
-                UpdateTransfer::Downloading { cancel, .. } => {
-                    cancel.store(true, Ordering::Relaxed);
+                UpdateTransfer::Running { phase, cancel, .. } => {
+                    if !cancel.swap(true, Ordering::Relaxed) {
+                        log::info!(target: "try::updates", "event=update_cancel_requested phase={phase:?}");
+                    }
                     false
                 }
-                UpdateTransfer::Ready(_) => {
+                UpdateTransfer::Ready(prepared) => {
+                    log::info!(target: "try::updates", "event=update_cancelled phase=Ready target={}", prepared.release.version);
                     *transfer = UpdateTransfer::Idle;
                     true
                 }
@@ -240,23 +317,29 @@ impl App {
 
     pub(super) fn begin_update_download(
         self: &Rc<Self>,
-        fetch: impl FnOnce(&AtomicBool, &mut dyn FnMut(u64, Option<u64>)) -> AppResult<PreparedUpdate>
+        phase: UpdatePhase,
+        fetch: impl FnOnce(
+            &AtomicBool,
+            &mut dyn FnMut(u64, Option<u64>),
+        ) -> AppResult<Option<PreparedUpdate>>
         + Send
         + 'static,
     ) {
         if matches!(
             *self.update_transfer.lock().unwrap(),
-            UpdateTransfer::Downloading { .. } | UpdateTransfer::Ready(_)
+            UpdateTransfer::Running { .. } | UpdateTransfer::Ready(_)
         ) {
             return;
         }
         if self.has_pending_update_edits() {
-            self.notify(tr!("请先保存或取消编辑，再更新。"), true);
+            log::debug!(target: "try::updates", "event=update_deferred reason=unsaved_edits");
+            self.show_message(tr!("请先保存或取消编辑，再更新。"), true);
             return;
         }
         let language = self.library.borrow().settings.interface_language;
         let cancel = Arc::new(AtomicBool::new(false));
-        *self.update_transfer.lock().unwrap() = UpdateTransfer::Downloading {
+        *self.update_transfer.lock().unwrap() = UpdateTransfer::Running {
+            phase,
             percent: None,
             cancel: cancel.clone(),
         };
@@ -269,7 +352,7 @@ impl App {
                 i18n::activate(language);
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     fetch(&cancel, &mut |received, total| {
-                        if let UpdateTransfer::Downloading { percent, .. } =
+                        if let UpdateTransfer::Running { percent, .. } =
                             &mut *state.lock().unwrap()
                         {
                             *percent = total.filter(|n| *n > 0).map(|n| {
@@ -286,17 +369,41 @@ impl App {
                 // Serialize completion with cancellation so a late cancel cannot
                 // be overwritten by a verified update awaiting installation.
                 let mut transfer = state.lock().unwrap();
+                let completed_phase = match &*transfer {
+                    UpdateTransfer::Running { phase, .. } => *phase,
+                    _ => phase,
+                };
                 *transfer = if cancel.load(Ordering::Relaxed) {
+                    log::info!(target: "try::updates", "event=update_cancelled phase={completed_phase:?}");
                     UpdateTransfer::Idle
                 } else {
                     match result {
-                        Ok(prepared) => UpdateTransfer::Ready(prepared),
-                        Err(error) => UpdateTransfer::Failed(error),
+                        Ok(Some(prepared)) => {
+                            log::info!(target: "try::updates", "event=download_ready target={}", prepared.release.version);
+                            UpdateTransfer::Ready(prepared)
+                        }
+                        Ok(None) => UpdateTransfer::Idle,
+                        Err(error) => {
+                            if completed_phase == UpdatePhase::Checking {
+                                // The check already recorded its specific failure.
+                                log::info!(target: "try::updates", "event=update_finished outcome=failed phase={completed_phase:?}");
+                            } else {
+                                log::warn!(target: "try::updates", "event=update_failed phase={completed_phase:?} reason={error}");
+                            }
+                            UpdateTransfer::Failed {
+                                phase: completed_phase,
+                                error,
+                            }
+                        }
                     }
                 };
             });
         if let Err(error) = worker {
-            *self.update_transfer.lock().unwrap() = UpdateTransfer::Failed(error.to_string());
+            log::warn!(target: "try::updates", "event=worker_start_failed origin=update phase={phase:?} reason={error}");
+            *self.update_transfer.lock().unwrap() = UpdateTransfer::Failed {
+                phase,
+                error: tr!("无法启动更新，请重试。").into(),
+            };
         }
         let weak = Rc::downgrade(self);
         self.update_transfer_timer.start(
@@ -306,8 +413,8 @@ impl App {
                 if let Some(app) = weak.upgrade() {
                     app.refresh_update_status();
                     let state = app.update_transfer.lock().unwrap();
-                    if !matches!(*state, UpdateTransfer::Downloading { .. }) {
-                        let error = if let UpdateTransfer::Failed(error) = &*state {
+                    if !matches!(*state, UpdateTransfer::Running { .. }) {
+                        let error = if let UpdateTransfer::Failed { error, .. } = &*state {
                             Some(error.clone())
                         } else {
                             None
@@ -316,7 +423,7 @@ impl App {
                         drop(state);
                         app.update_transfer_timer.stop();
                         if let Some(error) = error {
-                            app.notify(&error, true);
+                            app.show_message(&error, true);
                         }
                         if ready {
                             app.restart_after_update();
@@ -375,6 +482,8 @@ impl App {
         }
         let previous = std::mem::take(&mut *self.update_transfer.lock().unwrap());
         if let UpdateTransfer::Ready(prepared) = previous {
+            log::info!(target: "try::updates", "event=install_requested from={} target={}",
+                env!("CARGO_PKG_VERSION"), prepared.release.version);
             self.restart_update.replace(Some(prepared));
             self.quit();
         }
@@ -385,7 +494,7 @@ impl App {
     }
 
     pub fn show_update_failure(&self) {
-        self.notify(tr!("更新未完成，原有数据已保留。"), true);
+        self.show_message(tr!("更新未完成，原有数据已保留。"), true);
     }
 
     pub fn reject_update_startup(self: &Rc<Self>) {

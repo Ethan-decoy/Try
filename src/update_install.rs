@@ -105,6 +105,20 @@ fn save_job(job: &Job, root: &Path) -> AppResult<()> {
     )
 }
 
+fn record_install_failure(data: &Path, tag: &str, stage: &str, error: &str) {
+    if let Ok(store) = Store::open(data.to_owned()) {
+        crate::diagnostics::record_update(
+            &store,
+            log::Level::Warn,
+            format_args!("event=install_failed target={tag} stage={stage} reason={error}"),
+        );
+    }
+}
+
+pub fn record_handoff_failure(data: &Path, release: &Release, error: &str) {
+    record_install_failure(data, release.tag(), "handoff", error);
+}
+
 fn clean_appimage_environment(command: &mut Command) {
     if std::env::var_os("APPIMAGE").is_some() {
         for key in ["APPIMAGE", "APPDIR", "OWD", "ARGV0", "LD_LIBRARY_PATH"] {
@@ -309,25 +323,45 @@ fn replace(job: &Job, root: &Path) -> AppResult<()> {
 
 fn restore(job: &Job, root: &Path) -> AppResult<()> {
     // Never overwrite a profile in use by another process.
-    let _profile = Store::open(job.data.clone())?;
-    let previous = root.join("previous");
-    if previous.exists() {
-        if job.target.exists() {
-            fs::rename(&job.target, root.join("failed")).map_err(|e| e.to_string())?;
+    let profile = Store::open(job.data.clone())?;
+    crate::diagnostics::record_update(
+        &profile,
+        log::Level::Info,
+        format_args!("event=rollback_started target={}", job.tag),
+    );
+    let result = (|| {
+        let previous = root.join("previous");
+        if previous.exists() {
+            if job.target.exists() {
+                fs::rename(&job.target, root.join("failed")).map_err(|e| e.to_string())?;
+            }
+            fs::rename(previous, &job.target).map_err(|e| e.to_string())?;
         }
-        fs::rename(previous, &job.target).map_err(|e| e.to_string())?;
-    }
-    for name in PROFILE_FILES {
-        let destination = job.data.join(name);
-        if job.saved_files.iter().any(|s| s == name) {
-            let bytes =
-                fs::read(root.join("profile_backup").join(name)).map_err(|e| e.to_string())?;
-            write_atomic(&destination, &bytes)?;
-        } else if destination.is_file() {
-            fs::remove_file(destination).map_err(|e| e.to_string())?;
+        for name in PROFILE_FILES {
+            let destination = job.data.join(name);
+            if job.saved_files.iter().any(|s| s == name) {
+                let bytes =
+                    fs::read(root.join("profile_backup").join(name)).map_err(|e| e.to_string())?;
+                write_atomic(&destination, &bytes)?;
+            } else if destination.is_file() {
+                fs::remove_file(destination).map_err(|e| e.to_string())?;
+            }
         }
+        Ok(())
+    })();
+    match &result {
+        Ok(()) => crate::diagnostics::record_update(
+            &profile,
+            log::Level::Info,
+            format_args!("event=rollback_succeeded target={}", job.tag),
+        ),
+        Err(error) => crate::diagnostics::record_update(
+            &profile,
+            log::Level::Warn,
+            format_args!("event=rollback_failed target={} reason={error}", job.tag),
+        ),
     }
-    Ok(())
+    result
 }
 
 fn start_application(job: &Job, root: &Path, updated: bool) -> AppResult<Child> {
@@ -407,20 +441,48 @@ fn apply_and_start(job: &mut Job, root: &Path) -> AppResult<()> {
         return Err("update_source_changed".into());
     }
     {
-        let _profile = Store::open(job.data.clone())?;
-        snapshot(job, root)?;
-        replace(job, root)?;
+        let profile = Store::open(job.data.clone())?;
+        crate::diagnostics::record_update(
+            &profile,
+            log::Level::Info,
+            format_args!(
+                "event=install_started target={} helper_version={}",
+                job.tag,
+                env!("CARGO_PKG_VERSION")
+            ),
+        );
+        snapshot(job, root).inspect_err(|error| {
+            crate::diagnostics::record_update(
+                &profile,
+                log::Level::Warn,
+                format_args!(
+                    "event=install_failed target={} stage=backup reason={error}",
+                    job.tag
+                ),
+            );
+        })?;
+        replace(job, root).inspect_err(|error| {
+            crate::diagnostics::record_update(
+                &profile,
+                log::Level::Warn,
+                format_args!(
+                    "event=install_failed target={} stage=replace reason={error}",
+                    job.tag
+                ),
+            );
+        })?;
     }
     let mut child = match start_application(job, root, true) {
         Ok(child) => child,
         Err(error) => {
+            record_install_failure(&job.data, &job.tag, "startup", &error);
             restore(job, root)?;
             start_application(job, root, false)?;
             write_atomic(&root.join("rolled_back"), job.nonce.as_bytes())?;
             return Err(error);
         }
     };
-    let attempt = (|| {
+    let attempt: AppResult<()> = (|| {
         let deadline = Instant::now() + STARTUP_TIMEOUT;
         loop {
             if child.try_wait().map_err(|e| e.to_string())?.is_some() {
@@ -438,6 +500,7 @@ fn apply_and_start(job: &mut Job, root: &Path) -> AppResult<()> {
     })();
     if let Err(error) = attempt {
         stop_application(&mut child);
+        record_install_failure(&job.data, &job.tag, "startup_confirmation", &error);
         restore(job, root).map_err(|restore| format!("{error}; rollback={restore}"))?;
         start_application(job, root, false)?;
         write_atomic(&root.join("rolled_back"), job.nonce.as_bytes())?;
@@ -667,5 +730,57 @@ mod tests {
         assert!(apply_and_start(&mut job, root.path()).is_err());
         assert_eq!(fs::read(&job.target).unwrap(), b"changed by another update");
         assert!(!root.path().join("previous").exists());
+    }
+
+    #[test]
+    fn failed_installation_logs_its_target_and_step_without_credentials() {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut job, root) = fixture(directory.path());
+        job.old_sha256 = digest_file(&job.target).unwrap();
+        fs::remove_file(root.path().join("payload.exe")).unwrap();
+        assert!(apply_and_start(&mut job, root.path()).is_err());
+        assert_eq!(fs::read(&job.target).unwrap(), b"old program");
+        let text = fs::read_to_string(job.data.join("logs/try_rCURRENT.log")).unwrap();
+        assert!(text.contains("event=install_started target=v1.2.3"));
+        assert!(text.contains("event=install_failed target=v1.2.3 stage=replace"));
+        assert!(!text.contains(&job.nonce));
+        assert!(!text.contains(&job.helper_sha256));
+    }
+
+    #[test]
+    fn rollback_logs_its_result_without_making_logging_required() {
+        for mode in ["success", "restore_error", "unwritable_log"] {
+            let directory = tempfile::tempdir().unwrap();
+            let (mut job, root) = fixture(directory.path());
+            fs::write(job.data.join("state.json"), b"saved settings").unwrap();
+            snapshot(&mut job, root.path()).unwrap();
+            replace(&job, root.path()).unwrap();
+            if mode == "restore_error" {
+                fs::remove_file(root.path().join("profile_backup/state.json")).unwrap();
+            } else if mode == "unwritable_log" {
+                fs::write(job.data.join("logs"), b"preserve this unrelated file").unwrap();
+            }
+            assert_eq!(restore(&job, root.path()).is_err(), mode == "restore_error");
+            assert_eq!(fs::read(&job.target).unwrap(), b"old program");
+            if mode == "unwritable_log" {
+                assert_eq!(
+                    fs::read(job.data.join("logs")).unwrap(),
+                    b"preserve this unrelated file"
+                );
+                assert_eq!(
+                    fs::read(job.data.join("state.json")).unwrap(),
+                    b"saved settings"
+                );
+                continue;
+            }
+            let text = fs::read_to_string(job.data.join("logs/try_rCURRENT.log")).unwrap();
+            assert!(text.contains("event=rollback_started target=v1.2.3"));
+            assert_eq!(
+                text.contains("event=rollback_failed"),
+                mode == "restore_error"
+            );
+            assert_eq!(text.contains("event=rollback_succeeded"), mode == "success");
+            assert!(!text.contains(&job.nonce));
+        }
     }
 }

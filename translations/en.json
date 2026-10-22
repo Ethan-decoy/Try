@@ -451,6 +451,7 @@
   "重试更新": "Retry update",
   "等待编辑完成": "Waiting for edits",
   "下载失败，请重试": "Download failed; retry",
+  "检查失败，请重试": "Check failed; retry",
   "请先保存或取消编辑，再更新。": "Save or cancel your edits before updating.",
   "更新未完成，原有数据已保留。": "The update did not finish. Your existing data is preserved.",
   "Try · 更新未完成": "Try · Update incomplete",

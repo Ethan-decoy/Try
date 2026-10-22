@@ -115,16 +115,26 @@ struct UpdateCheck {
     observer: Option<slint::Weak<MainWindow>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UpdatePhase {
+    Checking,
+    Downloading,
+}
+
 #[derive(Default)]
 enum UpdateTransfer {
     #[default]
     Idle,
-    Downloading {
+    Running {
+        phase: UpdatePhase,
         percent: Option<u64>,
         cancel: Arc<AtomicBool>,
     },
     Ready(PreparedUpdate),
-    Failed(String),
+    Failed {
+        phase: UpdatePhase,
+        error: String,
+    },
 }
 
 impl UpdateCheck {
@@ -445,6 +455,10 @@ impl App {
         if is_error {
             log::warn!(target: "try::app", "event=operation_rejected reason={message}");
         }
+        self.show_message(message, is_error);
+    }
+
+    fn show_message(&self, message: &str, is_error: bool) {
         if let Some(window) = self.main_window.borrow().as_ref() {
             window.set_message(message.into());
             window.set_message_is_error(is_error);
@@ -483,7 +497,7 @@ impl App {
         self.feedback_timer.stop();
         self.automatic_update_timer.stop();
         self.update_transfer_timer.stop();
-        if let UpdateTransfer::Downloading { cancel, .. } = &*self.update_transfer.lock().unwrap() {
+        if let UpdateTransfer::Running { cancel, .. } = &*self.update_transfer.lock().unwrap() {
             cancel.store(true, Ordering::Relaxed);
         }
         if let Some(window) = self.main_window.borrow_mut().take() {

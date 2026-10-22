@@ -1030,6 +1030,16 @@ fn native_formula_answers() {
 #[test]
 #[ignore = "opens a real practice card and edits formulas inside its answer box"]
 fn native_inline_answers() {
+    check_inline_answers(0);
+}
+
+#[test]
+#[ignore = "opens a real practice card and types an exponent without a formula hint"]
+fn native_inline_script_typing() {
+    check_inline_answers(20);
+}
+
+fn check_inline_answers(start_phase: u8) {
     let output =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("local_artifacts/inline_answers_check");
     std::fs::create_dir_all(&output).unwrap();
@@ -1038,6 +1048,10 @@ fn native_inline_answers() {
     let mut library = store.load().unwrap();
     library.settings.pause = PracticePause::UntilResumed;
     library.settings.feedback_seconds = 2;
+    if start_phase == 20 {
+        library.packs[0].cards[2].answer = "Paris".into();
+        library.packs[0].cards[2].answer_latex = None;
+    }
     library.set_pack_enabled("test_pack", false).unwrap();
     let card_id = library.packs[0].cards[2].id.clone().unwrap();
     library
@@ -1063,7 +1077,7 @@ fn native_inline_answers() {
         focus_probe: RefCell::new(None),
     });
     checks.app.show_practice().unwrap();
-    inline_answers_phase(checks.clone(), 0);
+    inline_answers_phase(checks.clone(), start_phase);
     let watchdog = checks.app.clone();
     Timer::single_shot(Duration::from_secs(25), move || watchdog.quit());
     slint::run_event_loop_until_quit().unwrap();
@@ -1228,9 +1242,48 @@ fn inline_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         card.window(),
                         checks.output.join("multiplication_wrong.png"),
                     );
-                    checks.finished.set(true);
-                    app.quit();
-                    return;
+                    app.close_practice();
+                    app.show_practice().unwrap();
+                }
+                13..=17 | 20..=24 => {
+                    let start = if phase < 20 { 13 } else { 20 };
+                    assert!(!ui.get_keypad_expanded());
+                    key(
+                        card.window(),
+                        ["p", "^", "n", "+", "m"][(phase - start) as usize].into(),
+                    );
+                }
+                18 | 25 => {
+                    assert!(ui.get_open());
+                    assert!(!ui.get_keypad_expanded());
+                    assert_eq!(
+                        app.structured_math
+                            .borrow()
+                            .as_ref()
+                            .unwrap()
+                            .1
+                            .complete()
+                            .unwrap(),
+                        "p^{n+m}",
+                        "typing from the empty native answer must retain exponent scope; phase={phase}"
+                    );
+                    if phase == 18 {
+                        app.close_practice();
+                        {
+                            let mut library = app.library.borrow_mut();
+                            library.packs[0].cards[2].answer = "Paris".into();
+                            library.packs[0].cards[2].answer_latex = None;
+                        }
+                        app.show_practice().unwrap();
+                    } else {
+                        checks.finished.set(true);
+                        app.quit();
+                        return;
+                    }
+                }
+                19 => {
+                    assert!(card.get_answer_text().is_empty());
+                    assert!(!ui.get_open());
                 }
                 _ => unreachable!(),
             }

@@ -123,12 +123,15 @@ fn run(
         let receipt_arguments = arguments.clone();
         let receipt_directory = directory.clone();
         slint::Timer::single_shot(std::time::Duration::from_millis(350), move || {
-            if let Err(error) =
-                r#try::update_install::acknowledge(&receipt_arguments, &receipt_directory)
-            {
-                log::error!(target: "try::updates", "event=updated_startup_rejected reason={error}");
-                if let Some(app) = weak.upgrade() {
-                    app.reject_update_startup();
+            match r#try::update_install::acknowledge(&receipt_arguments, &receipt_directory) {
+                Ok(()) => {
+                    log::info!(target: "try::updates", "event=updated_startup_confirmed version={}", env!("CARGO_PKG_VERSION"));
+                }
+                Err(error) => {
+                    log::error!(target: "try::updates", "event=updated_startup_rejected reason={error}");
+                    if let Some(app) = weak.upgrade() {
+                        app.reject_update_startup();
+                    }
                 }
             }
         });
@@ -176,16 +179,18 @@ fn main() -> std::process::ExitCode {
     if let Some(logger) = logger {
         logger.shutdown();
     }
-    if let Some((update, directory)) = restart
-        && let Err(error) = update.launch(&directory)
-    {
-        let _ = std::process::Command::new(std::env::current_exe().unwrap())
-            .arg("--data-dir")
-            .arg(directory)
-            .arg("--update-failed")
-            .spawn();
-        eprintln!("Try update: {error}");
-        return std::process::ExitCode::FAILURE;
+    if let Some((update, directory)) = restart {
+        let release = update.release.clone();
+        if let Err(error) = update.launch(&directory) {
+            r#try::update_install::record_handoff_failure(&directory, &release, &error);
+            let _ = std::process::Command::new(std::env::current_exe().unwrap())
+                .arg("--data-dir")
+                .arg(directory)
+                .arg("--update-failed")
+                .spawn();
+            eprintln!("Try update: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
     }
     code
 }

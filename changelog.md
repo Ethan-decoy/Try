@@ -4,6 +4,14 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.5.2]
+
+### Fixed
+
+- Recheck the latest public release when starting an in-app download, so a cached update hint cannot install an older intermediate version. Distinguish checking from downloading in status and retry messages, and stop without downloading if the check fails, is cancelled, or the release is no longer available.
+- Record update installation failures and rollback results in the existing log, and avoid duplicate warnings from update error messages, cancelled downloads and pending edits.
+- Enter an exponent as soon as a valid mathematical base is followed by `^`, including questions without a formula hint, so subsequent typing stays inside the exponent while the keypad is collapsed.
+
 ## [0.5.1] - 2026-10-21
 
 ### Fixed
@@ -104,7 +112,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/Ethan-decoy/Try/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Ethan-decoy/Try/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Ethan-decoy/Try/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Ethan-decoy/Try/compare/v0.4.0...v0.4.1

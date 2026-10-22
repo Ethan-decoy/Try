@@ -82,13 +82,26 @@ def png_fixture():
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(b"\0\x44\x88\xcc\xff")) + chunk(b"IEND", b"")
 
 
-def parent_handoff(folder, driver, target, source, data, tracked):
+def check_update_log(data, tag, rollback, nonce):
+    text = "".join(path.read_text(encoding="utf-8") for path in (data / "logs").glob("*.log"))
+    assert f"event=install_started target={tag}" in text, "Missing installation summary"
+    assert nonce not in text, "Update credentials must not be logged"
+    if rollback:
+        assert f"event=install_failed target={tag} stage=startup_confirmation" in text
+        assert f"event=rollback_started target={tag}" in text
+        assert f"event=rollback_succeeded target={tag}" in text
+    else:
+        assert "event=updated_startup_confirmed version=" in text
+
+
+def parent_handoff(folder, driver, target, source, data, tracked, environment):
     shutil.copy2(driver, target)
-    process = spawn([str(target), str(source), str(data)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    process = spawn([str(target), str(source), str(data)], env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     tracked.append(process.pid)
     def staged_job():
         return next((path for path in folder.glob(".try_update_*") if (path / "job.json").is_file()), None)
     root = wait_for(staged_job)
+    job = json.loads((root / "job.json").read_text(encoding="utf-8"))
     helper_pid = int(wait_for(lambda: (root / "helper_pid").read_text() if (root / "helper_pid").is_file() else None))
     tracked.append(helper_pid)
     child_pid = int(wait_for(lambda: (root / "child_pid").read_text() if (root / "child_pid").is_file() else None))
@@ -97,6 +110,7 @@ def parent_handoff(folder, driver, target, source, data, tracked):
     assert process.returncode == 0, process.stderr.read().decode(errors="replace")
     wait_for(lambda: not root.exists(), seconds=15)
     assert sha(target) == sha(source)
+    check_update_log(data, job["tag"], False, job["nonce"])
 
 
 def check_case(folder, source, kind, helper_source, version, rollback, driver):
@@ -111,6 +125,7 @@ def check_case(folder, source, kind, helper_source, version, rollback, driver):
         with target.open("ab") as stream:
             stream.write(b"try_update_old_fixture")
     environment = {**os.environ}
+    environment.pop("TRY_LOG", None)
     if kind == "linux":
         environment["APPIMAGE_EXTRACT_AND_RUN"] = "1"
     data = folder / "data"
@@ -134,11 +149,11 @@ def check_case(folder, source, kind, helper_source, version, rollback, driver):
         original = {name: (data / name).read_bytes() for name in ("state.json", "learning_state.json")}
         if driver and not rollback:
             assert kind == "windows"
-            parent_handoff(folder, driver, target, source, data, tracked)
+            parent_handoff(folder, driver, target, source, data, tracked, environment)
             assert json.loads((data / "state.json").read_text(encoding="utf-8")) == state
             assert (data / "learning_state.json").read_bytes() == original["learning_state.json"]
             assert (data / "media" / f"{image_id}.png").read_bytes() == picture
-            return {"case": "parent_handoff_update_restart", "passed": True, "data_preserved": ["settings", "packs", "learning", "images"], "temporary_helper_cleaned": True}
+            return {"case": "parent_handoff_update_restart", "passed": True, "data_preserved": ["settings", "packs", "learning", "images"], "temporary_helper_cleaned": True, "logging_verified": True}
         old_hash = sha(executable)
         parent = spawn([str(executable), "--background", "--data-dir", str(data)], env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         tracked.append(parent.pid)
@@ -184,7 +199,8 @@ def check_case(folder, source, kind, helper_source, version, rollback, driver):
             assert (data / name).read_bytes() == value, f"Personal data changed: {name}"
         assert (data / "media" / f"{image_id}.png").read_bytes() == picture
         assert json.loads((data / "state.json").read_text(encoding="utf-8"))["settings"]["interval_minutes"] == 47
-        return {"case": "startup_failure_rollback" if rollback else "update_restart", "passed": True, "data_preserved": ["settings", "packs", "learning", "images"], "temporary_helper_cleaned": not root.exists()}
+        check_update_log(data, job["tag"], rollback, nonce)
+        return {"case": "startup_failure_rollback" if rollback else "update_restart", "passed": True, "data_preserved": ["settings", "packs", "learning", "images"], "temporary_helper_cleaned": not root.exists(), "logging_verified": True}
     finally:
         for pid in reversed(tracked):
             stop(pid, folder)

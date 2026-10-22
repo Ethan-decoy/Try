@@ -55,6 +55,12 @@ pub fn recognize_inline(input: &str, math_hint: bool) -> Option<Node> {
 /// Start structural editing as soon as notation needs it. Plain words and
 /// source-code answers retain native text/IME editing rather than a math overlay.
 pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
+    // Importing a completed power places the caret outside its exponent.
+    // Enter the empty slot while the base and ^ are still being typed.
+    let entering_power = input
+        .trim_end()
+        .strip_suffix('^')
+        .is_some_and(|base| recognize_inline(base, true).is_some());
     // Keep a partly written function call native until its parentheses close.
     // Importing its complete expression avoids replaying written parentheses
     // as an extra group inside the editor's automatic function shortcut.
@@ -65,6 +71,7 @@ pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
     // A trailing operator without mathematical context is ambiguous (C++,
     // command flags, word fragments). Wait for a complete expression instead.
     if !math_hint
+        && !entering_power
         && input
             .trim_end()
             .ends_with(['+', '-', '*', '×', '/', '^', '_', '='])
@@ -79,7 +86,11 @@ pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
     let notation = math_editor::looks_mathematical(input)
         || input.starts_with('\\')
         || input.contains(['+', '-', '−', '*', '×']);
-    notation && (math_hint || recognize_inline(input, false).is_some() || input.starts_with('\\'))
+    notation
+        && (math_hint
+            || entering_power
+            || recognize_inline(input, false).is_some()
+            || input.starts_with('\\'))
 }
 
 /// A partially typed formula stays a draft when Enter is pressed. Ordinary
@@ -251,6 +262,17 @@ mod tests {
         }
         assert!(incomplete_error("literal/", false).is_none());
         assert!(incomplete_error("p^n⋅", true).is_some());
+    }
+
+    #[test]
+    fn typed_power_enters_its_slot_before_the_exponent_is_complete() {
+        for prefix in ["p^", "P^", "42^"] {
+            assert!(starts_structured_edit(prefix, false), "{prefix}");
+            assert!(starts_structured_edit(prefix, true), "{prefix}");
+        }
+        for text in ["C+", "C++", "--help", "snake_", "汉字^"] {
+            assert!(!starts_structured_edit(text, false), "{text}");
+        }
     }
 
     #[test]

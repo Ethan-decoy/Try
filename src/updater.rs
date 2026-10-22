@@ -231,10 +231,12 @@ pub fn prepare_fixture(source: &Path) -> AppResult<PreparedUpdate> {
 }
 
 fn transfer_error(error: &update_transport::Error) -> String {
-    log::warn!(target: "try::updates", "event=download_failed reason={error}");
     match error {
         update_transport::Error::Cancelled => tr!("已取消更新下载。"),
-        _ => tr!("更新下载失败，请重试。"),
+        _ => {
+            log::warn!(target: "try::updates", "event=download_failed reason={error}");
+            tr!("更新下载失败，请重试。")
+        }
     }
     .into()
 }

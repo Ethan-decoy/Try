@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 0.5.1 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 0.5.2 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -98,6 +98,8 @@ Daily quiet hours and launch at login are off by default. Quiet hours can span m
 Windows distribution builds create `data/` beside the executable, with settings and packs in `state.json` and personal practice state in `learning_state.json`. Existing profiles without history start as unassessed; fact viewing does not create learning records. Pack exports contain no personal history. Mac/Linux use system application data folders. Development profiles and custom directory arguments are in the [development guide](development.md).
 
 In-app updates are supported from `0.3.0`. From 0.5.0, choose **Update & restart** in About to start the download, view progress or cancel. After downloading and verification, Try installs the update and restarts automatically without another confirmation. Save or cancel open edits before starting. New edits or a pending import opened during the download defer restarting; saving or cancelling them resumes the update automatically. You can still cancel the update while it waits. Failed downloads or verification do not restart the application. Try replaces the program at its original location and restarts with the same data directory, preserving settings, packs, pictures and learning records. The previous program is kept until the updated application loads its profile and starts successfully. A failed replacement or startup attempts to restore the previous program and profile backups; if recovery is blocked, Try shows where the backups were preserved.
+
+Choosing the download action first checks the latest public release again, independently of the daily automatic-check interval, then downloads that version. You can cancel during checking or downloading and retry after a failure. A failed check does not continue installing an older cached version.
 
 Version `0.2.1` and earlier need one manual upgrade: quit from the tray, replace `try.exe` in its original folder and keep `data/`. Opening the new executable in a different folder uses a new data folder there. Move the executable and data together when moving the portable app. If launch at login was enabled, turn it off and on at the new location to update the startup entry.
 
