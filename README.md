@@ -10,13 +10,13 @@ Try 是一个轻量桌面练习工具，让你随手反复熟悉感兴趣的知�
 
 ## 下载
 
-从 [最新版本（v0.5.1 预发布版）](https://github.com/Ethan-decoy/Try/releases/tag/v0.5.1) 下载对应平台的文件。
+从 [最新版本（v0.5.2 预发布版）](https://github.com/Ethan-decoy/Try/releases/tag/v0.5.2) 下载对应平台的文件。
 
 | 平台 | 下载文件 | 状态 |
 | --- | --- | --- |
-| Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v0.5.1/try.exe) | 便携版 |
-| macOS arm64 | [try_macos_arm64_0.5.1.zip](https://github.com/Ethan-decoy/Try/releases/download/v0.5.1/try_macos_arm64_0.5.1.zip) | 实验性 |
-| Linux x64 | [try_linux_x64_0.5.1.AppImage](https://github.com/Ethan-decoy/Try/releases/download/v0.5.1/try_linux_x64_0.5.1.AppImage) | 实验性 |
+| Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v0.5.2/try.exe) | 便携版 |
+| macOS arm64 | [try_macos_arm64_0.5.2.zip](https://github.com/Ethan-decoy/Try/releases/download/v0.5.2/try_macos_arm64_0.5.2.zip) | 实验性 |
+| Linux x64 | [try_linux_x64_0.5.2.AppImage](https://github.com/Ethan-decoy/Try/releases/download/v0.5.2/try_linux_x64_0.5.2.AppImage) | 实验性 |
 
 Windows 将 `try.exe` 放在可写文件夹中双击运行，关闭主窗口后留在托盘。首次运行会在旁边创建 `data/`，请保留该文件夹。可在关于页下载更新，校验完成后自动安装并重启；`0.2.1` 及更早版本需先手动升级一次。
 
