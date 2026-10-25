@@ -65,7 +65,7 @@ fn automatic_update_phase(checks: Rc<AutomaticUpdateChecks>, phase: u8) {
                     let main = main_window(app);
                     main.window()
                         .set_size(slint::LogicalSize::new(820.0, 560.0));
-                    scroll_settings_to_bottom(&main);
+                    show_general_settings(&main);
                 }
                 1 => {
                     assert_eq!(
@@ -102,7 +102,7 @@ fn automatic_update_phase(checks: Rc<AutomaticUpdateChecks>, phase: u8) {
                         "The saved switch survives window recreation"
                     );
                     app.begin_automatic_update_check(automatic_update_fixture);
-                    scroll_settings_to_bottom(&main);
+                    show_general_settings(&main);
                 }
                 3 => {
                     assert_eq!(
@@ -171,7 +171,7 @@ fn automatic_update_phase(checks: Rc<AutomaticUpdateChecks>, phase: u8) {
                         main.get_update_status(),
                         format!("Version {} available", automatic_update_release().version)
                     );
-                    scroll_settings_to_bottom(&main);
+                    show_general_settings(&main);
                 }
                 6 => {
                     let main = main_window(app);

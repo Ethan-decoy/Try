@@ -28,6 +28,8 @@ Windows 辅助脚本会定位工具链、MSVC 和 SDK，并将产物留在 `loca
 
 正式分发启用 `distribution`，先收集与最终 `Cargo.lock` 一致的许可原文，再生成内嵌声明。Windows 使用静态 C 运行库，macOS 打包为 arm64 ZIP，Linux 打包为 AppImage 并附运行时源码。命令与来源规则见 [发布说明](release_checklist.md) 和 [许可说明](licensing.md)。
 
+主窗口确认框、更新红点和操作菜单的回归使用无窗口软件渲染，不向系统发送鼠标键盘输入。正式分发工作流另在 GitHub 的隔离 Windows runner 中验证便携启动、实例转发与关闭到托盘，并随 CI 附件保存检查记录。
+
 默认测试不主动打开桌面窗口。原生 GUI 检查需要显式选择，使用隔离配置；例如：
 
 ```powershell

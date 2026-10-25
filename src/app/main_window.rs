@@ -194,6 +194,12 @@ impl App {
             }
         });
         let weak = Rc::downgrade(self);
+        window.on_delete_row(move |index| {
+            if let Some(app) = weak.upgrade() {
+                app.request_delete_row(index);
+            }
+        });
+        let weak = Rc::downgrade(self);
         window.on_confirm_card_delete(move || {
             if let Some(app) = weak.upgrade() {
                 app.confirm_delete_card();
@@ -798,7 +804,7 @@ impl App {
                     id: pack.id.clone().into(),
                     name: pack.name.clone().into(),
                     tag: pack.tag.trim().into(),
-                    participating: participating > 0,
+                    participating: library.is_enabled(&pack.id),
                     has_cards: !pack.cards.is_empty(),
                     detail: if participating > 0 {
                         tr!("{p0} / {p1} 题", p0 = participating, p1 = pack.cards.len())
@@ -843,11 +849,26 @@ impl App {
         if let Some(pack) = library.packs.get(index) {
             window.set_selected_name(pack.name.clone().into());
             window.set_selected_description(pack.description.clone().into());
+            window.set_selected_description_summary(
+                pack.description
+                    .lines()
+                    .map(str::trim)
+                    .find(|line| !line.is_empty())
+                    .unwrap_or_default()
+                    .into(),
+            );
             window.set_selected_tag(pack.tag.trim().into());
             let enabled = library.pack_enabled_card_count(pack);
             window.set_selected_enabled(!pack.cards.is_empty() && enabled == pack.cards.len());
             window.set_selection_partial(enabled > 0 && enabled < pack.cards.len());
-            window.set_selected_card_count(format!("{enabled} / {}", pack.cards.len()).into());
+            window.set_selected_card_count(
+                tr!(
+                    "{total} 道题 · {enabled} 道参与",
+                    total = pack.cards.len(),
+                    enabled = enabled
+                )
+                .into(),
+            );
             let existing = window.get_cards();
             let card_rows = pack
                 .cards
@@ -949,6 +970,7 @@ impl App {
         } else {
             window.set_selected_name("".into());
             window.set_selected_description("".into());
+            window.set_selected_description_summary("".into());
             window.set_selected_tag("".into());
             window.set_selected_card_count("".into());
             window.set_selected_enabled(false);

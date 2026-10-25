@@ -78,23 +78,24 @@ fn desktop_theme_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     assert_titlebar_theme(main.window(), true);
                     assert_eq!(main.get_cards().row_count(), 4);
                     assert!(main.get_question_area_height() > 190.0);
-                    assert!(
-                        main.get_question_area_height() < 300.0,
-                        "Small packs leave space below the inset panel"
-                    );
                     snapshot(main.window(), checks.output.join("dark_main.png"));
-                    main.set_current_tab(1);
+                    let size = main
+                        .window()
+                        .size()
+                        .to_logical(main.window().scale_factor());
+                    pointer_click(
+                        main.window(),
+                        slint::LogicalPosition::new(46.0, size.height - 28.0),
+                    );
+                    assert_eq!(
+                        main.get_current_tab(),
+                        1,
+                        "Settings opens from the lower-left navigation"
+                    );
                 }
                 1 => {
                     let main = main_window(app);
-                    main.window().dispatch_event(WindowEvent::PointerScrolled {
-                        position: slint::LogicalPosition::new(
-                            main.get_settings_left() + 100.0,
-                            main.get_settings_top() + 100.0,
-                        ),
-                        delta_x: 0.0,
-                        delta_y: -600.0,
-                    });
+                    main.set_settings_section(2);
                 }
                 2 => {
                     let main = main_window(app);
@@ -155,7 +156,8 @@ fn desktop_theme_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     assert!(main.get_matrix_answer_width() >= 84.0);
                     assert!(
                         main.get_matrix_area_width()
-                            - 3.0 * main.get_matrix_mode_width()
+                            - main.get_matrix_mode_width()
+                            - 32.0
                             - main.get_matrix_answer_width()
                             - main.get_participation_width()
                             > 150.0
@@ -284,8 +286,8 @@ fn desktop_theme_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     let main = main_window(app);
                     assert_eq!(main.get_cards().row_count(), 4);
                     assert!(
-                        main.get_question_area_height() < 300.0,
-                        "Switching to a small pack shrinks the panel again"
+                        main.get_question_area_height() > 120.0,
+                        "Switching packs retains a usable list viewport"
                     );
                     snapshot(main.window(), checks.output.join("light_small_again.png"));
                     let before = app.store.load().unwrap();
@@ -299,7 +301,7 @@ fn desktop_theme_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     assert_titlebar_theme(main.window(), true);
                     simulate_system_theme(app, Some(false));
                     main.set_current_tab(1);
-                    scroll_settings_to_bottom(&main);
+                    show_general_settings(&main);
                 }
                 16 => {
                     let main = main_window(app);
@@ -398,6 +400,26 @@ fn desktop_theme_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         "Resetting the fixture returns to the actual backend theme"
                     );
                     assert_titlebar_theme(main.window(), main.get_dark_theme());
+                    main.set_current_tab(1);
+                    main.set_settings_section(1);
+                }
+                25 => {
+                    let main = main_window(app);
+                    snapshot(main.window(), checks.output.join("card_settings.png"));
+                    let size = main
+                        .window()
+                        .size()
+                        .to_logical(main.window().scale_factor());
+                    pointer_click(
+                        main.window(),
+                        slint::LogicalPosition::new(68.0, size.height - 28.0),
+                    );
+                }
+                26 => {
+                    snapshot(
+                        main_window(app).window(),
+                        checks.output.join("about_lower_left.png"),
+                    );
                     std::fs::write(checks.output.join("result.txt"), "Native appearance menu, persisted System default, DWM titlebar attributes, both manual directions, simulated backend changes, manual override, unchanged data, window recreation, visible practice updates, bilingual/minimum layout and fixed-header scrolling passed.").unwrap();
                     checks.finished.set(true);
                     app.quit();

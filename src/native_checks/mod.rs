@@ -291,15 +291,8 @@ fn type_content(app: &App, main: &MainWindow, field: i32, input: &str) {
     app.refresh_math(false);
 }
 
-fn scroll_settings_to_bottom(main: &MainWindow) {
-    main.window().dispatch_event(WindowEvent::PointerScrolled {
-        position: slint::LogicalPosition::new(
-            main.get_settings_left() + 100.0,
-            main.get_settings_top() + 100.0,
-        ),
-        delta_x: 0.0,
-        delta_y: -1200.0,
-    });
+fn show_general_settings(main: &MainWindow) {
+    main.set_settings_section(2);
 }
 
 mod appearance;

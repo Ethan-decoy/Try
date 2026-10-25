@@ -13,6 +13,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/licenses.slint");
     println!("cargo:rerun-if-changed=ui/math_palette.slint");
     println!("cargo:rerun-if-changed=ui/controls.slint");
+    println!("cargo:rerun-if-changed=ui/desktop_controls.slint");
     println!("cargo:rerun-if-changed=ui/settings.slint");
     println!("cargo:rerun-if-changed=ui/quick_answer.slint");
     println!("cargo:rerun-if-changed=assets/logo.svg");
@@ -75,6 +76,7 @@ fn compile_translations() -> std::path::PathBuf {
         "ui/settings.slint",
         "ui/content.slint",
         "ui/controls.slint",
+        "ui/desktop_controls.slint",
         "ui/quick_answer.slint",
         "ui/formula_input.slint",
         "ui/structured_math.slint",

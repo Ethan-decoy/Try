@@ -1,77 +1,7 @@
+import { DesktopButton, SelectionMenu } from "desktop_controls.slint";
 import { Theme } from "theme.slint";
 import { LineEdit, ScrollView, SpinBox } from "std-widgets.slint";
 import { IconButton, SettingsCheck } from "controls.slint";
-
-component TimeMenu inherits Rectangle {
-    in property <[string]> options;
-    in property <int> selection;
-    in property <string> label;
-    out property <string> display-value: root.options[root.selection];
-    private property <int> cursor;
-    private property <bool> expanded;
-    private property <bool> keyboard-used;
-    callback choose(int);
-    forward-focus: menu-focus;
-    width: 164px; height: 36px;
-    background: menu-touch.has-hover ? Theme.hover : Theme.soft;
-    border-radius: 8px; border-width: 1px; border-color: Theme.border;
-    accessible-role: combobox; accessible-label: root.label;
-    accessible-value: root.display-value;
-    accessible-expandable: true; accessible-expanded: root.expanded;
-    accessible-action-expand => { root.open(true); }
-    public function open(keyboard: bool) { root.cursor = root.selection; root.keyboard-used = keyboard; choices.show(); }
-    function finish() { choices.close(); if root.keyboard-used { menu-focus.focus(); } }
-    HorizontalLayout {
-        padding-left: 11px; padding-right: 10px; spacing: 6px;
-        Text { text: root.display-value; color: Theme.ink; font-size: 13px; vertical-alignment: center; overflow: elide; }
-        Image { source: @image-url("../assets/chevron.svg"); width: 12px; height: 12px; y: (parent.height - self.height) / 2; colorize: Theme.muted; }
-    }
-    if menu-focus.has-focus : Rectangle { x: 11px; y: parent.height - 3px; width: 18px; height: 2px; background: Theme.focus; }
-    menu-focus := FocusScope {
-        width: 0px;
-        key-pressed(event) => {
-            if event.text == Key.Return || event.text == Key.Space || event.text == Key.DownArrow || event.text == Key.UpArrow { root.open(true); return accept; }
-            return reject;
-        }
-    }
-    menu-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open(false); } }
-    choices := PopupWindow {
-        x: 0px; y: root.height + 5px;
-        width: root.width; height: root.options.length * 36px + 8px;
-        close-policy: close-on-click-outside;
-        forward-focus: choices-focus;
-        Rectangle {
-            background: Theme.soft; border-width: 1px; border-color: Theme.border; border-radius: 8px;
-            choices-focus := FocusScope {
-                focus-changed-event => { root.expanded = self.has-focus; }
-                key-pressed(event) => {
-                    root.keyboard-used = true;
-                    if event.text == Key.UpArrow { root.cursor = max(0, root.cursor - 1); return accept; }
-                    if event.text == Key.DownArrow { root.cursor = min(root.options.length - 1, root.cursor + 1); return accept; }
-                    if event.text == Key.Return || event.text == Key.Space { root.choose(root.cursor); root.finish(); return accept; }
-                    if event.text == Key.Escape { root.finish(); return accept; }
-                    return reject;
-                }
-                VerticalLayout {
-                    padding: 4px; spacing: 0px;
-                    for option[index] in root.options : Rectangle {
-                        height: 36px; border-radius: 4px;
-                        background: (option-touch.has-hover || (root.keyboard-used && root.cursor == index)) ? Theme.hover : transparent;
-                        accessible-role: button; accessible-label: option;
-                        accessible-checkable: true; accessible-checked: index == root.selection;
-                        accessible-action-default => { root.choose(index); root.finish(); }
-                        HorizontalLayout {
-                            padding-left: 7px; padding-right: 6px; spacing: 5px;
-                            Text { text: option; color: Theme.ink; font-size: 13px; vertical-alignment: center; overflow: elide; }
-                            Image { visible: index == root.selection; source: @image-url("../assets/check_mark.svg"); width: 12px; height: 12px; y: (parent.height - self.height) / 2; colorize: Theme.ink; }
-                        }
-                        option-touch := TouchArea { mouse-cursor: pointer; clicked => { root.choose(index); root.finish(); } }
-                    }
-                }
-            }
-        }
-    }
-}
 
 component TimeSetting inherits Rectangle {
     in property <string> label;
@@ -113,7 +43,7 @@ component TimeSetting inherits Rectangle {
         }
         Rectangle {
             width: 164px; height: 48px;
-            time-menu := TimeMenu {
+            time-menu := SelectionMenu {
                 y: (parent.height - self.height) / 2;
                 options: root.options; selection: root.selection;
                 label: root.label;
@@ -168,11 +98,6 @@ component TimeSetting inherits Rectangle {
     }
 }
 
-component GroupLine inherits Rectangle {
-    x: 14px; height: 1px;
-    background: Theme.soft;
-}
-
 export component SettingsPage inherits Rectangle {
     in property <int> interval-minutes;
     in property <[string]> interval-options;
@@ -202,6 +127,7 @@ export component SettingsPage inherits Rectangle {
     out property <string> interval-display: interval-setting.display-value;
     out property <string> feedback-display: feedback-setting.display-value;
     out property <string> pause-display: pause-setting.display-value;
+    out property <length> content-top: settings-scroll.absolute-position.y;
     out property <length> language-left: language-menu.absolute-position.x;
     out property <length> language-top: language-menu.absolute-position.y;
     out property <length> appearance-left: appearance-menu.absolute-position.x;
@@ -226,144 +152,98 @@ export component SettingsPage inherits Rectangle {
     callback set-auto-check-updates(bool);
     callback choose-language(int);
     callback choose-appearance(int);
-    public function show-pause-details() { pause-setting.show-details(); }
+    in-out property <int> section: 0;
+    public function show-pause-details() { root.section = 0; pause-setting.show-details(); }
     background: transparent;
-    ScrollView {
-        width: parent.width; height: parent.height;
-        horizontal-scrollbar-policy: always-off;
-        content-width: self.visible-width;
-        VerticalLayout {
-            spacing: 12px; alignment: start;
+    VerticalLayout {
+        spacing: 16px;
+        HorizontalLayout {
+            height: 32px; spacing: 4px;
+            for title[index] in [@tr("练习"), @tr("卡片"), @tr("通用")] : DesktopButton {
+                text: title; selected: root.section == index;
+                activated => { root.section = index; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        settings-scroll := ScrollView {
+            horizontal-scrollbar-policy: always-off; content-width: self.visible-width;
             VerticalLayout {
-                spacing: 8px;
-                Text { height: 16px; text: @tr("出题"); color: Theme.muted; font-size: 12px; }
+                spacing: 0px; alignment: start;
                 Rectangle {
-                    height: 96px; vertical-stretch: 0;
-                    background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
+                    visible: root.section == 0; height: self.visible ? 140px : 0px;
                     interval-setting := TimeSetting { y: 0px; width: parent.width; label: @tr("出题间隔"); value: root.interval-minutes; options: root.interval-options; selection: root.interval-selection; choose(index) => { root.choose-interval(index); } apply-value(value) => { root.set-interval(value); } }
-                    GroupLine { y: 48px; width: parent.width - 28px; }
                     feedback-setting := TimeSetting { y: 48px; width: parent.width; label: @tr("卡片停留"); value: root.feedback-seconds; options: root.feedback-options; selection: root.feedback-selection; maximum: 60; unit: @tr("秒"); hint: @tr("答对后／知识点展示时开始计时；答错后按 Enter 确认"); choose(index) => { root.choose-feedback(index); } apply-value(value) => { root.set-feedback(value); } }
+                    Text { x: 14px; y: 104px; width: parent.width - 28px; text: @tr("答对后／知识点展示时开始计时；答错后按 Enter 确认"); color: Theme.muted; font-size: 11px; wrap: word-wrap; }
                 }
-            }
-            VerticalLayout {
-                spacing: 8px;
-                Text { height: 16px; text: @tr("暂不出题"); color: Theme.muted; font-size: 12px; }
+                Rectangle { visible: root.section == 0; height: self.visible ? 1px : 0px; background: Theme.soft-border; }
                 Rectangle {
-                    height: 88px; vertical-stretch: 0;
-                    background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
-                    pause-setting := TimeSetting { y: 0px; width: parent.width; label: @tr("暂停"); value: root.pause-minutes > 0 ? root.pause-minutes : 180; options: root.pause-options; selection: root.pause-selection; paused: root.pause-minutes != 0; detail: root.pause-detail; choose(index) => { root.choose-pause(index); } apply-value(value) => { root.set-pause(value); } resume => { root.set-pause(0); } }
-                    GroupLine { y: 48px; width: parent.width - 28px; }
-                    Rectangle {
-                        x: 14px; y: 46px; width: parent.width - 28px; height: 38px;
-                        accessible-role: button;
-                        accessible-label: @tr("配置每日免打扰");
-                        accessible-action-default => { daily-popup.show(); }
-                        forward-focus: daily-focus;
-                        HorizontalLayout {
-                            Text { text: @tr("每日免打扰"); color: Theme.muted; font-size: 12px; vertical-alignment: center; }
-                            Rectangle { horizontal-stretch: 1; background: transparent; }
-                            Text { text: root.quiet-hours-enabled ? root.quiet-summary : @tr("关闭"); color: Theme.muted; font-size: 12px; vertical-alignment: center; }
-                            Image { source: @image-url("../assets/chevron.svg"); width: 12px; height: 12px; colorize: Theme.muted; y: (parent.height - self.height) / 2; transform-rotation: -90deg; }
-                        }
-                        daily-focus := FocusScope { width: 0px; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { daily-popup.show(); return accept; } return reject; } }
-                        if daily-focus.has-focus : Rectangle { x: 0px; y: parent.height - 2px; width: 18px; height: 2px; background: Theme.focus; }
-                        TouchArea { mouse-cursor: pointer; clicked => { daily-popup.show(); } }
-                        daily-popup := PopupWindow {
-                            x: max(0px, parent.width - self.width); y: parent.height + 6px;
-                            width: 272px; height: root.quiet-time-error == "" ? 166px : 200px;
-                            close-policy: close-on-click-outside;
-                            forward-focus: daily-popup-focus;
-                            Rectangle {
-                                background: Theme.soft; border-radius: 12px; border-width: 1px; border-color: Theme.border;
-                                daily-popup-focus := FocusScope {
-                                    capture-key-pressed(event) => { if event.text == Key.Escape { daily-popup.close(); return accept; } return reject; }
-                                    VerticalLayout {
-                                        padding: 14px; spacing: 8px;
-                                        HorizontalLayout { Text { text: @tr("每日免打扰"); color: Theme.ink; font-weight: 600; vertical-alignment: center; } Rectangle { horizontal-stretch: 1; background: transparent; } IconButton { glyph: @image-url("../assets/cross_mark.svg"); label: @tr("收起每日免打扰"); borderless: true; activated => { daily-popup.close(); } } }
-                                        SettingsCheck { text: @tr("开启"); checked: root.quiet-hours-enabled; checkbox-right: true; toggled(enabled) => { root.set-quiet-enabled(enabled); } }
-                                        HorizontalLayout { spacing: 8px; LineEdit { text <=> root.quiet-start; accessible-label: @tr("免打扰开始时间"); edited(text) => { root.set-quiet-range(root.quiet-start, root.quiet-end); } } Text { text: "—"; color: Theme.muted; vertical-alignment: center; } LineEdit { text <=> root.quiet-end; accessible-label: @tr("免打扰结束时间"); edited(text) => { root.set-quiet-range(root.quiet-start, root.quiet-end); } } }
-                                        if root.quiet-time-error != "" : Text { text: root.quiet-time-error; color: Theme.wrong-ink; font-size: 11px; wrap: word-wrap; }
-                                    }
-                                }
-                            }
-                        }
+                    visible: root.section == 0; height: self.visible ? 48px : 0px;
+                    pause-setting := TimeSetting { width: parent.width; label: @tr("暂停"); value: root.pause-minutes > 0 ? root.pause-minutes : 180; options: root.pause-options; selection: root.pause-selection; paused: root.pause-minutes != 0; detail: root.pause-detail; choose(index) => { root.choose-pause(index); } apply-value(value) => { root.set-pause(value); } resume => { root.set-pause(0); } }
+                }
+                Rectangle {
+                    visible: root.section == 0;
+                    height: self.visible ? (root.quiet-hours-enabled ? 100px : 48px) + (root.quiet-time-error != "" ? 32px : 0px) : 0px;
+                    SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("每日免打扰"); checked: root.quiet-hours-enabled; checkbox-right: true; toggled(enabled) => { root.set-quiet-enabled(enabled); } }
+                    if root.quiet-hours-enabled : HorizontalLayout {
+                        x: 14px; y: 52px; width: parent.width - 28px; height: 36px; spacing: 10px;
+                        LineEdit { text <=> root.quiet-start; accessible-label: @tr("免打扰开始时间"); edited(value) => { root.set-quiet-range(root.quiet-start, root.quiet-end); } }
+                        Text { text: "—"; color: Theme.muted; vertical-alignment: center; }
+                        LineEdit { text <=> root.quiet-end; accessible-label: @tr("免打扰结束时间"); edited(value) => { root.set-quiet-range(root.quiet-start, root.quiet-end); } }
+                    }
+                    if root.quiet-time-error != "" : Text { x: 14px; y: parent.height - 30px; width: parent.width - 28px; text: root.quiet-time-error; color: Theme.wrong-ink; font-size: 11px; wrap: word-wrap; }
+                }
+                Rectangle {
+                    visible: root.section == 1; height: self.visible ? 48px : 0px;
+                    HorizontalLayout {
+                        padding-left: 14px; padding-right: 14px; spacing: 14px;
+                        Text { text: @tr("卡片位置"); color: Theme.ink; font-size: 13px; vertical-alignment: center; }
+                        Rectangle { horizontal-stretch: 1; }
+                        Rectangle { width: 164px; height: 48px; SelectionMenu { y: 6px; options: [@tr("右下角"), @tr("左下角"), @tr("右上角"), @tr("左上角")]; selection: root.popup-corner; label: @tr("卡片初始位置"); choose(index) => { root.set-corner(index); } } }
                     }
                 }
-            }
-            Rectangle {
-                height: root.autostart-error == "" ? 96px : 140px; vertical-stretch: 0;
-                background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
-                SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("开机自启"); hint: @tr("登录后直接进入托盘"); checkbox-right: true; checked: root.autostart-enabled; enabled: root.autostart-available; toggled(enabled) => { root.set-autostart(enabled); } }
-                if root.autostart-error != "" : Text { x: 14px; y: 48px; width: parent.width - 28px; text: root.autostart-error; color: Theme.wrong-ink; font-size: 11px; wrap: word-wrap; }
-                GroupLine { y: parent.height - 48px; width: parent.width - 28px; }
-                HorizontalLayout {
-                    y: parent.height - 48px; height: 48px; width: parent.width;
-                    padding-left: 14px; padding-right: 14px; spacing: 14px;
-                    Text { text: @tr("卡片位置"); color: Theme.ink; font-size: 13px; vertical-alignment: center; }
-                    Rectangle { horizontal-stretch: 1; background: transparent; }
-                    Rectangle { width: 128px; height: 48px; TimeMenu { y: (parent.height - self.height) / 2; width: 128px; options: [@tr("右下角"), @tr("左下角"), @tr("右上角"), @tr("左上角")]; selection: root.popup-corner; label: @tr("卡片初始位置"); choose(index) => { root.set-corner(index); } } }
-                    Rectangle { width: 122px; height: 48px; SettingsCheck { y: (parent.height - self.height) / 2; width: 122px; horizontal-stretch: 0; text: @tr("记住位置"); hint: @tr("记住拖动后的卡片位置"); checked: root.remember-position; toggled(enabled) => { root.set-remember-position(enabled); } } }
+                Rectangle {
+                    visible: root.section == 1; height: self.visible ? 48px : 0px;
+                    SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("记住位置"); hint: @tr("记住拖动后的卡片位置"); checked: root.remember-position; checkbox-right: true; toggled(enabled) => { root.set-remember-position(enabled); } }
                 }
-            }
-            Rectangle {
-                height: 48px; vertical-stretch: 0;
-                background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
-                HorizontalLayout {
-                    padding-left: 14px; padding-right: 14px; spacing: 14px;
-                    Text { text: @tr("外观"); color: Theme.ink; font-size: 13px; vertical-alignment: center; }
-                    Rectangle { horizontal-stretch: 1; background: transparent; }
-                    Rectangle {
-                        width: 164px; height: 48px;
-                        appearance-menu := TimeMenu {
-                            y: (parent.height - self.height) / 2;
-                            options: [@tr("浅色"), @tr("深色"), @tr("跟随系统")];
-                            selection: root.appearance; label: @tr("外观");
-                            choose(index) => { root.choose-appearance(index); }
-                        }
+                Rectangle {
+                    visible: root.section == 1; height: self.visible ? 48px : 0px;
+                    SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("显示知识包标签"); hint: @tr("标签随卡片位置自动换边"); checked: root.show-pack-tags; checkbox-right: true; toggled(enabled) => { root.set-show-pack-tags(enabled); } }
+                }
+                Rectangle { visible: root.section == 1; height: self.visible ? 1px : 0px; background: Theme.soft-border; }
+                Rectangle {
+                    visible: root.section == 1; height: self.visible ? 80px : 0px;
+                    reminder-focus-check := SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("弹出时自动聚焦"); checkbox-right: true; checked: root.focus-on-reminder; toggled(enabled) => { root.set-focus-on-reminder(enabled); } }
+                    Text { x: 14px; y: 46px; width: parent.width - 28px; text: @tr("关闭后不切换当前窗口，点击题板再作答"); color: Theme.muted; font-size: 11px; wrap: word-wrap; }
+                }
+                Rectangle {
+                    visible: root.section == 2; height: self.visible ? 48px : 0px;
+                    HorizontalLayout {
+                        padding-left: 14px; padding-right: 14px; spacing: 14px;
+                        Text { text: @tr("外观"); color: Theme.ink; font-size: 13px; vertical-alignment: center; }
+                        Rectangle { horizontal-stretch: 1; }
+                        Rectangle { width: 164px; height: 48px; appearance-menu := SelectionMenu { y: 6px; options: [@tr("浅色"), @tr("深色"), @tr("跟随系统")]; selection: root.appearance; label: @tr("外观"); choose(index) => { root.choose-appearance(index); } } }
                     }
                 }
-            }
-            Rectangle {
-                height: 48px; vertical-stretch: 0;
-                background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
-                SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("显示知识包标签"); hint: @tr("标签随卡片位置自动换边"); checkbox-right: true; checked: root.show-pack-tags; toggled(enabled) => { root.set-show-pack-tags(enabled); } }
-            }
-            Rectangle {
-                height: 48px; vertical-stretch: 0;
-                background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
-                HorizontalLayout {
-                    padding-left: 14px; padding-right: 14px; spacing: 14px;
-                    Text { text: @tr("语言"); color: Theme.ink; font-size: 13px; vertical-alignment: center; }
-                    Rectangle { horizontal-stretch: 1; background: transparent; }
-                    Rectangle {
-                        width: 164px; height: 48px;
-                        language-menu := TimeMenu {
-                            y: (parent.height - self.height) / 2;
-                            options: [@tr("跟随系统"), "简体中文", "English"];
-                            selection: root.interface-language; label: @tr("语言");
-                            choose(index) => { root.choose-language(index); }
-                        }
+                Rectangle {
+                    visible: root.section == 2; height: self.visible ? 48px : 0px;
+                    HorizontalLayout {
+                        padding-left: 14px; padding-right: 14px; spacing: 14px;
+                        Text { text: @tr("语言"); color: Theme.ink; font-size: 13px; vertical-alignment: center; }
+                        Rectangle { horizontal-stretch: 1; }
+                        Rectangle { width: 164px; height: 48px; language-menu := SelectionMenu { y: 6px; options: [@tr("跟随系统"), "简体中文", "English"]; selection: root.interface-language; label: @tr("语言"); choose(index) => { root.choose-language(index); } } }
                     }
                 }
-            }
-            Rectangle {
-                height: 48px; vertical-stretch: 0;
-                background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
-                reminder-focus-check := SettingsCheck {
-                    x: 14px; y: 6px; width: parent.width - 28px;
-                    text: @tr("弹出时自动聚焦"); hint: @tr("关闭后不切换当前窗口，点击题板再作答");
-                    checkbox-right: true; checked: root.focus-on-reminder;
-                    toggled(enabled) => { root.set-focus-on-reminder(enabled); }
+                Rectangle { visible: root.section == 2; height: self.visible ? 1px : 0px; background: Theme.soft-border; }
+                Rectangle {
+                    visible: root.section == 2; height: self.visible ? 72px : 0px;
+                    automatic-update-check := SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("自动检查更新"); checkbox-right: true; checked: root.auto-check-updates; toggled(enabled) => { root.set-auto-check-updates(enabled); } }
+                    Text { x: 14px; y: 46px; width: parent.width - 28px; text: @tr("每天最多自动检查一次"); color: Theme.muted; font-size: 11px; wrap: word-wrap; }
                 }
-            }
-            Rectangle {
-                height: 48px; vertical-stretch: 0;
-                background: Theme.panel; border-radius: 12px; border-width: 1px; border-color: Theme.border;
-                automatic-update-check := SettingsCheck {
-                    x: 14px; y: 6px; width: parent.width - 28px;
-                    text: @tr("自动检查更新"); hint: @tr("每天最多自动检查一次");
-                    checkbox-right: true; checked: root.auto-check-updates;
-                    toggled(enabled) => { root.set-auto-check-updates(enabled); }
+                Rectangle {
+                    visible: root.section == 2; height: self.visible ? (root.autostart-error == "" ? 72px : 104px) : 0px;
+                    SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("开机自启"); checked: root.autostart-enabled; enabled: root.autostart-available; checkbox-right: true; toggled(enabled) => { root.set-autostart(enabled); } }
+                    Text { x: 14px; y: 46px; width: parent.width - 28px; text: @tr("登录后直接进入托盘"); color: Theme.muted; font-size: 11px; wrap: word-wrap; }
+                    if root.autostart-error != "" : Text { x: 14px; y: 72px; width: parent.width - 28px; text: root.autostart-error; color: Theme.wrong-ink; font-size: 11px; wrap: word-wrap; }
                 }
             }
         }

@@ -271,6 +271,40 @@ impl App {
             },
             _ => return,
         };
+        self.request_delete_card_key(key);
+    }
+
+    pub(super) fn request_delete_row(&self, index: i32) {
+        if !self
+            .main_window
+            .borrow()
+            .as_ref()
+            .is_some_and(|window| window.get_tray_settings_available())
+        {
+            return;
+        }
+        let key = self
+            .library
+            .borrow()
+            .packs
+            .get(self.selected_pack.get())
+            .and_then(|pack| {
+                usize::try_from(index)
+                    .ok()
+                    .and_then(|index| pack.cards.get(index))
+                    .and_then(|card| {
+                        card.id.as_ref().map(|id| QuestionKey {
+                            pack_id: pack.id.clone(),
+                            card_id: id.clone(),
+                        })
+                    })
+            });
+        if let Some(key) = key {
+            self.request_delete_card_key(key);
+        }
+    }
+
+    fn request_delete_card_key(&self, key: QuestionKey) {
         if self.pending_card_delete.borrow().is_some() {
             return;
         }

@@ -4,6 +4,24 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.6.0]
+
+### Added
+
+- Expand or collapse a knowledge pack's description, with a summary and inline editing below its title.
+- Show a red dot on the About icon when an update is available.
+- Delete a question directly from its row's action menu.
+
+### Changed
+
+- Reorganize the library into a sidebar and question list, with a visible practice-mode selector, per-question and bulk answer-mode menus, and Settings and About in the lower-left corner.
+- Group settings into Practice, Card and General, and refine both themes with separate colors for destructive actions and replacement warnings.
+- Center pack and question deletion confirmations over the current page, default to Cancel, support Escape, and keep long content scrollable within the dialog.
+
+### Fixed
+
+- Display each knowledge pack's own enabled state independently of its active question count.
+
 ## [0.5.2] - 2026-10-22
 
 ### Fixed
@@ -112,7 +130,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Ethan-decoy/Try/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/Ethan-decoy/Try/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Ethan-decoy/Try/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Ethan-decoy/Try/compare/v0.4.1...v0.5.0

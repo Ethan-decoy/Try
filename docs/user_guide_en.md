@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 0.5.2 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 0.6.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -12,13 +12,13 @@ Click the tray icon on Windows/Linux to start a card. On macOS, choose Practice 
 
 Enter submits a typed answer. Click a multiple-choice option or use 1, 2, 3; click ✓ / ✕ for true/false. Green means correct; red reveals the expected answer and stays open until you press Enter to acknowledge it. Esc does not dismiss an incorrect answer. Esc closes unanswered or correct cards, and Enter can also dismiss correct feedback early. Closing without submitting does not record a result.
 
-Scheduled answer cards request keyboard focus by default, so you can type or use the number keys immediately. When gaming or avoiding interruptions, turn off **Automatically focus new cards** at the end of Settings. The complete card stays visible without activating on appearance or hover. Release the mouse and click the card to answer, or start practice from the system tray. On Windows, the card lets mouse input pass through while another window hides the cursor or captures the mouse; releasing it restores click interaction. Returning to the game keeps the card visible. Presentation recording begins when you activate the card. The preference persists through restarting; fact viewing does not take keyboard focus automatically.
+Scheduled answer cards request keyboard focus by default, so you can type or use the number keys immediately. When gaming or avoiding interruptions, turn off **Automatically focus new cards** under Settings > Card. The complete card stays visible without activating on appearance or hover. Release the mouse and click the card to answer, or start practice from the system tray. On Windows, the card lets mouse input pass through while another window hides the cursor or captures the mouse; releasing it restores click interaction. Returning to the game keeps the card visible. Presentation recording begins when you activate the card. The preference persists through restarting; fact viewing does not take keyboard focus automatically.
 
 Before each scheduled reminder, Windows checks the system notification state. With automatic focus off, the card may appear over busy applications such as borderless fullscreen windows. System-reported exclusive Direct3D fullscreen, presentation and lock-screen states still defer reminders without accumulating missed cards. Automatic focus also defers during system busy states; explicit manual practice remains available. Try uses the system cursor and capture state rather than detecting a game's Esc key or pause menu. Games with custom cursors or other input methods still need testing. macOS/Linux retain click-to-answer interaction but do not yet implement this game mouse protection or fullscreen query; desktop validation remains necessary.
 
 Display duration starts after a correct answer or when a fact is shown. Incorrect answers do not use the timer; unanswered cards also stay open. Automatic cards pause while the main window is open; the full interval restarts after returning to the tray and finishing practice.
 
-The lower-left logo switches between answering (white) and viewing facts (outlined). Facts close after the configured duration or with Enter/Esc. Restarting returns to answering mode.
+Practice mode in the top toolbar switches between Answer and Knowledge. Start a manual card from the system tray; scheduled reminders use the selected mode. Facts close after the configured duration or with Enter/Esc. Restarting returns to answering mode.
 
 Answering adjusts selection from correct/incorrect results and actual elapsed time. Missed items get more revisits with other questions in between, while new and older items keep rotation opportunities. Familiar items still get maintenance within your chosen reminder interval. Typed, multiple-choice and true/false records remain separate. Fact viewing uses ordinary selection without reading or updating learning records; returning to answering retains the previous records.
 
@@ -26,16 +26,20 @@ Answering adjusts selection from correct/incorrect results and actual elapsed ti
 
 Configured tags also appear before sidebar pack names. The sidebar and practice card share the Show pack tags setting. Long tags are shortened; hover to read the full text.
 
-Expand a pack's title to edit a short tag, such as Formulas or English. Choose a tag and name that work together, such as Formulas · Calculus or English · Words, without repeating the same information. Enter saves and Esc cancels; a blank tag stays hidden. Tags are included in pack exports. A card on the left uses its upper-right corner; a card on the right uses its upper-left corner, updating as the card moves. Settings > Show pack tags hides all tags and preserves your preference after restarting. Existing packs without a tag remain unchanged; add one if desired.
+Use the ⋯ menu beside a pack's title to edit a short tag, such as Formulas or English. Choose a tag and name that work together, such as Formulas · Calculus or English · Words, without repeating the same information. Enter saves and Esc cancels; a blank tag stays hidden. Tags are included in pack exports. A card on the left uses its upper-right corner; a card on the right uses its upper-left corner, updating as the card moves. Settings > Card > Show pack tags hides all tags and preserves your preference after restarting. Existing packs without a tag remain unchanged; add one if desired.
 
 Choose knowledge you want to recall at a glance, then break it into brief cues with clear answers that need little on-the-spot reasoning.
 
-- Click a sidebar name to browse a pack. Its switch controls participation; several packs can be enabled together. Disabling and re-enabling preserves selected questions.
-- Row switches control individual questions; All controls the whole pack. Select typed, multiple-choice or true/false cells per question or in bulk. A mode with missing content is unavailable until the question is edited.
-- The sidebar plus creates a pack. The down/up arrows import/export JSON; hover for labels. The content-header plus adds a question, the pencil renames the pack, and the arrow expands its description. Enter saves a name; Esc cancels.
+Expand Description below the title to read the full scope and conventions, or collapse it to a first-line summary. Long descriptions scroll within the panel. Edit opens the editor; saving or canceling keeps the panel expanded. Use Add when no description is present. Switching packs collapses the panel and displays the new pack's summary.
+
+- Click a sidebar name to browse a pack. Each sidebar pack has its own participation switch; several packs can be enabled together, and switching one does not change the pack being viewed. Disabling and re-enabling preserves selected questions.
+- Row checkboxes control individual questions; Include all controls the whole pack. Each row has an answer-mode menu; Set all types applies a mode in bulk. A mode with missing content is unavailable until the question is edited.
+- The sidebar plus creates a pack; the down arrow imports JSON. Add question creates a card. The ⋯ menu beside the pack title provides name, tag, description, export and delete commands. Enter saves a name; Esc cancels.
 - Click a question to edit it. Typed mode needs a prompt and answer; multiple choice needs three options and a correct selection; true/false needs a statement and ✓ / ✕. Save validates the complete question; ordinary Cancel keeps the saved question.
-- To delete one question, use the upper-right trash icon in its editor and confirm. Canceling deletion retains the draft. The last deletion leaves an empty pack for new questions or imports.
-- To delete a pack, use the trash icon beside its title and confirm. Export first if you need a backup. Deleting the last pack leaves an empty library; restarting does not restore deleted content.
+- To delete one question, choose Delete from its row menu or use the upper-right trash icon in its editor and confirm. Canceling deletion retains the draft. The last deletion leaves an empty pack for new questions or imports.
+- To delete a pack, choose Delete from the ⋯ menu beside its title and confirm. Export first if you need a backup. Deleting the last pack leaves an empty library; restarting does not restore deleted content.
+
+Deletion confirmation appears in the center of the window with Cancel focused by default; Esc also cancels. It identifies the affected pack or question. When an update is available, a red dot appears on the bottom-left About icon; open About to view the update.
 
 Import copies the complete pack into Try's local data. Moving, renaming or deleting the source JSON does not affect it. External edits require re-importing; replacing the same id asks for confirmation. In-app edits and deletions do not change the source file. Export contains pack content; reminder settings, participation and per-question modes are local preferences.
 
@@ -85,7 +89,7 @@ The move-out and unwrap controls adjust scope while retaining contents. C clears
 
 ## Settings and pauses
 
-Open Settings from the lower-left gear. Changes save automatically; a save failure retains valid data. Appearance offers Light, Dark and System, with System as the default. The main window, native title bar and practice card update together, and System follows changes to the operating system's appearance. Your choice persists through restarting; existing saved Light or Dark choices remain valid. Choose system language, Simplified Chinese or English under Language at the bottom. Pack content keeps its authored language.
+Open Settings in the lower-left corner, beside About. Practice, Card and General organize the settings. Changes save automatically; a save failure retains valid data. General > Appearance offers Light, Dark and System, with System as the default. The main window, native title bar and practice card update together, and System follows changes to the operating system's appearance. Your choice persists through restarting; existing saved Light or Dark choices remain valid. Choose system language, Simplified Chinese or English under General > Language. Pack content keeps its authored language.
 
 Interval presets are 15, 25, 30 and 45 minutes; display-duration presets are 1, 2 and 3 seconds and apply only to correct feedback and fact viewing. Incorrect answers require Enter to acknowledge. Use the adjacent precise controls for custom values: Enter applies and Esc cancels. Existing custom values are retained.
 
@@ -105,6 +109,6 @@ Version `0.2.1` and earlier need one manual upgrade: quit from the tray, replace
 
 The lower-left ⓘ opens About for version, manual update checks, homepage and notices. Esc or clicking outside closes it. Complete license information is in [licensing](licensing.md).
 
-Automatic update checks are on by default. They wait at least 30 seconds after startup and run at most once every 24 hours, including across restarts. An available version appears only in About, without a popup. Downloading and the automatic restart begin only after you choose **Update & restart**. Turn off **Check for updates automatically** at the bottom of Settings if preferred; manual checking remains available. The check time and last successful result are cached in `update_check_state.json` in the same data folder.
+Automatic update checks are on by default. They wait at least 30 seconds after startup and run at most once every 24 hours, including across restarts. An available version adds a red dot to the About icon, with details in About and no separate popup. Downloading and the automatic restart begin only after you choose **Update & restart**. Turn off **Check for updates automatically** under Settings > General if preferred; manual checking remains available. The check time and last successful result are cached in `update_check_state.json` in the same data folder.
 
 Report problems or suggest improvements through [Issues](https://github.com/Ethan-decoy/Try/issues).

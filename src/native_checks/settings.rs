@@ -6,7 +6,7 @@ fn settings_click(main: &MainWindow, right: f32, top: f32) {
         main.window(),
         slint::LogicalPosition::new(
             main.get_settings_left() + main.get_settings_width() - right,
-            main.get_settings_top() + top,
+            main.get_settings_content_top() + top,
         ),
     );
 }
@@ -33,14 +33,7 @@ fn localization_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 0 => {
                     assert_eq!(main.get_interval_display(), "30 分钟");
                     snapshot(main.window(), checks.output.join("settings_zh.png"));
-                    main.window().dispatch_event(WindowEvent::PointerScrolled {
-                        position: slint::LogicalPosition::new(
-                            main.get_settings_left() + 100.0,
-                            main.get_settings_top() + 100.0,
-                        ),
-                        delta_x: 0.0,
-                        delta_y: -600.0,
-                    });
+                    main.set_settings_section(2);
                     let weak = main.as_weak();
                     Timer::single_shot(Duration::from_millis(100), move || {
                         if let Some(main) = weak.upgrade() {
@@ -218,7 +211,7 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     assert!(!main.get_autostart_enabled());
                     assert!(!main.get_quiet_hours_enabled());
                     snapshot(main.window(), checks.output.join("settings_default.png"));
-                    settings_click(&main, 120.0, 51.0);
+                    settings_click(&main, 120.0, 24.0);
                     key(main.window(), Key::UpArrow.into());
                     key(main.window(), Key::Return.into());
                     assert_eq!(
@@ -226,14 +219,14 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         25,
                         "Actual dropdown changes interval"
                     );
-                    settings_click(&main, 120.0, 105.0);
+                    settings_click(&main, 120.0, 72.0);
                     for _ in 0..3 {
                         key(main.window(), Key::UpArrow.into());
                     }
                     key(main.window(), Key::Return.into());
                     assert_eq!(main.get_feedback_seconds(), 1, "One-second preset works");
                     assert_eq!(app.store.load().unwrap().settings.feedback_seconds, 1);
-                    settings_click(&main, 32.0, 51.0);
+                    settings_click(&main, 32.0, 24.0);
                 }
                 1 => {
                     let main = main_window(app);
@@ -250,7 +243,7 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         "26 分钟（自定）"
                     );
                     assert_eq!(main.get_interval_display(), "26 分钟（自定）");
-                    settings_click(&main, 32.0, 51.0);
+                    settings_click(&main, 32.0, 24.0);
                     key(main.window(), Key::UpArrow.into());
                     key(main.window(), Key::Escape.into());
                     assert_eq!(
@@ -258,7 +251,7 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         26,
                         "Esc cancels the popup draft"
                     );
-                    settings_click(&main, 120.0, 180.0);
+                    settings_click(&main, 120.0, 165.0);
                     for _ in 0..3 {
                         key(main.window(), Key::DownArrow.into());
                     }
@@ -274,10 +267,12 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     assert_eq!(app.store.load().unwrap(), *app.library.borrow());
                     // Read the actual isolated system registration, rather than
                     // enabling this computer's login startup entry.
-                    settings_click(&main, 30.0, 280.0);
+                    main.set_settings_section(2);
+                    settings_click(&main, 30.0, 193.0);
                     assert!(main.get_autostart_enabled());
                     assert!(startup_file.is_file());
-                    settings_click(&main, 30.0, 224.0);
+                    main.set_settings_section(0);
+                    settings_click(&main, 30.0, 213.0);
                 }
                 2 => {
                     let main = main_window(app);

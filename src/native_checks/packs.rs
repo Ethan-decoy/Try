@@ -14,11 +14,14 @@ fn matrix_row_height(main: &MainWindow, row: usize) -> f32 {
 }
 
 fn click_matrix(main: &MainWindow, row: Option<usize>, mode: usize) {
+    if !main.get_tray_settings_available() {
+        return;
+    }
     let position = slint::LogicalPosition::new(
         main.get_matrix_area_left() + main.get_matrix_area_width()
-            - (3 - mode) as f32 * main.get_matrix_mode_width()
-            + main.get_matrix_mode_width() / 2.0,
-        row.map_or(main.get_matrix_area_top() + 32.0 + 23.0, |row| {
+            - 32.0
+            - main.get_matrix_mode_width() / 2.0,
+        row.map_or(main.get_matrix_area_top() + 60.0, |row| {
             main.get_question_area_top()
                 + (0..row).map(|i| matrix_row_height(main, i)).sum::<f32>()
                 + matrix_row_height(main, row) / 2.0
@@ -34,6 +37,19 @@ fn click_matrix(main: &MainWindow, row: Option<usize>, mode: usize) {
         position,
         button: PointerEventButton::Left,
     });
+    // A menu opens on the current selection, so navigate from that value.
+    let current = row
+        .map_or(main.get_uniform_answer_mode(), |row| {
+            main.get_cards().row_data(row).unwrap().answer_mode
+        })
+        .max(0) as usize;
+    for _ in 0..current {
+        key(main.window(), Key::UpArrow.into());
+    }
+    for _ in 0..mode {
+        key(main.window(), Key::DownArrow.into());
+    }
+    key(main.window(), Key::Return.into());
 }
 
 fn management_phase(checks: Rc<AnswerChecks>, phase: u8) {
@@ -88,18 +104,19 @@ fn management_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 }
                 16 => {
                     let main = main_window(app);
-                    key(main.window(), Key::Tab.into());
+                    key(main.window(), Key::Space.into());
                     snapshot(main.window(), checks.output.join("matrix_keyboard.png"));
                     management_phase(checks.clone(), 17);
                     return;
                 }
                 17 => {
                     let main = main_window(app);
-                    key(main.window(), Key::Space.into());
+                    key(main.window(), Key::DownArrow.into());
+                    key(main.window(), Key::Return.into());
                     assert_eq!(
                         main.get_cards().row_data(2).unwrap().answer_mode,
                         2,
-                        "Tab and Space operate matrix cells"
+                        "Space, arrows and Enter operate the answer-mode menu"
                     );
                     click_matrix(&main, Some(2), 0);
                     assert_eq!(main.get_cards().row_data(2).unwrap().answer_mode, 0);
@@ -721,6 +738,19 @@ fn question_deletion_phase(checks: Rc<AnswerChecks>, phase: u8) {
             match phase {
                 0 => {
                     assert_eq!(main.get_cards().row_count(), 3);
+                    let before = app.store.load().unwrap();
+                    main.invoke_delete_row(-1);
+                    assert!(!main.get_card_delete_pending());
+                    main.invoke_delete_row(1);
+                    assert!(main.get_card_delete_pending());
+                    assert!(!main.get_editor_visible());
+                    main.invoke_cancel_card_delete();
+                    assert!(!main.get_card_delete_pending());
+                    assert_eq!(
+                        app.store.load().unwrap(),
+                        before,
+                        "Canceling row deletion keeps the library unchanged"
+                    );
                     pointer_click(
                         main.window(),
                         slint::LogicalPosition::new(
@@ -934,10 +964,17 @@ fn native_question_deletion() {
 }
 
 fn click_pack(main: &MainWindow, row: usize, toggle: bool) {
+    if !main.get_tray_settings_available() {
+        return;
+    }
     pointer_click(
         main.window(),
         slint::LogicalPosition::new(
-            main.get_pack_toggle_center_x() - if toggle { 0.0 } else { 70.0 },
+            if toggle {
+                main.get_pack_toggle_center_x()
+            } else {
+                main.get_pack_list_left() + 60.0
+            },
             main.get_pack_list_top()
                 + row as f32 * main.get_pack_row_stride()
                 + main.get_pack_row_height() / 2.0,
@@ -946,6 +983,9 @@ fn click_pack(main: &MainWindow, row: usize, toggle: bool) {
 }
 
 fn click_delete_pack(main: &MainWindow, confirm: bool) {
+    if !confirm && !main.get_tray_settings_available() {
+        return;
+    }
     let (x, y) = if confirm {
         (
             main.get_delete_confirm_center_x(),
@@ -958,6 +998,12 @@ fn click_delete_pack(main: &MainWindow, confirm: bool) {
         )
     };
     pointer_click(main.window(), slint::LogicalPosition::new(x, y));
+    if !confirm {
+        for _ in 0..4 {
+            key(main.window(), Key::DownArrow.into());
+        }
+        key(main.window(), Key::Return.into());
+    }
 }
 
 fn deletion_phase(checks: Rc<AnswerChecks>, phase: u8) {
@@ -1355,7 +1401,8 @@ fn quick_answer_point(
 ) -> slint::LogicalPosition {
     slint::LogicalPosition::new(
         main.get_matrix_area_left() + main.get_matrix_area_width()
-            - 3.0 * main.get_matrix_mode_width()
+            - main.get_matrix_mode_width()
+            - 32.0
             - main.get_matrix_answer_width()
             + offset.unwrap_or(main.get_matrix_answer_width() / 2.0),
         main.get_question_area_top()
@@ -1524,7 +1571,8 @@ fn quick_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     assert!(main.get_matrix_answer_width() >= 84.0);
                     assert!(
                         main.get_matrix_area_width()
-                            - 3.0 * main.get_matrix_mode_width()
+                            - main.get_matrix_mode_width()
+                            - 32.0
                             - main.get_matrix_answer_width()
                             - main.get_participation_width()
                             > 100.0,

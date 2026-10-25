@@ -45,10 +45,10 @@ export component QuickAnswer inherits Rectangle {
         x: 8px; y: 2px; width: parent.width - 16px; height: root.field-height;
         visible: root.mode != 2;
         border-radius: 8px;
-        background: answer-input.has-focus || choice-touch.has-hover ? Theme.hover : Theme.soft;
+        background: answer-input.has-focus || choice-touch.has-hover ? Theme.soft : transparent;
         Rectangle {
             x: 8px; y: parent.height - 1px; width: parent.width - 16px; height: 1px;
-            background: root.error != "" ? Theme.wrong-ink : answer-input.has-focus ? Theme.focus : Theme.border;
+            background: root.error != "" ? Theme.wrong-ink : answer-input.has-focus ? Theme.focus : transparent;
         }
         answer-input := TextInput {
             x: 9px; y: (parent.height - self.height) / 2; width: parent.width - 18px; height: 28px;
