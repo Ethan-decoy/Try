@@ -10,13 +10,13 @@ Answer one short question at your chosen interval, using typed answers, multiple
 
 ## Download
 
-Download the file for your platform from the [latest version (v0.5.2 prerelease)](https://github.com/Ethan-decoy/Try/releases/tag/v0.5.2).
+Download the file for your platform from the [latest version (v0.6.0 prerelease)](https://github.com/Ethan-decoy/Try/releases/tag/v0.6.0).
 
 | Platform | Download | Status |
 | --- | --- | --- |
-| Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v0.5.2/try.exe) | Portable |
-| macOS arm64 | [try_macos_arm64_0.5.2.zip](https://github.com/Ethan-decoy/Try/releases/download/v0.5.2/try_macos_arm64_0.5.2.zip) | Experimental |
-| Linux x64 | [try_linux_x64_0.5.2.AppImage](https://github.com/Ethan-decoy/Try/releases/download/v0.5.2/try_linux_x64_0.5.2.AppImage) | Experimental |
+| Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v0.6.0/try.exe) | Portable |
+| macOS arm64 | [try_macos_arm64_0.6.0.zip](https://github.com/Ethan-decoy/Try/releases/download/v0.6.0/try_macos_arm64_0.6.0.zip) | Experimental |
+| Linux x64 | [try_linux_x64_0.6.0.AppImage](https://github.com/Ethan-decoy/Try/releases/download/v0.6.0/try_linux_x64_0.6.0.AppImage) | Experimental |
 
 On Windows, put `try.exe` in a writable folder and open it. Closing the main window returns to the tray. First launch creates an adjacent `data/` folder; keep it with the executable. Choose Update & restart in About to download, verify, install and restart automatically. Versions `0.2.1` and earlier need one manual upgrade first.
 
