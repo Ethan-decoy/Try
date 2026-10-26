@@ -629,12 +629,59 @@ mod tests {
     }
 
     #[test]
+    fn display_durations_migrate_independently_and_survive_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().to_owned()).unwrap();
+        let mut original = store.load().unwrap();
+        original.settings.feedback_seconds = 17;
+        let mut legacy = serde_json::to_value(&original).unwrap();
+        legacy["settings"]
+            .as_object_mut()
+            .unwrap()
+            .remove("knowledge_seconds");
+        let path = directory.path().join("state.json");
+        let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
+        fs::write(&path, &legacy_bytes).unwrap();
+
+        let mut library = store.load().unwrap();
+        assert_eq!(library.settings.feedback_seconds, 17);
+        assert_eq!(library.settings.knowledge_seconds, 17);
+        assert_eq!(fs::read(&path).unwrap(), legacy_bytes);
+        assert_eq!(library.packs, original.packs);
+
+        library.settings.feedback_seconds = 2;
+        store.save(&library).unwrap();
+        assert_eq!(store.load().unwrap().settings.knowledge_seconds, 17);
+        library.settings.knowledge_seconds = 25;
+        store.save(&library).unwrap();
+        drop(store);
+        let reopened = Store::open(directory.path().to_owned()).unwrap();
+        assert_eq!(reopened.load().unwrap(), library);
+
+        let saved = fs::read(&path).unwrap();
+        for (feedback, knowledge) in [(0, 25), (61, 25), (2, 0), (2, 61)] {
+            let mut invalid = library.clone();
+            invalid.settings.feedback_seconds = feedback;
+            invalid.settings.knowledge_seconds = knowledge;
+            assert!(reopened.save(&invalid).is_err());
+            assert_eq!(fs::read(&path).unwrap(), saved);
+        }
+        for invalid_value in [serde_json::Value::Null, 0.into(), 61.into(), (-1).into()] {
+            let mut invalid = serde_json::to_value(&library).unwrap();
+            invalid["settings"]["knowledge_seconds"] = invalid_value;
+            fs::write(&path, serde_json::to_vec(&invalid).unwrap()).unwrap();
+            assert!(reopened.load().is_err(), "Invalid values must not migrate");
+        }
+    }
+
+    #[test]
     fn settings_and_imported_content_survive_source_removal_and_restart() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path().to_owned()).unwrap();
         let mut library = store.load().unwrap();
         library.settings.interval_minutes = 45;
         library.settings.feedback_seconds = 1;
+        library.settings.knowledge_seconds = 30;
         library.settings.pause = crate::reminder_schedule::PracticePause::from_minutes(
             180,
             chrono::Utc::now().timestamp(),

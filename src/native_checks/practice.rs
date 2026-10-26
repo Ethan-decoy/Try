@@ -626,6 +626,7 @@ fn native_answer_modes() {
     let mut library = store.load().unwrap();
     library.settings.pause = PracticePause::UntilResumed;
     library.settings.feedback_seconds = 2;
+    library.settings.knowledge_seconds = 2;
     let floating = Rc::new(FloatingWindow::new(&library.settings));
     let window_hook = floating.clone();
     let mut builder = EventLoop::<slint::winit_030::SlintEvent>::with_user_event();

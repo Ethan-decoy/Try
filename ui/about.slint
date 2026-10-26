@@ -1,0 +1,107 @@
+import { Theme } from "theme.slint";
+import { IconButton, TextLink } from "controls.slint";
+
+export struct AboutUpdateView {
+    state: int,
+    status: string,
+    available: bool,
+    action: string,
+    busy: bool,
+    action-kind: int,
+}
+
+// Measurements stay in the owning window so they exist before the popup opens.
+export struct AboutMetrics {
+    version-width: length,
+    mit-width: length,
+    check-left: length,
+    check-top: length,
+    home-left: length,
+    home-top: length,
+    notices-left: length,
+    notices-top: length,
+}
+
+export component AboutContent inherits Rectangle {
+    in property <image> app-icon;
+    in property <string> app-version;
+    in property <AboutUpdateView> update-view;
+    in property <AboutMetrics> metrics;
+    callback check-updates();
+    callback open-update-download();
+    callback cancel-update-download();
+    callback restart-update();
+    callback open-home();
+    callback open-notices();
+    callback close-view();
+    forward-focus: about-focus;
+    background: Theme.panel;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.border;
+    about-focus := FocusScope {
+        width: 100%; height: 100%;
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.close-view(); return accept; }
+            return reject;
+        }
+        Image { source: root.app-icon; x: 20px; y: 22px; width: 32px; height: 32px; image-fit: contain; }
+        Text { x: 64px; y: 20px; width: 160px; height: 26px; text: "Try"; color: Theme.ink; font-size: 18px; font-weight: 600; }
+        version-label := Text {
+            x: 64px; y: 44px; width: root.metrics.version-width; height: 36px;
+            text: root.app-version; color: Theme.muted; font-size: 12px; vertical-alignment: center;
+        }
+        IconButton {
+            x: root.metrics.check-left; y: root.metrics.check-top;
+            glyph: @image-url("../assets/check_updates.svg"); label: @tr("检查更新");
+            borderless: true; enabled: root.update-view.state != 1 && !root.update-view.busy;
+            activated => { root.check-updates(); }
+        }
+        IconButton {
+            x: 244px; y: 16px;
+            glyph: @image-url("../assets/cross_mark.svg"); label: @tr("关闭关于");
+            borderless: true; activated => { root.close-view(); }
+        }
+        if root.update-view.state != 0 : HorizontalLayout {
+            x: 64px; y: 80px; width: 216px; height: 36px; spacing: 6px;
+            Text { text: root.update-view.status; color: Theme.muted; font-size: 12px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+            if root.update-view.available && root.update-view.action-kind == 0 : TextLink {
+                width: 102px; font-size: 12px; centered: true;
+                label: root.update-view.action;
+                activated => { root.open-update-download(); }
+            }
+            if root.update-view.available && root.update-view.action-kind == 1 : TextLink {
+                width: 102px; font-size: 12px; centered: true;
+                label: root.update-view.action;
+                activated => { root.cancel-update-download(); }
+            }
+            if root.update-view.available && root.update-view.action-kind == 2 : TextLink {
+                width: 102px; font-size: 12px; centered: true;
+                label: root.update-view.action;
+                activated => { root.restart-update(); }
+            }
+        }
+        TextLink {
+            x: root.metrics.home-left; y: root.metrics.home-top;
+            label: @tr("项目主页");
+            activated => { root.close-view(); root.open-home(); }
+        }
+        Text {
+            x: 64px; y: root.metrics.notices-top;
+            width: root.metrics.mit-width; height: 36px; text: @tr("MIT 许可");
+            color: Theme.muted; font-size: 12px; vertical-alignment: center;
+        }
+        Text {
+            x: 64px + root.metrics.mit-width + 6px; y: root.metrics.notices-top;
+            width: 6px; height: 36px; text: "·";
+            color: Theme.disabled; font-size: 12px; vertical-alignment: center;
+        }
+        TextLink {
+            x: root.metrics.notices-left;
+            y: root.metrics.notices-top;
+            width: 280px - self.x; font-size: 12px; ink: Theme.muted;
+            label: @tr("第三方声明");
+            activated => { root.open-notices(); root.close-view(); }
+        }
+    }
+}

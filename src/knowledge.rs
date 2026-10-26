@@ -421,6 +421,7 @@ pub struct Settings {
     pub pause: crate::reminder_schedule::PracticePause,
     pub interval_minutes: u32,
     pub feedback_seconds: u32,
+    pub knowledge_seconds: u32,
     pub focus_on_reminder: bool,
     pub auto_check_updates: bool,
     pub quiet_hours: crate::reminder_schedule::QuietHours,
@@ -448,6 +449,7 @@ impl Default for Settings {
             pause: crate::reminder_schedule::PracticePause::None,
             interval_minutes: 30,
             feedback_seconds: 8,
+            knowledge_seconds: 8,
             focus_on_reminder: true,
             auto_check_updates: true,
             quiet_hours: crate::reminder_schedule::QuietHours::default(),
@@ -469,8 +471,25 @@ impl Default for Settings {
 pub struct Library {
     pub format: String,
     pub schema_version: u32,
+    #[serde(deserialize_with = "deserialize_profile_settings")]
     pub settings: Settings,
     pub packs: Vec<KnowledgePack>,
+}
+
+fn deserialize_profile_settings<'de, D>(deserializer: D) -> Result<Settings, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let mut value = serde_json::Value::deserialize(deserializer)?;
+    // Older profiles shared one duration. Preserve it for both uses on load;
+    // subsequent changes save the two independent values without a startup write.
+    if let Some(fields) = value.as_object_mut()
+        && !fields.contains_key("knowledge_seconds")
+        && let Some(feedback) = fields.get("feedback_seconds").cloned()
+    {
+        fields.insert("knowledge_seconds".into(), feedback);
+    }
+    Settings::deserialize(value).map_err(serde::de::Error::custom)
 }
 
 impl Default for Library {
@@ -543,8 +562,9 @@ impl Library {
         self.settings.pause.validate()?;
         if !(1..=1440).contains(&self.settings.interval_minutes)
             || !(1..=60).contains(&self.settings.feedback_seconds)
+            || !(1..=60).contains(&self.settings.knowledge_seconds)
         {
-            return Err(tr!("出题间隔须为 1 至 1440 分钟，卡片停留须为 1 至 60 秒。").into());
+            return Err(tr!("出题间隔须为 1 至 1440 分钟，两项停留时间须为 1 至 60 秒。").into());
         }
         if self.packs.len() > 64
             || self

@@ -28,6 +28,13 @@ Windows 辅助脚本会定位工具链、MSVC 和 SDK，并将产物留在 `loca
 
 正式分发启用 `distribution`，先收集与最终 `Cargo.lock` 一致的许可原文，再生成内嵌声明。Windows 使用静态 C 运行库，macOS 打包为 arm64 ZIP，Linux 打包为 AppImage 并附运行时源码。命令与来源规则见 [发布说明](release_checklist.md) 和 [许可说明](licensing.md)。
 
+Windows 的两种准备入口按用途区分：
+
+- `./scripts/prepare_windows_preview.ps1` 使用本地构建生成体验目录，保留在 `local_artifacts/windows_package/`，包含图标、便携标记、数据目录与本地快捷方式。`-DesktopShortcut` 可创建桌面入口；原有指向该预览目录的桌面入口会随图标更新。`-SeedDataDirectory` 仅在尚无状态文件时复制指定的 `state.json`，不作为完整数据迁移工具。旧命令 `package_windows.ps1` 保留为参数兼容的入口。
+- `./scripts/prepare_windows_release.ps1` 校验启用 `distribution` 的程序、固定提交、源码状态和内嵌许可，生成正式单文件附件。CI 使用这一入口，预览目录不作为 Release 附件。
+
+预览说明只记录构建信息、数据位置和使用指南链接；具体操作统一维护在中英文使用指南中。准备预览目录不会自动启动 Try。
+
 主窗口确认框、更新红点和操作菜单的回归使用无窗口软件渲染，不向系统发送鼠标键盘输入。正式分发工作流另在 GitHub 的隔离 Windows runner 中验证便携启动、实例转发与关闭到托盘，并随 CI 附件保存检查记录。
 
 默认测试不主动打开桌面窗口。原生 GUI 检查需要显式选择，使用隔离配置；例如：
@@ -43,7 +50,9 @@ Windows 辅助脚本会定位工具链、MSVC 和 SDK，并将产物留在 `loca
 
 `src/` 包含题库、练习、学习状态、公式、窗口和持久化逻辑；`ui/` 定义 Slint 界面；`knowledge_packs/` 提供五个领域的入门示例与三份进阶模板；`scripts/` 负责构建、分发和检查。回归测试使用独立构造的数据，不读取个人题库。
 
-`src/app.rs` 负责应用生命周期、托盘和共享资源。其私有模块放在 `src/app/`，按主窗口、知识包、题目编辑、图片、公式接入、练习窗口、设置和更新组织。功能通过 `App` 内部协作，题库、判分、学习调度、存储和更新安装等领域逻辑仍由独立库模块负责。
+`src/app.rs` 负责应用生命周期、托盘和共享资源。其私有模块放在 `src/app/`，按主窗口、知识包、题目编辑、图片、公式接入、练习窗口、设置和更新组织。`main_window.rs` 保留窗口创建、激活和关闭；其内部 `bindings.rs` 按功能注册事件，`view_model.rs` 生成列表、设置和待确认操作的显示状态。功能通过 `App` 内部协作，题库、判分、学习调度、存储和更新安装等领域逻辑仍由独立库模块负责。
+
+`ui/app.slint` 保留 Rust 侧使用的统一导出，窗口实现分别位于 `main_window.slint`、`practice_window.slint` 与 `app_shell.slint`。`about.slint` 负责关于内容；弹出位置和文字测量仍由主窗口持有，保证更新状态变化时几何稳定。`tests/support/mod.rs` 共用无窗口渲染与输入驱动，各测试保留自己的界面夹具和行为断言。
 
 `src/structured_math.rs` 负责结构化编辑器的宿主接入；其剪贴板适配与整段输入共用表达式规范化，保留组件的结构、选区与撤销语义。`src/text_history.rs` 只维护普通文字的有界撤销记录。原生检查按功能放在 `src/native_checks/`，`mod.rs` 保留共享窗口与输入驱动；测试通过当前可见的输入框和 ƒ 入口验证练习，不保留已退役的公式面板入口。
 

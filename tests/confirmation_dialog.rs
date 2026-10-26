@@ -1,60 +1,11 @@
 //! Render and exercise the actual main UI without creating an OS window or input.
-use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
-use slint::platform::{
-    Key, Platform, PlatformError, PointerEventButton, WindowAdapter, WindowEvent,
-};
-use slint::{ComponentHandle, LogicalPosition, PhysicalSize, Rgb8Pixel, SharedPixelBuffer};
+mod support;
+use slint::platform::{Key, WindowEvent};
+use slint::{ComponentHandle, PhysicalSize, Rgb8Pixel, SharedPixelBuffer};
 use std::{cell::Cell, rc::Rc};
+use support::{click, key, paint, software_window};
 
 slint::include_modules!();
-
-struct SoftwarePlatform(Rc<MinimalSoftwareWindow>);
-
-impl Platform for SoftwarePlatform {
-    fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
-        Ok(self.0.clone())
-    }
-}
-
-fn paint(adapter: &MinimalSoftwareWindow) -> SharedPixelBuffer<Rgb8Pixel> {
-    slint::platform::update_timers_and_animations();
-    adapter.request_redraw();
-    let size = adapter.size();
-    let mut pixels = SharedPixelBuffer::new(size.width, size.height);
-    adapter.draw_if_needed(|renderer| {
-        renderer.render(pixels.make_mut_slice(), size.width as usize);
-    });
-    pixels
-}
-
-fn click(window: &MainWindow, adapter: &MinimalSoftwareWindow, x: f32, y: f32) {
-    let position = LogicalPosition::new(x, y);
-    for event in [
-        WindowEvent::PointerMoved { position },
-        WindowEvent::PointerPressed {
-            position,
-            button: PointerEventButton::Left,
-        },
-        WindowEvent::PointerReleased {
-            position,
-            button: PointerEventButton::Left,
-        },
-    ] {
-        window.window().dispatch_event(event);
-    }
-    paint(adapter);
-}
-
-fn key(window: &MainWindow, adapter: &MinimalSoftwareWindow, key: Key) {
-    let text: slint::SharedString = key.into();
-    window
-        .window()
-        .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
-    window
-        .window()
-        .dispatch_event(WindowEvent::KeyReleased { text });
-    paint(adapter);
-}
 
 fn centered(bounds: [f32; 4], size: PhysicalSize) {
     let [x, y, width, height] = bounds;
@@ -84,8 +35,7 @@ fn save_preview(name: &str, pixels: &SharedPixelBuffer<Rgb8Pixel>) {
 
 #[test]
 fn centered_deletion_guards_and_available_update_badge() {
-    let adapter = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
-    slint::platform::set_platform(Box::new(SoftwarePlatform(adapter.clone()))).unwrap();
+    let adapter = software_window();
     let window = MainWindow::new().unwrap();
     adapter.set_size(PhysicalSize::new(880, 640));
     window.set_app_version(env!("CARGO_PKG_VERSION").into());
@@ -164,6 +114,67 @@ fn centered_deletion_guards_and_available_update_badge() {
     save_preview("update_notice_dark", &available);
     window.set_update_download(false);
     assert!(!badge_pixel(&paint(&adapter)));
+
+    // The extracted About content keeps its popup geometry and action routing.
+    let checks = Rc::new(Cell::new(0));
+    let count = checks.clone();
+    window.on_check_updates(move || count.set(count.get() + 1));
+    let update_actions = Rc::new(Cell::new(0));
+    let count = update_actions.clone();
+    window.on_open_update_download(move || count.set(count.get() + 1));
+    let count = update_actions.clone();
+    window.on_cancel_update_download(move || count.set(count.get() + 10));
+    let count = update_actions.clone();
+    window.on_restart_update(move || count.set(count.get() + 100));
+    let sample_x = (window.get_about_left() + 1.0) as usize;
+    let sample_y = (window.get_about_top() + 100.0) as usize;
+    let panel_color = |pixels: &SharedPixelBuffer<Rgb8Pixel>| {
+        let pixel = pixels.as_slice()[sample_y * pixels.width() as usize + sample_x];
+        (pixel.r, pixel.g, pixel.b)
+    };
+    let closed = panel_color(&paint(&adapter));
+    window.invoke_show_about();
+    let opened = panel_color(&paint(&adapter));
+    assert_ne!(
+        opened, closed,
+        "About must render at its advertised position"
+    );
+    click(
+        &window,
+        &adapter,
+        window.get_check_link_left() + 18.0,
+        window.get_check_link_top() + 18.0,
+    );
+    assert_eq!(checks.get(), 1);
+    window.set_update_state(1);
+    window.set_update_status("正在检查…".into());
+    assert_eq!(panel_color(&paint(&adapter)), opened);
+    click(
+        &window,
+        &adapter,
+        window.get_check_link_left() + 18.0,
+        window.get_check_link_top() + 18.0,
+    );
+    assert_eq!(checks.get(), 1, "Checking disables repeated requests");
+    window.set_update_state(2);
+    window.set_update_status("新版本 0.6.1".into());
+    window.set_update_download(true);
+    window.set_update_action("下载并重启".into());
+    for (kind, expected) in [(0, 1), (1, 11), (2, 111)] {
+        window.set_update_action_kind(kind);
+        assert_eq!(panel_color(&paint(&adapter)), opened);
+        click(
+            &window,
+            &adapter,
+            window.get_about_left() + 229.0,
+            window.get_about_top() + 98.0,
+        );
+        assert_eq!(update_actions.get(), expected);
+    }
+    key(&window, &adapter, Key::Escape);
+    assert_eq!(panel_color(&paint(&adapter)), closed);
+    window.set_update_download(false);
+    window.set_update_action_kind(0);
 
     window.set_delete_description("删除“微积分”及其中的 4 道题？此操作无法撤销。".into());
     window.set_delete_pending(true);

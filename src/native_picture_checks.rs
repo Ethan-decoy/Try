@@ -388,6 +388,7 @@ fn native_picture_questions() {
     library.settings.auto_check_updates = false;
     library.settings.pause = PracticePause::UntilResumed;
     library.settings.feedback_seconds = 30;
+    library.settings.knowledge_seconds = 30;
     library.settings.enabled_pack_ids = vec![library.packs[0].id.clone()];
     library.packs[0].cards.truncate(1);
     library.packs[0].cards[0].prompt = "图中是哪个函数？".into();

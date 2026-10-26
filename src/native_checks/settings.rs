@@ -57,6 +57,7 @@ fn localization_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     );
                     assert_eq!(main.get_interval_display(), "30 min");
                     assert_eq!(main.get_feedback_display(), "8 s (custom)");
+                    assert_eq!(main.get_knowledge_display(), "8 s");
                     assert_eq!(main.get_pause_display(), "Off");
                     assert_eq!(main.get_answer_mode_labels().row_data(1).unwrap(), "Choice");
                     assert_eq!(
@@ -204,6 +205,7 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     let main = main_window(app);
                     assert_eq!(main.get_pause_minutes(), 0);
                     assert_eq!(main.get_feedback_seconds(), 8);
+                    assert_eq!(main.get_knowledge_seconds(), 8);
                     assert_eq!(
                         main.get_feedback_options().row_data(3).unwrap(),
                         "8 秒（自定）"
@@ -226,6 +228,7 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     key(main.window(), Key::Return.into());
                     assert_eq!(main.get_feedback_seconds(), 1, "One-second preset works");
                     assert_eq!(app.store.load().unwrap().settings.feedback_seconds, 1);
+                    assert_eq!(app.store.load().unwrap().settings.knowledge_seconds, 8);
                     settings_click(&main, 32.0, 24.0);
                 }
                 1 => {
@@ -251,7 +254,7 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         26,
                         "Esc cancels the popup draft"
                     );
-                    settings_click(&main, 120.0, 165.0);
+                    settings_click(&main, 120.0, 213.0);
                     for _ in 0..3 {
                         key(main.window(), Key::DownArrow.into());
                     }
@@ -272,7 +275,7 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     assert!(main.get_autostart_enabled());
                     assert!(startup_file.is_file());
                     main.set_settings_section(0);
-                    settings_click(&main, 30.0, 213.0);
+                    settings_click(&main, 30.0, 261.0);
                 }
                 2 => {
                     let main = main_window(app);

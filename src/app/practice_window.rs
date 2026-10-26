@@ -619,7 +619,19 @@ impl App {
     }
 
     pub(super) fn arm_card_close(self: &Rc<Self>) {
-        let duration = Duration::from_secs(self.library.borrow().settings.feedback_seconds.into());
+        let seconds = {
+            let practice = self.practice.borrow();
+            let Some(session) = practice.as_ref() else {
+                return;
+            };
+            let library = self.library.borrow();
+            if session.prepared.knowledge_only {
+                library.settings.knowledge_seconds
+            } else {
+                library.settings.feedback_seconds
+            }
+        };
+        let duration = Duration::from_secs(seconds.into());
         let weak = Rc::downgrade(self);
         self.feedback_timer
             .start(TimerMode::SingleShot, duration, move || {

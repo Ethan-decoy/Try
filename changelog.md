@@ -4,6 +4,16 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.7.0]
+
+### Added
+
+- Set separate durations for correct-answer feedback and knowledge display; existing profiles retain their previous duration for both settings.
+
+### Changed
+
+- Separate window, event-binding and view-model responsibilities, share software-rendered UI test support, and remove unused icons and translations.
+
 ## [0.6.0] - 2026-10-25
 
 ### Added
@@ -130,7 +140,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Ethan-decoy/Try/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Ethan-decoy/Try/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/Ethan-decoy/Try/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Ethan-decoy/Try/compare/v0.5.0...v0.5.1

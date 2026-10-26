@@ -6,6 +6,10 @@ fn main() {
     let translations = compile_translations();
     compile_notices();
     println!("cargo:rerun-if-changed=ui/app.slint");
+    println!("cargo:rerun-if-changed=ui/main_window.slint");
+    println!("cargo:rerun-if-changed=ui/practice_window.slint");
+    println!("cargo:rerun-if-changed=ui/app_shell.slint");
+    println!("cargo:rerun-if-changed=ui/about.slint");
     println!("cargo:rerun-if-changed=ui/theme.slint");
     println!("cargo:rerun-if-changed=ui/content.slint");
     println!("cargo:rerun-if-changed=ui/formula_input.slint");
@@ -72,6 +76,10 @@ fn compile_translations() -> std::path::PathBuf {
     }
     let mut sources: Vec<String> = [
         "ui/app.slint",
+        "ui/main_window.slint",
+        "ui/practice_window.slint",
+        "ui/app_shell.slint",
+        "ui/about.slint",
         "ui/image_preview.slint",
         "ui/settings.slint",
         "ui/content.slint",
@@ -105,7 +113,7 @@ fn compile_translations() -> std::path::PathBuf {
     .into_iter()
     .map(str::to_owned)
     .collect();
-    for directory in ["src/app", "src/structured_math"] {
+    for directory in ["src/app", "src/app/main_window", "src/structured_math"] {
         println!("cargo:rerun-if-changed={directory}");
         sources.extend(
             std::fs::read_dir(directory)

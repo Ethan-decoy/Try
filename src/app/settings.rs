@@ -99,7 +99,16 @@ impl App {
     pub(super) fn set_feedback(self: &Rc<Self>, value: i32) {
         let result = self.commit(|library| {
             library.settings.feedback_seconds =
-                u32::try_from(value).map_err(|_| tr!("卡片停留不能为负数。"))?;
+                u32::try_from(value).map_err(|_| tr!("停留时间不能为负数。"))?;
+            Ok(())
+        });
+        self.report(result, "");
+    }
+
+    pub(super) fn set_knowledge_duration(self: &Rc<Self>, value: i32) {
+        let result = self.commit(|library| {
+            library.settings.knowledge_seconds =
+                u32::try_from(value).map_err(|_| tr!("停留时间不能为负数。"))?;
             Ok(())
         });
         self.report(result, "");

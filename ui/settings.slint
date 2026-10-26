@@ -105,6 +105,9 @@ export component SettingsPage inherits Rectangle {
     in property <int> feedback-seconds;
     in property <[string]> feedback-options;
     in property <int> feedback-selection;
+    in property <int> knowledge-seconds;
+    in property <[string]> knowledge-options;
+    in property <int> knowledge-selection;
     in property <int> pause-minutes;
     in property <[string]> pause-options;
     in property <int> pause-selection;
@@ -126,6 +129,7 @@ export component SettingsPage inherits Rectangle {
     in property <int> appearance;
     out property <string> interval-display: interval-setting.display-value;
     out property <string> feedback-display: feedback-setting.display-value;
+    out property <string> knowledge-display: knowledge-setting.display-value;
     out property <string> pause-display: pause-setting.display-value;
     out property <length> content-top: settings-scroll.absolute-position.y;
     out property <length> language-left: language-menu.absolute-position.x;
@@ -138,9 +142,11 @@ export component SettingsPage inherits Rectangle {
     out property <length> automatic-update-top: automatic-update-check.absolute-position.y;
     callback choose-interval(int);
     callback choose-feedback(int);
+    callback choose-knowledge-duration(int);
     callback choose-pause(int);
     callback set-interval(int);
     callback set-feedback(int);
+    callback set-knowledge-duration(int);
     callback set-pause(int);
     callback set-autostart(bool);
     callback set-quiet-enabled(bool);
@@ -170,10 +176,11 @@ export component SettingsPage inherits Rectangle {
             VerticalLayout {
                 spacing: 0px; alignment: start;
                 Rectangle {
-                    visible: root.section == 0; height: self.visible ? 140px : 0px;
+                    visible: root.section == 0; height: self.visible ? 188px : 0px;
                     interval-setting := TimeSetting { y: 0px; width: parent.width; label: @tr("出题间隔"); value: root.interval-minutes; options: root.interval-options; selection: root.interval-selection; choose(index) => { root.choose-interval(index); } apply-value(value) => { root.set-interval(value); } }
-                    feedback-setting := TimeSetting { y: 48px; width: parent.width; label: @tr("卡片停留"); value: root.feedback-seconds; options: root.feedback-options; selection: root.feedback-selection; maximum: 60; unit: @tr("秒"); hint: @tr("答对后／知识点展示时开始计时；答错后按 Enter 确认"); choose(index) => { root.choose-feedback(index); } apply-value(value) => { root.set-feedback(value); } }
-                    Text { x: 14px; y: 104px; width: parent.width - 28px; text: @tr("答对后／知识点展示时开始计时；答错后按 Enter 确认"); color: Theme.muted; font-size: 11px; wrap: word-wrap; }
+                    feedback-setting := TimeSetting { y: 48px; width: parent.width; label: @tr("答对后停留"); value: root.feedback-seconds; options: root.feedback-options; selection: root.feedback-selection; maximum: 60; unit: @tr("秒"); hint: @tr("答对后开始计时，随后自动收起"); choose(index) => { root.choose-feedback(index); } apply-value(value) => { root.set-feedback(value); } }
+                    knowledge-setting := TimeSetting { y: 96px; width: parent.width; label: @tr("知识展示停留"); value: root.knowledge-seconds; options: root.knowledge-options; selection: root.knowledge-selection; maximum: 60; unit: @tr("秒"); hint: @tr("展示答案后开始计时，随后自动收起"); choose(index) => { root.choose-knowledge-duration(index); } apply-value(value) => { root.set-knowledge-duration(value); } }
+                    Text { x: 14px; y: 152px; width: parent.width - 28px; text: @tr("答错后按 Enter 确认，不自动收起"); color: Theme.muted; font-size: 11px; wrap: word-wrap; }
                 }
                 Rectangle { visible: root.section == 0; height: self.visible ? 1px : 0px; background: Theme.soft-border; }
                 Rectangle {

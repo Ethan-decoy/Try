@@ -1,0 +1,46 @@
+import { Palette } from "std-widgets.slint";
+
+// Never shown: this root observes the application palette, independently of tray colors.
+export component SystemAppearance inherits Window {
+    out property <bool> dark: Palette.background.to-oklch().lightness < 0.5;
+    changed dark => { root.system-theme-changed(); }
+    callback system-theme-changed();
+}
+
+export component TryTray inherits SystemTrayIcon {
+    in property <image> tray-icon;
+    in property <bool> reminders-enabled: true;
+    in property <bool> can-practice: true;
+    in property <bool> practice-menu-visible;
+    in property <int> pause-minutes;
+    in property <string> pause-title: @tr("暂离");
+    in property <bool> settings-available: true;
+    callback open-main();
+    callback open-settings(bool);
+    callback open-about();
+    callback set-pause(int);
+    callback practice-now();
+    callback quit-app();
+
+    icon: root.tray-icon;
+    tooltip: root.reminders-enabled ? @tr("Try · 随手一练") : @tr("Try · 已暂停");
+    clicked => { root.practice-now(); }
+    Menu {
+        if root.practice-menu-visible : MenuItem { title: @tr("练习"); enabled: root.can-practice; activated => { root.practice-now(); } }
+        MenuItem { title: @tr("打开"); activated => { root.open-main(); } }
+        MenuItem { title: @tr("设置"); enabled: root.settings-available; activated => { root.open-settings(false); } }
+        MenuSeparator {}
+        Menu {
+            title: root.pause-title;
+            MenuItem { title: (root.pause-minutes == 60 ? "✓ " : "") + @tr("1 小时"); activated => { root.set-pause(60); } }
+            MenuItem { title: (root.pause-minutes == 120 ? "✓ " : "") + @tr("2 小时"); activated => { root.set-pause(120); } }
+            MenuItem { title: (root.pause-minutes == 180 ? "✓ " : "") + @tr("3 小时"); activated => { root.set-pause(180); } }
+            MenuItem { title: (root.pause-minutes > 0 && root.pause-minutes != 60 && root.pause-minutes != 120 && root.pause-minutes != 180 ? "✓ " : "") + @tr("自定…"); enabled: root.settings-available; activated => { root.open-settings(true); } }
+        }
+        if root.pause-minutes == 0 : MenuItem { title: @tr("暂停"); activated => { root.set-pause(-1); } }
+        if root.pause-minutes != 0 : MenuItem { title: @tr("恢复"); activated => { root.set-pause(0); } }
+        MenuSeparator {}
+        MenuItem { title: @tr("关于"); activated => { root.open-about(); } }
+        MenuItem { title: @tr("退出"); activated => { root.quit-app(); } }
+    }
+}

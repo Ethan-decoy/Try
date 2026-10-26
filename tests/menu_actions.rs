@@ -1,10 +1,8 @@
 //! Exercise the actual popup/repeater/button chain without a desktop session.
-use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
-use slint::platform::{
-    Key, Platform, PlatformError, PointerEventButton, WindowAdapter, WindowEvent,
-};
-use slint::{ComponentHandle, LogicalPosition, PhysicalSize, Rgb8Pixel, SharedPixelBuffer};
-use std::rc::Rc;
+mod support;
+use slint::platform::Key;
+use slint::{ComponentHandle, PhysicalSize};
+use support::{click, key, paint, software_window};
 
 slint::slint! {
     import { ActionMenu, DesktopButton } from "../ui/desktop_controls.slint";
@@ -28,53 +26,9 @@ slint::slint! {
     }
 }
 
-struct HeadlessPlatform(Rc<MinimalSoftwareWindow>);
-
-impl Platform for HeadlessPlatform {
-    fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
-        Ok(self.0.clone())
-    }
-}
-
-fn paint(adapter: &MinimalSoftwareWindow) {
-    slint::platform::update_timers_and_animations();
-    adapter.request_redraw();
-    adapter.draw_if_needed(|renderer| {
-        let mut pixels = SharedPixelBuffer::<Rgb8Pixel>::new(360, 300);
-        renderer.render(pixels.make_mut_slice(), 360);
-    });
-}
-
-fn click(probe: &MenuActionsProbe, adapter: &MinimalSoftwareWindow, x: f32, y: f32) {
-    let position = LogicalPosition::new(x, y);
-    probe
-        .window()
-        .dispatch_event(WindowEvent::PointerMoved { position });
-    probe.window().dispatch_event(WindowEvent::PointerPressed {
-        position,
-        button: PointerEventButton::Left,
-    });
-    probe.window().dispatch_event(WindowEvent::PointerReleased {
-        position,
-        button: PointerEventButton::Left,
-    });
-    paint(adapter);
-}
-
-fn key(probe: &MenuActionsProbe, adapter: &MinimalSoftwareWindow, text: slint::SharedString) {
-    probe
-        .window()
-        .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
-    probe
-        .window()
-        .dispatch_event(WindowEvent::KeyReleased { text });
-    paint(adapter);
-}
-
 #[test]
 fn mouse_popup_actions_dispatch_the_clicked_item_once() {
-    let adapter = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
-    slint::platform::set_platform(Box::new(HeadlessPlatform(adapter.clone()))).unwrap();
+    let adapter = software_window();
     let probe = MenuActionsProbe::new().unwrap();
     adapter.set_size(PhysicalSize::new(360, 300));
     probe.show().unwrap();
@@ -88,8 +42,8 @@ fn mouse_popup_actions_dispatch_the_clicked_item_once() {
     );
 
     click(&probe, &adapter, 312.0, 40.0);
-    key(&probe, &adapter, Key::End.into());
-    key(&probe, &adapter, Key::Return.into());
+    key(&probe, &adapter, Key::End);
+    key(&probe, &adapter, Key::Return);
     assert_eq!(
         probe.get_last_action(),
         4,

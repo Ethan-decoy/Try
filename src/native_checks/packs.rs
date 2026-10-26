@@ -522,6 +522,7 @@ fn native_question_management() {
     let mut library = store.load().unwrap();
     library.settings.pause = PracticePause::UntilResumed;
     library.settings.feedback_seconds = 2;
+    library.settings.knowledge_seconds = 2;
     let floating = Rc::new(FloatingWindow::new(&library.settings));
     let window_hook = floating.clone();
     let mut builder = EventLoop::<slint::winit_030::SlintEvent>::with_user_event();
@@ -1876,6 +1877,7 @@ fn native_pack_tags() {
     library.settings.popup_corner = PopupCorner::BottomLeft;
     library.settings.remember_position = false;
     library.settings.feedback_seconds = 30;
+    library.settings.knowledge_seconds = 30;
     store.save(&library).unwrap();
     let floating = Rc::new(FloatingWindow::new(&library.settings));
     let hook = floating.clone();
