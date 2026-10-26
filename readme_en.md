@@ -4,9 +4,13 @@ English · [简体中文](README.md)
 
 **A little practice, now and then.**
 
-Try is a lightweight desktop practice tool for building “muscle memory” through brief, repeated practice, so familiar knowledge takes less on-the-spot thinking or reasoning to recall.
+Try is a lightweight desktop practice tool for revisiting formulas, vocabulary and other knowledge during breaks between work and play.
 
-Answer one short question at your chosen interval, using typed answers, multiple choice or true/false, or simply view the answer and return to what you were doing.
+At your chosen interval, answer one short question or glance at a knowledge card, then return to what you were doing. Typed answers, multiple choice and true/false are supported.
+
+![A Try v0.6.0 formula practice card in a desktop corner](docs/images/practice_desktop.png)
+
+*Actual Try v0.6.0 practice card on Windows, enlarged in an illustrative desktop layout.*
 
 ## Download
 
@@ -21,6 +25,14 @@ Download the file for your platform from the [latest version (v0.6.0 prerelease)
 On Windows, put `try.exe` in a writable folder and open it. Closing the main window returns to the tray. First launch creates an adjacent `data/` folder; keep it with the executable. Choose Update & restart in About to download, verify, install and restart automatically. Versions `0.2.1` and earlier need one manual upgrade first.
 
 The macOS version supports arm64 only. macOS/Linux versions are experimental, and macOS packages are not notarized. See the [user guide](docs/user_guide_en.md) for detailed controls.
+
+## Choose what to practice
+
+Manage knowledge packs and choose which questions to practice. Click a prompt to edit it, with support for formulas and images.
+
+![Public knowledge packs and calculus formulas in Try v0.6.0's main window](docs/images/knowledge_library.png)
+
+*Try v0.6.0 on Windows, using public sample knowledge packs.*
 
 ## Create knowledge packs with AI
 
