@@ -95,6 +95,8 @@ Under Practice, set Correct answer duration and Knowledge display duration indep
 
 A temporary pause lasts for its selected duration; Pause lasts until Resume. Pauses survive restarting. Resume starts the full interval without catching up missed cards. Manual practice works during pauses and quiet hours and does not resume automatic reminders.
 
+The answering/knowledge-display choice is also saved automatically and restored on normal startup, launch at login and in-app updates. Older versions did not save this choice; the first upgraded launch uses answering until you select a mode again.
+
 Daily quiet hours and launch at login are off by default. Quiet hours can span midnight, with 22:00–08:00 as the initial range. Launch at login starts in the tray. On Windows, choose a work-area corner or drag the card's prompt/empty area to position it.
 
 ## Data, updates and feedback

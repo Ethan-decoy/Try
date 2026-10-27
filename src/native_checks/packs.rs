@@ -1803,7 +1803,7 @@ fn pack_tags_phase(checks: Rc<AnswerChecks>, phase: u8, hidden_height: f32) {
                     let main = main_window(app);
                     main.invoke_choose_appearance(Appearance::Light.index());
                     main.invoke_set_corner(PopupCorner::TopRight.index());
-                    app.knowledge_only.set(true);
+                    app.set_knowledge_mode(true);
                     app.show_practice().unwrap();
                 }
                 7 => {

@@ -166,8 +166,7 @@ fn connect_library(app: &Rc<App>, window: &MainWindow) {
     let weak = Rc::downgrade(app);
     window.on_toggle_knowledge_mode(move || {
         if let Some(app) = weak.upgrade() {
-            app.knowledge_only.set(!app.knowledge_only.get());
-            app.refresh();
+            app.set_knowledge_mode(!app.knowledge_only.get());
         }
     });
     let weak = Rc::downgrade(app);

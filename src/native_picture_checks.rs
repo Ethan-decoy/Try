@@ -120,7 +120,7 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                         Ok(())
                     })
                     .unwrap();
-                    app.knowledge_only.set(true);
+                    app.set_knowledge_mode(true);
                     app.show_practice().unwrap();
                     assert!(practice_window(app).get_knowledge_only());
                     assert!(practice_window(app).get_question_image_width() > 0.0);
@@ -135,7 +135,7 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                         checks.output.join("knowledge_light.png"),
                     );
                     app.close_practice();
-                    app.knowledge_only.set(false);
+                    app.set_knowledge_mode(false);
                     app.commit(|library| {
                         let pack = &library.packs[0];
                         let (pack_id, card_id) =
@@ -243,7 +243,7 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                         checks.output.join("image_only_wrong_answer.png"),
                     );
                     app.close_practice();
-                    app.knowledge_only.set(true);
+                    app.set_knowledge_mode(true);
                     app.show_practice().unwrap();
                 }
                 10 => {
@@ -261,7 +261,7 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                         checks.output.join("image_only_knowledge_light.png"),
                     );
                     app.close_practice();
-                    app.knowledge_only.set(false);
+                    app.set_knowledge_mode(false);
                     app.commit(|library| {
                         let pack = &library.packs[0];
                         let (pack_id, card_id) =
@@ -332,7 +332,7 @@ fn phase(checks: Rc<PictureChecks>, step: u8) {
                             .join(format!("{}.png", checks.imported.id)),
                     )
                     .unwrap();
-                    app.knowledge_only.set(false);
+                    app.set_knowledge_mode(false);
                     assert!(
                         app.show_practice().is_err(),
                         "Missing image does not create a normal answer session"

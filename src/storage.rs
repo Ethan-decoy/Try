@@ -675,6 +675,59 @@ mod tests {
     }
 
     #[test]
+    fn startup_display_preferences_survive_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().to_owned()).unwrap();
+        let mut legacy = serde_json::to_value(store.load().unwrap()).unwrap();
+        legacy["settings"]["feedback_seconds"] = 1.into();
+        legacy["settings"]["knowledge_seconds"] = 15.into();
+        legacy["settings"]
+            .as_object_mut()
+            .unwrap()
+            .remove("knowledge_only");
+        let path = directory.path().join("state.json");
+        let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
+        fs::write(&path, &legacy_bytes).unwrap();
+        let previous = store.load().unwrap();
+        assert_eq!(previous.settings.feedback_seconds, 1);
+        assert_eq!(previous.settings.knowledge_seconds, 15);
+        assert_eq!(fs::read(&path).unwrap(), legacy_bytes);
+
+        let mut preferences = serde_json::to_value(&previous).unwrap();
+        preferences["settings"]["knowledge_only"] = true.into();
+        fs::write(&path, serde_json::to_vec(&preferences).unwrap()).unwrap();
+        let knowledge = store
+            .load()
+            .expect("The saved knowledge-display preference must be restored");
+        store.save(&knowledge).unwrap();
+        drop(store);
+
+        let store = Store::open(directory.path().to_owned()).unwrap();
+        let restored = store.load().unwrap();
+        assert_eq!(restored, knowledge);
+        assert_eq!(restored.settings.feedback_seconds, 1);
+        assert_eq!(restored.settings.knowledge_seconds, 15);
+        assert_eq!(
+            serde_json::to_value(&restored).unwrap()["settings"]["knowledge_only"],
+            true
+        );
+        assert_eq!(restored.packs, previous.packs);
+
+        let mut preferences = serde_json::to_value(&restored).unwrap();
+        preferences["settings"]["knowledge_only"] = false.into();
+        let answer = serde_json::from_value(preferences).unwrap();
+        store.save(&answer).unwrap();
+        drop(store);
+        let restored = Store::open(directory.path().to_owned())
+            .unwrap()
+            .load()
+            .unwrap();
+        assert_eq!(restored, answer);
+        assert_eq!(restored.settings.feedback_seconds, 1);
+        assert_eq!(restored.settings.knowledge_seconds, 15);
+    }
+
+    #[test]
     fn settings_and_imported_content_survive_source_removal_and_restart() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path().to_owned()).unwrap();

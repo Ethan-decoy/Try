@@ -177,7 +177,7 @@ fn practice_text_phase(checks: Rc<AnswerChecks>, case: u8, stage: u8) {
                     _ => unreachable!(),
                 };
                 app.close_practice();
-                app.knowledge_only.set(knowledge);
+                app.set_knowledge_mode(knowledge);
                 {
                     let mut library = app.library.borrow_mut();
                     let card = &mut library.packs[0].cards[0];

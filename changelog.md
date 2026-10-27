@@ -4,6 +4,12 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.7.1]
+
+### Fixed
+
+- Save the selected answering or knowledge-display mode immediately and restore it on normal or login startup, instead of resetting to answering. Preserve both saved display durations and default older profiles without a saved mode to answering.
+
 ## [0.7.0] - 2026-10-26
 
 ### Added
@@ -140,7 +146,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/Ethan-decoy/Try/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/Ethan-decoy/Try/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Ethan-decoy/Try/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/Ethan-decoy/Try/compare/v0.5.1...v0.5.2

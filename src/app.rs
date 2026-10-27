@@ -202,6 +202,7 @@ impl App {
         floating: Rc<FloatingWindow>,
     ) -> AppResult<Rc<Self>> {
         i18n::activate(library.settings.interface_language);
+        let knowledge_only = library.settings.knowledge_only;
         let icon = make_icon();
         let tray = TryTray::new().map_err(|error| error.to_string())?;
         #[cfg(not(target_os = "windows"))]
@@ -270,7 +271,7 @@ impl App {
             math_paths: RefCell::new(vec![]),
             math_pending: Cell::new(false),
             selected_pack: Cell::new(0),
-            knowledge_only: Cell::new(false),
+            knowledge_only: Cell::new(knowledge_only),
             previous_question: RefCell::new(None),
             reminder_timer: Timer::default(),
             reminder_environment: Cell::new(FloatingWindow::reminders_allowed),
@@ -425,6 +426,7 @@ impl App {
         let language_changed = candidate.settings.interface_language
             != self.library.borrow().settings.interface_language;
         self.store.save(&candidate)?;
+        self.knowledge_only.set(candidate.settings.knowledge_only);
         self.floating.configure(&candidate.settings);
         self.library.replace(candidate);
         self.collect_media();

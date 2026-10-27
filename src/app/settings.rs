@@ -114,6 +114,14 @@ impl App {
         self.report(result, "");
     }
 
+    pub(super) fn set_knowledge_mode(self: &Rc<Self>, enabled: bool) {
+        let result = self.commit(|library| {
+            library.settings.knowledge_only = enabled;
+            Ok(())
+        });
+        self.report(result, "");
+    }
+
     pub(super) fn arm_pause_expiry(self: &Rc<Self>) {
         self.pause_timer.stop();
         let pause = self.library.borrow().settings.pause.clone();
