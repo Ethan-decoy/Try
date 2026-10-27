@@ -1,12 +1,12 @@
 # 发布与平台范围
 
-当前发布为 [`0.7.1` 预发布版](https://github.com/Ethan-decoy/Try/releases/tag/v0.7.1)。实际下载以 [Releases](https://github.com/Ethan-decoy/Try/releases) 的附件和说明为准。
+当前发布为 [`0.7.2` 预发布版](https://github.com/Ethan-decoy/Try/releases/tag/v0.7.2)。实际下载以 [Releases](https://github.com/Ethan-decoy/Try/releases) 的附件和说明为准。
 
 | 平台 | 分发文件 | 范围 |
 | --- | --- | --- |
 | Windows x64 | `try.exe` | 单文件便携版，运行后在旁边创建 `data/` |
-| macOS arm64 | `try_macos_arm64_0.7.1.zip` | 实验性，已通过同源构建与隔离启动检查，待完整桌面验收 |
-| Linux x64 | `try_linux_x64_0.7.1.AppImage` | 实验性，已通过同源构建与隔离启动检查，待完整桌面验收 |
+| macOS arm64 | `try_macos_arm64_0.7.2.zip` | 实验性，已通过同源构建与隔离启动检查，待完整桌面验收 |
+| Linux x64 | `try_linux_x64_0.7.2.AppImage` | 实验性，已通过同源构建与隔离启动检查，待完整桌面验收 |
 
 macOS 仅支持 arm64，尚未完成 Developer ID 签名与公证。Linux 的托盘、Wayland、FUSE 挂载和登录自启需要在实际桌面环境验收。缺少当前源码的验证包时，不以历史附件代替。
 
@@ -14,7 +14,7 @@ macOS 仅支持 arm64，尚未完成 Developer ID 签名与公证。Linux 的托
 
 ## 构建来源
 
-正式 Release 关联固定版本标签，例如 `v0.7.1`；标签指向已审阅的发布提交，各平台附件从该提交的干净检出构建。发布后保持标签与版本来源稳定，主分支可继续更新。打包脚本默认核对当前检出的提交，不能在源码已经改变的工作区给旧程序重新标记来源。
+正式 Release 关联固定版本标签，例如 `v0.7.2`；标签指向已审阅的发布提交，各平台附件从该提交的干净检出构建。发布后保持标签与版本来源稳定，主分支可继续更新。打包脚本默认核对当前检出的提交，不能在源码已经改变的工作区给旧程序重新标记来源。
 
 `--distribution-info` 输出内嵌版本、提交、源码状态、便携模式、运行库和声明摘要；打包脚本核对提交与 `clean` 状态。`checksums.sha256` 只列实际提供的程序文件，并与服务器摘要核对。草稿审阅期间记录候选提交，真正发布时确认标签、源码与各平台附件对应。
 
