@@ -172,6 +172,10 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                     app.tray.invoke_open_about();
                 }
                 2 => {
+                    assert!(
+                        main_window(app).get_about_open(),
+                        "Tray About must open its panel after recreating the main window"
+                    );
                     assert_eq!(
                         main_window(app).get_current_tab(),
                         1,

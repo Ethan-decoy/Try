@@ -130,6 +130,7 @@ export component MainWindow inherits Window {
     out property <length> about-top: root.height - root.about-height - 72px;
     // Reserve the result row so checking cannot resize or move the popup.
     out property <length> about-height: 208px;
+    out property <bool> about-open: about-popup.is-open;
     private property <length> version-width: version-measure.preferred-width;
     out property <length> check-link-left: root.about-left + 64px + root.version-width + 4px;
     out property <length> check-link-top: root.about-top + 44px;
@@ -158,8 +159,8 @@ export component MainWindow inherits Window {
     default-font-size: 13px;
     init => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
     changed dark-theme => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
-    changed width => { root.workspace-margin = root.width < 780px ? 16px : 24px; root.sidebar-width = root.width < 780px ? 196px : 216px; root.hide-about(); root.hide-notices(); }
-    changed height => { root.hide-about(); root.hide-notices(); }
+    changed width => { root.workspace-margin = root.width < 780px ? 16px : 24px; root.sidebar-width = root.width < 780px ? 196px : 216px; root.reposition-info-popup(); }
+    changed height => { root.reposition-info-popup(); }
 
     in property <[PackRow]> packs;
     in property <string> participation-summary;
@@ -421,6 +422,12 @@ export component MainWindow inherits Window {
     callback tray-navigation-changed();
     callback quit-app();
 
+    // The host can report its final size after tray navigation opens a popup.
+    // Re-anchor the active panel instead of discarding the navigation request.
+    function reposition-info-popup() {
+        if about-popup.is-open { about-popup.close(); about-popup.show(); }
+        else if notices-popup.is-open { notices-popup.close(); notices-popup.show(); }
+    }
     public function show-about() { notices-popup.close(); about-popup.show(); }
     public function hide-about() { about-popup.close(); }
     public function show-notices() { about-popup.close(); notices-popup.show(); }

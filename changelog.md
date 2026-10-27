@@ -4,6 +4,12 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.7.2]
+
+### Fixed
+
+- Keep About visible when opening it from the system tray while the main window receives its initial size updates; re-anchor open information panels when the window is resized.
+
 ## [0.7.1] - 2026-10-27
 
 ### Fixed
@@ -146,7 +152,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/Ethan-decoy/Try/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/Ethan-decoy/Try/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/Ethan-decoy/Try/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Ethan-decoy/Try/compare/v0.5.2...v0.6.0
