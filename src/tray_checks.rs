@@ -114,8 +114,13 @@ fn inspect_menu(output: &std::path::Path) -> Vec<MenuNode> {
     nodes
 }
 
+#[track_caller]
 fn main_window(app: &App) -> MainWindow {
-    app.main_window.borrow().as_ref().unwrap().clone_strong()
+    app.main_window
+        .borrow()
+        .as_ref()
+        .expect("This tray phase requires an open main window")
+        .clone_strong()
 }
 
 fn snapshot(window: &slint::Window, path: PathBuf) {
@@ -461,11 +466,27 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                     app.tray.invoke_set_knowledge_mode(true);
                 }
                 18 => {
-                    assert!(main_window(app).get_knowledge_only());
+                    assert!(
+                        app.main_window.borrow().is_none(),
+                        "Manual practice returns to the tray"
+                    );
+                    assert!(app.knowledge_only.get());
                     assert!(app.tray.get_knowledge_only());
+                    let saved = app.store.load().unwrap();
+                    let expected = checks.saved.borrow().as_ref().unwrap().clone();
+                    assert!(saved.settings.knowledge_only);
+                    assert_eq!(saved.packs, expected.packs);
                     assert_eq!(
-                        app.store.load().unwrap(),
-                        checks.saved.borrow().as_ref().unwrap().clone()
+                        saved.settings.card_answer_modes,
+                        expected.settings.card_answer_modes
+                    );
+                    assert_eq!(
+                        saved.settings.enabled_pack_ids,
+                        expected.settings.enabled_pack_ids
+                    );
+                    assert_eq!(
+                        saved.settings.excluded_card_ids,
+                        expected.settings.excluded_card_ids
                     );
                     assert!(
                         !app.practice
@@ -486,6 +507,12 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                             .window
                             .get_knowledge_only()
                     );
+                    app.tray.invoke_open_main();
+                }
+                19 => {
+                    assert!(main_window(app).get_knowledge_only());
+                    assert!(app.practice.borrow().is_none());
+                    assert!(app.store.load().unwrap().settings.knowledge_only);
                     checks.finished.set(true);
                     app.tray.invoke_quit_app();
                     println!(
@@ -498,6 +525,7 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
             phase(checks.clone(), step + 1);
         }));
         if result.is_err() {
+            eprintln!("Native tray regression failed in phase {step}");
             checks.app.quit();
         }
     });

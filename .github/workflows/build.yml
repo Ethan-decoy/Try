@@ -67,6 +67,10 @@ jobs:
         run: |
           ./scripts/prepare_third_party.ps1 -FetchUpstream -Targets '${{ matrix.target }}'
           ./scripts/prepare_embedded_notices.ps1 -Target '${{ matrix.target }}'
+      - name: Windows tray menu and practice modes
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build_windows.ps1 -Action test -Distribution -NativeChecks -NativeTest native_tray_menu
       - name: Windows tests
         if: runner.os == 'Windows'
         shell: pwsh
@@ -75,10 +79,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/build_windows.ps1 -Action clippy -Distribution
-      - name: Windows tray menu and practice modes
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/build_windows.ps1 -Action test -Distribution -NativeChecks -NativeTest native_tray_menu
       - name: Windows release
         if: runner.os == 'Windows'
         shell: pwsh
