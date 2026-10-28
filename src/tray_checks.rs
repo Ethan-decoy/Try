@@ -90,7 +90,8 @@ unsafe extern "system" fn capture_menu(
 }
 
 fn inspect_menu(output: &std::path::Path) -> Vec<MenuNode> {
-    slint::platform::update_timers_and_animations();
+    // Phase timers already run inside Slint's dispatch; menu changes settle
+    // between phases rather than recursively driving the timer queue here.
     let window = tray_window();
     let result: RefCell<Option<Vec<MenuNode>>> = RefCell::new(None);
     // SAFETY: attachment, menu dispatch and removal all run synchronously on
@@ -442,6 +443,8 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                     main.invoke_toggle_knowledge_mode();
                     assert!(!app.tray.get_knowledge_only());
                     assert!(!app.store.load().unwrap().settings.knowledge_only);
+                }
+                17 => {
                     let nodes = inspect_menu(&checks.output.join("menu_answer_en.json"));
                     assert_eq!(nodes[3].title, "Practice mode · Answer");
                     assert_eq!(nodes[3].children[0].title, "✓ Answer");
@@ -457,7 +460,7 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                     );
                     app.tray.invoke_set_knowledge_mode(true);
                 }
-                17 => {
+                18 => {
                     assert!(main_window(app).get_knowledge_only());
                     assert!(app.tray.get_knowledge_only());
                     assert_eq!(
