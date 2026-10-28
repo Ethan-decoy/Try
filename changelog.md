@@ -4,6 +4,12 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.8.0]
+
+### Added
+
+- See the current practice mode in the system tray menu and switch directly between answering and knowledge display; keep it synchronized with the main window and saved preferences.
+
 ## [0.7.2] - 2026-10-27
 
 ### Fixed
@@ -152,7 +158,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Ethan-decoy/Try/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/Ethan-decoy/Try/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/Ethan-decoy/Try/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/Ethan-decoy/Try/compare/v0.6.0...v0.7.0

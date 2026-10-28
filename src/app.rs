@@ -363,6 +363,12 @@ impl App {
             }
         });
         let weak = Rc::downgrade(self);
+        self.tray.on_set_knowledge_mode(move |enabled| {
+            if let Some(app) = weak.upgrade() {
+                app.defer_tray_action(move |app| app.set_knowledge_mode(enabled));
+            }
+        });
+        let weak = Rc::downgrade(self);
         self.tray.on_practice_now(move || {
             if let Some(app) = weak.upgrade() {
                 app.defer_tray_action(|app| {

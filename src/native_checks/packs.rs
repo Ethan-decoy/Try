@@ -400,7 +400,7 @@ fn management_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     let main = main_window(app);
                     assert!(
                         main.get_knowledge_only(),
-                        "Closing windows keeps the temporary mode"
+                        "Closing windows keeps the selected mode"
                     );
                     main.invoke_toggle_all_cards(false);
                     main.invoke_select_pack(0);
@@ -453,10 +453,12 @@ fn management_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     let main = main_window(app);
                     main.invoke_toggle_knowledge_mode();
                     assert!(!main.get_knowledge_only());
+                    let mut expected = before;
+                    expected.settings.knowledge_only = false;
                     assert_eq!(
                         app.store.load().unwrap(),
-                        before,
-                        "Global mode never writes quiz settings"
+                        expected,
+                        "Saving the global mode preserves per-card quiz settings"
                     );
                     app.tray.invoke_practice_now();
                 }

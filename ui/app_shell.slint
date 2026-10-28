@@ -15,10 +15,12 @@ export component TryTray inherits SystemTrayIcon {
     in property <int> pause-minutes;
     in property <string> pause-title: @tr("暂离");
     in property <bool> settings-available: true;
+    in property <bool> knowledge-only;
     callback open-main();
     callback open-settings(bool);
     callback open-about();
     callback set-pause(int);
+    callback set-knowledge-mode(bool);
     callback practice-now();
     callback quit-app();
 
@@ -30,6 +32,11 @@ export component TryTray inherits SystemTrayIcon {
         MenuItem { title: @tr("打开"); activated => { root.open-main(); } }
         MenuItem { title: @tr("设置"); enabled: root.settings-available; activated => { root.open-settings(false); } }
         MenuSeparator {}
+        Menu {
+            title: @tr("练习方式") + " · " + (root.knowledge-only ? @tr("知识展示") : @tr("答题"));
+            MenuItem { title: (root.knowledge-only ? "" : "✓ ") + @tr("答题"); activated => { root.set-knowledge-mode(false); } }
+            MenuItem { title: (root.knowledge-only ? "✓ " : "") + @tr("知识展示"); activated => { root.set-knowledge-mode(true); } }
+        }
         Menu {
             title: root.pause-title;
             MenuItem { title: (root.pause-minutes == 60 ? "✓ " : "") + @tr("1 小时"); activated => { root.set-pause(60); } }

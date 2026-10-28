@@ -689,6 +689,7 @@ mod tests {
         let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
         fs::write(&path, &legacy_bytes).unwrap();
         let previous = store.load().unwrap();
+        assert!(!previous.settings.knowledge_only);
         assert_eq!(previous.settings.feedback_seconds, 1);
         assert_eq!(previous.settings.knowledge_seconds, 15);
         assert_eq!(fs::read(&path).unwrap(), legacy_bytes);

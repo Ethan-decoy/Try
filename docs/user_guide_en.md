@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 0.6.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 0.8.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -18,7 +18,9 @@ Before each scheduled reminder, Windows checks the system notification state. Wi
 
 Correct feedback and knowledge display each use their own duration, starting after a correct answer or when the answer is shown. Incorrect answers do not use the timer; unanswered cards also stay open. Automatic cards pause while the main window is open; the full interval restarts after returning to the tray and finishing practice.
 
-Practice mode in the top toolbar switches between Answer and Knowledge. Start a manual card from the system tray; scheduled reminders use the selected mode. Facts close after the Knowledge display duration or with Enter/Esc. Restarting returns to answering mode.
+Practice mode in the top toolbar switches between Answer and Knowledge. Start a manual card from the system tray; scheduled reminders use the selected mode. Facts close after the Knowledge display duration or with Enter/Esc.
+
+You can also switch directly from the system tray or menu-bar menu. Open **Practice mode · Current mode** and choose **Answer** or **Knowledge**; ✓ marks the selected option. Changes save automatically and synchronize with the main window. An open card keeps its current mode; the next card uses the new selection.
 
 Answering adjusts selection from correct/incorrect results and actual elapsed time. Missed items get more revisits with other questions in between, while new and older items keep rotation opportunities. Familiar items still get maintenance within your chosen reminder interval. Typed, multiple-choice and true/false records remain separate. Fact viewing uses ordinary selection without reading or updating learning records; returning to answering retains the previous records.
 
@@ -95,7 +97,7 @@ Under Practice, set Correct answer duration and Knowledge display duration indep
 
 A temporary pause lasts for its selected duration; Pause lasts until Resume. Pauses survive restarting. Resume starts the full interval without catching up missed cards. Manual practice works during pauses and quiet hours and does not resume automatic reminders.
 
-The answering/knowledge-display choice is also saved automatically and restored on normal startup, launch at login and in-app updates. Older versions did not save this choice; the first upgraded launch uses answering until you select a mode again.
+From `0.7.1`, the answering/knowledge-display choice is saved automatically and restored on normal startup, launch at login and in-app updates. Versions `0.7.0` and earlier kept this choice only in memory. After first upgrading to `0.7.1` or later, select your mode once; subsequent starts and updates retain it.
 
 Daily quiet hours and launch at login are off by default. Quiet hours can span midnight, with 22:00–08:00 as the initial range. Launch at login starts in the tray. On Windows, choose a work-area corner or drag the card's prompt/empty area to position it.
 

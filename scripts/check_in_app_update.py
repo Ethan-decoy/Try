@@ -137,7 +137,15 @@ def check_case(folder, source, kind, helper_source, version, rollback, driver):
         stop(initial.pid, folder)
         initial.wait(timeout=10)
         state = json.loads((data / "state.json").read_text(encoding="utf-8"))
-        state["settings"].update({"interval_minutes": 47, "appearance": "light", "interface_language": "en", "auto_check_updates": False})
+        state["settings"].update({
+            "interval_minutes": 47,
+            "appearance": "light",
+            "interface_language": "en",
+            "auto_check_updates": False,
+            "knowledge_only": True,
+            "feedback_seconds": 1,
+            "knowledge_seconds": 15,
+        })
         picture = png_fixture()
         image_id = hashlib.sha256(picture).hexdigest()
         (data / "media").mkdir(exist_ok=True)

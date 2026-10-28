@@ -115,6 +115,9 @@ impl App {
     }
 
     pub(super) fn set_knowledge_mode(self: &Rc<Self>, enabled: bool) {
+        if self.knowledge_only.get() == enabled {
+            return;
+        }
         let result = self.commit(|library| {
             library.settings.knowledge_only = enabled;
             Ok(())

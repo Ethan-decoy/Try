@@ -148,10 +148,28 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                     let nodes = inspect_menu(&checks.output.join("menu_zh.json"));
                     assert_eq!(
                         nodes.iter().map(|n| n.title.as_str()).collect::<Vec<_>>(),
-                        ["打开", "设置", "", "暂离", "暂停", "", "关于", "退出"]
+                        [
+                            "打开",
+                            "设置",
+                            "",
+                            "练习方式 · 答题",
+                            "暂离",
+                            "暂停",
+                            "",
+                            "关于",
+                            "退出"
+                        ]
                     );
                     assert_eq!(
                         nodes[3]
+                            .children
+                            .iter()
+                            .map(|n| n.title.as_str())
+                            .collect::<Vec<_>>(),
+                        ["✓ 答题", "知识展示"]
+                    );
+                    assert_eq!(
+                        nodes[4]
                             .children
                             .iter()
                             .map(|n| n.title.as_str())
@@ -212,19 +230,22 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                     assert!(app.pause_timer.running());
                     assert!(!app.reminder_timer.running());
                     let nodes = inspect_menu(&checks.output.join("menu_paused_zh.json"));
-                    assert_eq!(nodes[4].title, "恢复");
-                    assert_eq!(nodes[3].children[2].title, "✓ 3 小时");
+                    assert_eq!(nodes[5].title, "恢复");
+                    assert_eq!(nodes[4].children[2].title, "✓ 3 小时");
                     main_window(app).invoke_choose_language(2);
                 }
                 5 => {
                     let nodes = inspect_menu(&checks.output.join("menu_paused_en.json"));
                     assert_eq!(nodes[0].title, "Open");
                     assert_eq!(nodes[1].title, "Settings");
-                    assert!(nodes[3].title.starts_with("Paused until "));
-                    assert_eq!(nodes[3].children[2].title, "✓ 3 hours");
-                    assert_eq!(nodes[4].title, "Resume");
-                    assert_eq!(nodes[6].title, "About");
-                    assert_eq!(nodes[7].title, "Quit");
+                    assert_eq!(nodes[3].title, "Practice mode · Answer");
+                    assert_eq!(nodes[3].children[0].title, "✓ Answer");
+                    assert_eq!(nodes[3].children[1].title, "Knowledge");
+                    assert!(nodes[4].title.starts_with("Paused until "));
+                    assert_eq!(nodes[4].children[2].title, "✓ 3 hours");
+                    assert_eq!(nodes[5].title, "Resume");
+                    assert_eq!(nodes[7].title, "About");
+                    assert_eq!(nodes[8].title, "Quit");
                     checks.saved.replace(Some(app.store.load().unwrap()));
                     checks.old_main.replace(Some(main_window(app).as_weak()));
                     app.close_main();
@@ -278,9 +299,9 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                     );
                     checks.saved.replace(Some(saved));
                     let nodes = inspect_menu(&checks.output.join("menu_until_resumed_en.json"));
-                    assert_eq!(nodes[3].title, "Pause for");
-                    assert_eq!(nodes[3].children.len(), 4);
-                    assert_eq!(nodes[4].title, "Resume");
+                    assert_eq!(nodes[4].title, "Pause for");
+                    assert_eq!(nodes[4].children.len(), 4);
+                    assert_eq!(nodes[5].title, "Resume");
                     app.show_practice_with_origin(PracticeOrigin::Reminder)
                         .unwrap();
                     app.arm_reminder();
@@ -348,7 +369,7 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                         checks.saved.borrow().as_ref().unwrap().settings.quiet_hours
                     );
                     let nodes = inspect_menu(&checks.output.join("menu_resumed_en.json"));
-                    assert_eq!(nodes[4].title, "Pause");
+                    assert_eq!(nodes[5].title, "Pause");
                     // A timed break still expires automatically; only the
                     // isolated deadline is shortened below the UI's minimum.
                     app.commit(|library| {
@@ -383,7 +404,7 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                     let nodes = inspect_menu(&checks.output.join("menu_editing_en.json"));
                     assert!(!nodes[1].enabled, "Settings respects active editing");
                     assert!(
-                        !nodes[3].children[3].enabled,
+                        !nodes[4].children[3].enabled,
                         "Custom pause respects active editing"
                     );
                     app.tray.invoke_open_settings(true);
@@ -393,10 +414,79 @@ fn phase(checks: Rc<TrayChecks>, step: u8) {
                     assert_eq!(main.get_current_tab(), 0);
                     assert!(main.get_name_editing());
                     assert_eq!(main.get_name_draft(), "保留的名称草稿");
+                    main.set_name_editing(false);
+                    app.close_main();
+                    app.tray.invoke_set_knowledge_mode(true);
+                }
+                15 => {
+                    assert!(app.main_window.borrow().is_none());
+                    assert!(app.practice.borrow().is_none());
+                    assert!(app.knowledge_only.get());
+                    assert!(app.tray.get_knowledge_only());
+                    assert!(app.store.load().unwrap().settings.knowledge_only);
+                    let nodes = inspect_menu(&checks.output.join("menu_knowledge_en.json"));
+                    assert_eq!(nodes[3].title, "Practice mode · Knowledge");
+                    assert_eq!(nodes[3].children[0].title, "Answer");
+                    assert_eq!(nodes[3].children[1].title, "✓ Knowledge");
+                    checks.saved.replace(Some(app.store.load().unwrap()));
+                    app.tray.invoke_set_knowledge_mode(true);
+                    app.tray.invoke_open_main();
+                }
+                16 => {
+                    let main = main_window(app);
+                    assert!(main.get_knowledge_only());
+                    assert_eq!(
+                        app.store.load().unwrap(),
+                        checks.saved.borrow().as_ref().unwrap().clone()
+                    );
+                    main.invoke_toggle_knowledge_mode();
+                    assert!(!app.tray.get_knowledge_only());
+                    assert!(!app.store.load().unwrap().settings.knowledge_only);
+                    let nodes = inspect_menu(&checks.output.join("menu_answer_en.json"));
+                    assert_eq!(nodes[3].title, "Practice mode · Answer");
+                    assert_eq!(nodes[3].children[0].title, "✓ Answer");
+                    assert_eq!(nodes[3].children[1].title, "Knowledge");
+                    app.show_practice().unwrap();
+                    assert!(
+                        !app.practice
+                            .borrow()
+                            .as_ref()
+                            .unwrap()
+                            .window
+                            .get_knowledge_only()
+                    );
+                    app.tray.invoke_set_knowledge_mode(true);
+                }
+                17 => {
+                    assert!(main_window(app).get_knowledge_only());
+                    assert!(app.tray.get_knowledge_only());
+                    assert_eq!(
+                        app.store.load().unwrap(),
+                        checks.saved.borrow().as_ref().unwrap().clone()
+                    );
+                    assert!(
+                        !app.practice
+                            .borrow()
+                            .as_ref()
+                            .unwrap()
+                            .window
+                            .get_knowledge_only(),
+                        "An open card keeps its prepared mode"
+                    );
+                    app.close_practice();
+                    app.show_practice().unwrap();
+                    assert!(
+                        app.practice
+                            .borrow()
+                            .as_ref()
+                            .unwrap()
+                            .window
+                            .get_knowledge_only()
+                    );
                     checks.finished.set(true);
                     app.tray.invoke_quit_app();
                     println!(
-                        "Native menu labels/submenu/state, settings/about navigation, precise pause, bilingual refresh, indefinite pause persistence, released card, launcher reopening without resume, retained quiet hours, timed expiry and editing protection passed."
+                        "Native menu labels/submenu/state, settings/about navigation, precise pause, bilingual refresh, indefinite pause persistence, released card, launcher reopening without resume, retained quiet hours, timed expiry, editing protection and saved bidirectional practice-mode selection passed."
                     );
                     return;
                 }
@@ -461,7 +551,7 @@ fn native_tray_menu() {
     });
     phase(checks.clone(), 0);
     let watchdog = Rc::downgrade(&checks.app);
-    Timer::single_shot(Duration::from_secs(18), move || {
+    Timer::single_shot(Duration::from_secs(30), move || {
         if let Some(app) = watchdog.upgrade() {
             app.quit();
         }

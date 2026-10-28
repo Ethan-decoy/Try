@@ -32,6 +32,7 @@ impl App {
         };
         self.tray.set_reminders_enabled(pause_minutes == 0);
         self.tray.set_can_practice(count > 0);
+        self.tray.set_knowledge_only(self.knowledge_only.get());
         self.tray.set_pause_minutes(pause_minutes);
         self.tray.set_pause_title(match &pause_end {
             Some(end) => tr!("暂离至 {p0}", p0 = end).into(),

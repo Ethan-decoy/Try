@@ -75,6 +75,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/build_windows.ps1 -Action clippy -Distribution
+      - name: Windows tray menu and practice modes
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build_windows.ps1 -Action test -Distribution -NativeChecks -NativeTest native_tray_menu
       - name: Windows release
         if: runner.os == 'Windows'
         shell: pwsh
@@ -135,5 +139,6 @@ jobs:
             local_artifacts/releases/*.json
             local_artifacts/releases/${{ matrix.platform }}/*.json
             local_artifacts/unix_checks/**
+            local_artifacts/tray_menu_check/*.json
           if-no-files-found: ignore
           retention-days: 14
