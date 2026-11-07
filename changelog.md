@@ -4,6 +4,12 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.8.1]
+
+### Fixed
+
+- Update the pinned formula input component so mouse placement before a scripted base keeps inserted coefficients outside it, and clicks beyond a formula's edges stay at the outer boundary instead of entering nested fields.
+
 ## [0.8.0] - 2026-10-28
 
 ### Added
@@ -158,7 +164,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/Ethan-decoy/Try/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/Ethan-decoy/Try/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/Ethan-decoy/Try/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/Ethan-decoy/Try/compare/v0.7.0...v0.7.1

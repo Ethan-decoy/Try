@@ -228,6 +228,10 @@ pub fn plain(latex: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "../tests/support/mod.rs"]
+mod test_support;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use slint_math_input::gui::ClipboardAccess;
@@ -243,6 +247,127 @@ mod tests {
             *self.0.borrow_mut() = text;
             Ok(())
         }
+    }
+
+    #[test]
+    fn practice_pointer_preserves_formula_boundaries() {
+        use crate::{MathInputState, PracticeWindow};
+        use slint::platform::{Key, WindowEvent};
+        use slint::{ComponentHandle, PhysicalSize};
+        use test_support::{click, key, paint, software_window};
+
+        fn refresh(window: &PracticeWindow, session: &Session) {
+            window.global::<MathInputState>().set_formula(
+                session
+                    .view(window.get_pixel_scale(), window.get_dark_theme())
+                    .unwrap(),
+            );
+        }
+
+        let adapter = software_window();
+        let window = PracticeWindow::new().unwrap();
+        let session = Rc::new(RefCell::new(
+            Session::with_clipboard(Seed::Typing(String::new()), TestClipboard(Rc::default()))
+                .unwrap(),
+        ));
+        let ui = window.global::<MathInputState>();
+        {
+            let state = session.clone();
+            let weak = window.as_weak();
+            ui.on_seek(move |x, y, extend| {
+                let mut state = state.borrow_mut();
+                state.pointer(x, y, extend);
+                refresh(&weak.unwrap(), &state);
+            });
+        }
+        {
+            let state = session.clone();
+            let weak = window.as_weak();
+            ui.on_committed(move |text| {
+                let mut state = state.borrow_mut();
+                state.insert(&text);
+                refresh(&weak.unwrap(), &state);
+            });
+        }
+        {
+            let state = session.clone();
+            let weak = window.as_weak();
+            ui.on_key(move |text, control, shift, alt| {
+                let mut state = state.borrow_mut();
+                let handled = state.key(&text, control, shift, alt);
+                refresh(&weak.unwrap(), &state);
+                handled
+            });
+        }
+        ui.set_practice(true);
+        ui.set_open(true);
+        window.set_prompt("Formula".into());
+        window.show().unwrap();
+
+        for (density, dark, expanded) in [(1.0, false, false), (2.0, true, true)] {
+            window
+                .window()
+                .dispatch_event(WindowEvent::ScaleFactorChanged {
+                    scale_factor: density,
+                });
+            adapter.set_size(PhysicalSize::new(
+                (320.0 * density) as u32,
+                (560.0 * density) as u32,
+            ));
+            window.set_dark_theme(dark);
+            ui.set_keypad_expanded(expanded);
+            for (source, at_end, dx, expected) in [
+                (
+                    r"\log_{b}\left(x\right)",
+                    false,
+                    0.6,
+                    r"y\log_{b}\left(x\right)",
+                ),
+                ("x^{2}", false, 0.6, "yx^{2}"),
+                (r"\mathbf{x}_{n}", false, 0.6, r"y\mathbf{x}_{n}"),
+                (r"\sqrt[n]{x}", false, -0.6, r"y\sqrt[n]{x}"),
+                (r"\sqrt[n]{x}", true, 0.6, r"\sqrt[n]{x}y"),
+            ] {
+                *session.borrow_mut() = Session::with_clipboard(
+                    Seed::Latex(source.into()),
+                    TestClipboard(Rc::default()),
+                )
+                .unwrap();
+                refresh(&window, &session.borrow());
+                window.invoke_focus_answer();
+                key(&window, &adapter, Key::End);
+                let caret = {
+                    let state = session.borrow();
+                    let editor = &state.controller.editor;
+                    let mut target = editor.cursor();
+                    if !at_end {
+                        target.offset = 0;
+                    }
+                    editor.layout().caret(target).unwrap().rect
+                };
+                paint(&adapter);
+                click(
+                    &window,
+                    &adapter,
+                    window.get_input_canvas_left() + caret.x + dx,
+                    window.get_input_canvas_top() + caret.y + caret.height * 0.25,
+                );
+                for event in [
+                    WindowEvent::KeyPressed { text: "y".into() },
+                    WindowEvent::KeyReleased { text: "y".into() },
+                ] {
+                    window.window().dispatch_event(event);
+                }
+                paint(&adapter);
+                assert_eq!(
+                    session.borrow().complete().unwrap(),
+                    expected,
+                    "{source}, density={density}, expanded={expanded}"
+                );
+                assert!(session.borrow().error().is_empty());
+            }
+        }
+        window.hide().unwrap();
     }
 
     #[test]

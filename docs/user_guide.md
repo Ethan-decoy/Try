@@ -2,7 +2,7 @@
 
 [English](user_guide_en.md) · [返回首页](../README.md)
 
-本说明适用于 Try 0.8.0，支持 Windows x64、macOS arm64 和 Linux x64。已发布下载与平台范围见 [发布记录](release_checklist.md)。
+本说明适用于 Try 0.8.1，支持 Windows x64、macOS arm64 和 Linux x64。已发布下载与平台范围见 [发布记录](release_checklist.md)。
 
 ## 开始练习
 
