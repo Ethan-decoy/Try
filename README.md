@@ -4,9 +4,11 @@
 
 **A little practice, now and then.**
 
-Try 是一个轻量桌面练习工具，让你在玩电脑、处理工作的间隙，顺手熟悉想记住的公式、词汇与其他知识。
+Try 是一个轻量桌面闪卡与间隔复习工具，让公式、词汇与感兴趣的知识逐渐形成「看到提示就想到答案」的肌肉记忆。
 
-按设定间隔出现一道小题，支持填空、选择、判断或直接看答案，答完继续手头的事情。
+按设定间隔弹出一道小题，在工作或玩电脑的间隙随手练习。支持填空、选择、判断或直接看答案；答题时根据对错与经过时间调整出题。
+
+*Lightweight desktop flashcards for active recall and spaced repetition.*
 
 ![Try v0.6.0 的公式练习题板显示在桌面角落](docs/images/practice_desktop.png)
 
