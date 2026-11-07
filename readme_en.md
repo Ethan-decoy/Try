@@ -6,7 +6,7 @@ English · [简体中文](README.md)
 
 Try is a lightweight desktop flashcard app for active recall and spaced repetition. Practice formulas, vocabulary and other knowledge during breaks between work and play.
 
-At your chosen interval, answer one short question or glance at a knowledge card, then return to what you were doing. Typed answers, multiple choice and true/false are supported. When you answer, results and elapsed time guide future questions.
+At your chosen interval, answer one short question or glance at a knowledge card, then return to what you were doing. Typed answers, multiple choice and true/false are supported. Answer practice covers unanswered questions first, then uses your results and elapsed time to guide reviews.
 
 ![A Try v0.6.0 formula practice card in a desktop corner](docs/images/practice_desktop.png)
 

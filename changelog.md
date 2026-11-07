@@ -8,6 +8,7 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ### Changed
 
+- Complete a first answer pass through participating questions before weighted reviews, including newly added questions and question types without an answer record; viewing an unanswered card does not mark it complete.
 - Increase the saturation of correct and incorrect practice feedback in both light and dark themes, with matching answer text and borders.
 
 ## [0.8.1] - 2026-11-07

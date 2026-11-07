@@ -421,6 +421,12 @@ impl LearningState {
         if candidates.is_empty() {
             return None;
         }
+        // Complete one valid answer in each participating card's selected mode
+        // before weighted review. Merely showing a card does not assess it.
+        let unanswered = candidates.iter().any(|c| c.progress.is_none());
+        if unanswered {
+            candidates.retain(|c| c.progress.is_none());
+        }
         let next = self.presentations.saturating_add(1);
         let previous_differs = |c: &Candidate<'_>| {
             previous.is_none_or(|p| {
@@ -449,15 +455,10 @@ impl LearningState {
         if candidates.iter().any(safe) {
             candidates.retain(safe);
         }
-        // Counted, alternating coverage lanes. Uniform tie-breaking happens
-        // through the same summed pack decomposition, without domain quotas.
-        if next.is_multiple_of(COVERAGE_EVERY) {
-            let explore = (next / COVERAGE_EVERY) % 2 == 1;
-            if explore && candidates.iter().any(|c| c.progress.is_none()) {
-                candidates.retain(|c| c.progress.is_none());
-            } else if !explore && candidates.iter().any(|c| c.last_sequence != 0) {
-                candidates.retain(|c| c.last_sequence != 0);
-            }
+        // Rotate unanswered cards so dismissing one cannot hide other new
+        // items. After the first pass, keep periodic oldest-item maintenance.
+        // Ties use the same summed pack selection, without domain quotas.
+        if unanswered || next.is_multiple_of(COVERAGE_EVERY) {
             let oldest = candidates.iter().map(|c| c.last_sequence).min().unwrap();
             candidates.retain(|c| c.last_sequence == oldest);
             for c in &mut candidates {
@@ -1186,10 +1187,64 @@ mod tests {
     }
 
     #[test]
-    fn coverage_reaches_new_items_and_old_items_survive_continuous_new_content() {
+    fn unanswered_first_pass_precedes_weighted_reviews() {
+        for reviewed in [1, 18] {
+            let directory = tempfile::tempdir().unwrap();
+            let store = Store::open(directory.path().into()).unwrap();
+            let library = library(&[reviewed + 2]);
+            let mut learner = loaded(&store, &library);
+            for card in 0..reviewed {
+                review(
+                    &mut learner,
+                    &library,
+                    card,
+                    AnswerMode::Input,
+                    true,
+                    NOW - 10 * 86400,
+                );
+            }
+            let mut rng = StdRng::seed_from_u64(0);
+            let mut previous = None;
+            let mut answered = std::collections::BTreeSet::new();
+            for index in 0..2 {
+                let now = NOW + index * 1800;
+                let chosen = learner
+                    .choose(&library, previous.as_ref(), now, &mut rng)
+                    .unwrap()
+                    .unwrap();
+                assert!(
+                    learner
+                        .state
+                        .as_ref()
+                        .unwrap()
+                        .progress(&chosen.key, &chosen.card, AnswerMode::Input)
+                        .is_none(),
+                    "reviewed {} selected while unanswered cards remain in a pool with {reviewed} reviewed cards",
+                    chosen.key.card_id,
+                );
+                assert!(answered.insert(chosen.key.card_id.clone()));
+                let token = learner
+                    .presented(&chosen, AnswerMode::Input, now, Origin::Reminder)
+                    .unwrap();
+                assert!(learner.answer(&library, &token, index != 0, now).unwrap());
+                previous = Some(chosen.key);
+                learner = loaded(&store, &library);
+            }
+            assert_eq!(answered.len(), 2);
+            assert_eq!(
+                learner
+                    .pack_summary(&library, "pack_0", NOW + 3600)
+                    .assessed,
+                reviewed + 2,
+            );
+        }
+    }
+
+    #[test]
+    fn unanswered_presentations_rotate_without_completing_the_first_pass() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path().into()).unwrap();
-        let mut library = library(&[20]);
+        let library = library(&[20]);
         let mut learner = loaded(&store, &library);
         let mut rng = StdRng::seed_from_u64(20);
         let mut seen = std::collections::BTreeSet::new();
@@ -1207,24 +1262,153 @@ mod tests {
             previous = Some(chosen.key);
         }
         assert_eq!(seen.len(), 20);
-        let mut old_coverage = 0;
-        for i in 100..200 {
+        assert_eq!(learner.pack_summary(&library, "pack_0", NOW).assessed, 0);
+        assert!(!directory.path().join("learning_state.json").exists());
+    }
+
+    #[test]
+    fn new_arrivals_take_priority_then_weighted_review_resumes() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().into()).unwrap();
+        let mut library = library(&[20]);
+        let mut learner = loaded(&store, &library);
+        for card in 0..20 {
+            review(
+                &mut learner,
+                &library,
+                card,
+                AnswerMode::Input,
+                card != 0,
+                NOW - 10 * 86400,
+            );
+        }
+        let mut rng = StdRng::seed_from_u64(20);
+        let mut previous = None;
+        for i in 0..12 {
             let mut new = library.packs[0].cards[0].clone();
-            new.id = Some(format!("new{i}"));
+            let id = format!("new{i}");
+            new.id = Some(id.clone());
             library.packs[0].cards.push(new);
+            let now = NOW + i * 1800;
             let chosen = learner
-                .choose(&library, previous.as_ref(), NOW + i * 1800, &mut rng)
+                .choose(&library, previous.as_ref(), now, &mut rng)
                 .unwrap()
                 .unwrap();
-            if chosen.key.card_id.starts_with('q') {
-                old_coverage += 1;
-            }
-            learner
-                .presented(&chosen, AnswerMode::Input, NOW + i * 1800, Origin::Reminder)
+            assert_eq!(chosen.key.card_id, id);
+            let token = learner
+                .presented(&chosen, AnswerMode::Input, now, Origin::Reminder)
                 .unwrap();
+            assert!(learner.answer(&library, &token, i % 2 == 0, now).unwrap());
             previous = Some(chosen.key);
         }
-        assert!(old_coverage >= 8, "{old_coverage}");
+        let mut revisited_old = false;
+        for i in 12..32 {
+            let now = NOW + i * 1800;
+            let chosen = learner
+                .choose(&library, previous.as_ref(), now, &mut rng)
+                .unwrap()
+                .unwrap();
+            assert!(
+                learner
+                    .state
+                    .as_ref()
+                    .unwrap()
+                    .progress(&chosen.key, &chosen.card, AnswerMode::Input)
+                    .is_some()
+            );
+            revisited_old |= chosen.key.card_id.starts_with('q');
+            let token = learner
+                .presented(&chosen, AnswerMode::Input, now, Origin::Reminder)
+                .unwrap();
+            assert!(learner.answer(&library, &token, true, now).unwrap());
+            previous = Some(chosen.key);
+        }
+        assert!(revisited_old);
+    }
+
+    #[test]
+    fn showing_the_last_unanswered_item_does_not_finish_the_first_pass() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().into()).unwrap();
+        let library = library(&[3]);
+        let mut learner = loaded(&store, &library);
+        for card in 0..2 {
+            review(&mut learner, &library, card, AnswerMode::Input, false, NOW);
+        }
+        let saved = std::fs::read(directory.path().join("learning_state.json")).unwrap();
+        let pending = question(&library, 2);
+        learner
+            .presented(&pending, AnswerMode::Input, NOW, Origin::Reminder)
+            .unwrap();
+        for now in [NOW + 1800, NOW + 3600] {
+            let chosen = learner
+                .choose(
+                    &library,
+                    Some(&pending.key),
+                    now,
+                    &mut StdRng::seed_from_u64(7),
+                )
+                .unwrap()
+                .unwrap();
+            assert_eq!(chosen.key, pending.key);
+            assert_eq!(learner.pack_summary(&library, "pack_0", now).assessed, 2);
+            assert_eq!(
+                std::fs::read(directory.path().join("learning_state.json")).unwrap(),
+                saved,
+            );
+            learner = loaded(&store, &library);
+        }
+    }
+
+    #[test]
+    fn first_pass_respects_selected_modes_and_participation() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().into()).unwrap();
+        let mut library = library(&[3, 1]);
+        library.settings.enabled_pack_ids = vec!["pack_0".into()];
+        library
+            .settings
+            .excluded_card_ids
+            .entry("pack_0".into())
+            .or_default()
+            .insert("q2".into());
+        let mut learner = loaded(&store, &library);
+        for card in 0..2 {
+            review(&mut learner, &library, card, AnswerMode::Input, true, NOW);
+        }
+        library
+            .set_card_answer_mode("pack_0", "q0", AnswerMode::TrueFalse)
+            .unwrap();
+        let mut rng = StdRng::seed_from_u64(7);
+        let fresh_mode = learner
+            .choose(&library, None, NOW, &mut rng)
+            .unwrap()
+            .unwrap();
+        assert_eq!(fresh_mode.key, question(&library, 0).key);
+        let token = learner
+            .presented(&fresh_mode, AnswerMode::TrueFalse, NOW, Origin::Reminder)
+            .unwrap();
+        assert!(learner.answer(&library, &token, true, NOW).unwrap());
+        library
+            .set_card_answer_mode("pack_0", "q0", AnswerMode::Input)
+            .unwrap();
+        library.settings.excluded_card_ids.clear();
+        let enabled_question = learner
+            .choose(&library, Some(&fresh_mode.key), NOW, &mut rng)
+            .unwrap()
+            .unwrap();
+        assert_eq!(enabled_question.key, question(&library, 2).key);
+        let token = learner
+            .presented(&enabled_question, AnswerMode::Input, NOW, Origin::Reminder)
+            .unwrap();
+        assert!(learner.answer(&library, &token, false, NOW).unwrap());
+        library.settings.enabled_pack_ids.push("pack_1".into());
+        let enabled_pack = learner
+            .choose(&library, Some(&enabled_question.key), NOW, &mut rng)
+            .unwrap()
+            .unwrap();
+        assert_eq!(enabled_pack.key.pack_id, "pack_1");
+        assert_eq!(learner.pack_summary(&library, "pack_0", NOW).assessed, 3);
     }
 
     #[test]

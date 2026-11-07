@@ -22,7 +22,9 @@ Practice mode in the top toolbar switches between Answer and Knowledge. Start a 
 
 You can also switch directly from the system tray or menu-bar menu. Open **Practice mode · Current mode** and choose **Answer** or **Knowledge**; ✓ marks the selected option. Changes save automatically and synchronize with the main window. An open card keeps its current mode; the next card uses the new selection.
 
-Answering adjusts selection from correct/incorrect results and actual elapsed time. Missed items get more revisits with other questions in between, while new and older items keep rotation opportunities. Familiar items still get maintenance within your chosen reminder interval. Typed, multiple-choice and true/false records remain separate. Fact viewing uses ordinary selection without reading or updating learning records; returning to answering retains the previous records.
+Answer practice first covers participating questions without a recorded answer in their selected question type. One valid answer completes the first pass for that question, whether correct or incorrect; viewing or closing an unanswered card does not. Unanswered questions rotate, with unseen questions shown first. Added questions, newly enabled unanswered questions and question types without an answer record receive the same priority.
+
+Once all participating questions have answer records, correct/incorrect results and actual elapsed time guide weighted reviews. Missed items get more revisits with other questions in between, and older items retain rotation opportunities. Familiar items still get maintenance within your chosen reminder interval. Typed, multiple-choice and true/false records remain separate. Fact viewing uses ordinary selection without reading or updating learning records; returning to answering retains the previous records.
 
 ## Packs and questions
 
