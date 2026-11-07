@@ -4,7 +4,7 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
-## [0.8.2]
+## [0.8.2] - 2026-11-07
 
 ### Changed
 
