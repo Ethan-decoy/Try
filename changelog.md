@@ -9,6 +9,7 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 ### Fixed
 
 - Update the pinned formula input component so mouse placement before a scripted base keeps inserted coefficients outside it, and clicks beyond a formula's edges stay at the outer boundary instead of entering nested fields.
+- Pin the Linux packaging helper to a versioned upstream release so replacements of continuous assets do not interrupt verified builds.
 
 ## [0.8.0] - 2026-10-28
 

@@ -31,8 +31,9 @@ download_verified() {
     printf '%s  %s\n' "$3" "$2" | sha256sum --check --strict
     chmod +x "$2"
 }
-# Continuous release URLs are guarded by exact digests: upstream replacement fails closed.
-download_verified 'https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage' "$task_tools/linuxdeploy-x86_64.AppImage" '8aea8da0f7f7039d2a2cecb14657d752a222a5e1d3825caeef186c82f751cdd1'
+# Prefer a versioned linuxdeploy release; every tool still requires its exact digest.
+download_verified 'https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage' "$task_tools/linuxdeploy-x86_64.AppImage" 'c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d'
+# Continuous plugin/runtime replacements fail closed and require explicit review.
 download_verified 'https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage' "$task_tools/linuxdeploy-plugin-appimage-x86_64.AppImage" '49d6a17160675a6bd1781699aae6bdf7692d98552e02a3671d2183d10547842e'
 # Keep this binary digest and license commit aligned with prepare_appimage_runtime.py.
 download_verified 'https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64' "$task_tools/runtime-x86_64" '617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46'
