@@ -39,6 +39,7 @@ impl App {
                 ui.set_keypad_expanded(false);
                 ui.set_formula(crate::MathInputView::default());
                 ui.set_catalog(ModelRc::default());
+                ui.set_common_keys(ModelRc::default());
                 ui.set_error("".into());
             });
         }
@@ -300,6 +301,7 @@ impl App {
                 self.structured_math.replace(Some((target, session)));
                 self.with_math_ui(practice, |ui, _| {
                     ui.set_categories(crate::structured_math::categories());
+                    ui.set_common_keys(crate::structured_math::common_keys());
                     ui.set_category(0);
                     ui.set_catalog(crate::structured_math::catalog(0));
                 });

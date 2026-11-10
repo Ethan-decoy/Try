@@ -279,6 +279,9 @@ export component ToolButton inherits Rectangle {
     in property <image> glyph;
     in property <bool> icon-only;
     in property <bool> enabled: true;
+    in property <bool> checkable;
+    in property <bool> checked;
+    in property <bool> destructive;
     in property <length> font-size: 16px;
     callback activated();
     forward-focus: tool-focus;
@@ -287,14 +290,17 @@ export component ToolButton inherits Rectangle {
     horizontal-stretch: 1;
     height: 32px;
     border-radius: 4px;
-    background: tool-touch.has-hover && root.enabled ? Theme.hover : Theme.soft;
+    background: root.checked ? Theme.selected : tool-touch.has-hover && root.enabled ? (root.destructive ? Theme.danger-soft : Theme.hover) : Theme.soft;
     opacity: root.enabled ? 1 : 0.4;
     border-width: tool-focus.has-focus ? 1px : 0px;
     border-color: Theme.focus;
     accessible-role: button;
     accessible-label: root.name;
     accessible-enabled: root.enabled;
-    Text { visible: !root.icon-only; text: root.label; color: Theme.ink; font-size: root.font-size; horizontal-alignment: center; vertical-alignment: center; }
+    accessible-checkable: root.checkable;
+    accessible-checked: root.checked;
+    accessible-action-default => { if root.enabled { root.activated(); } }
+    Text { visible: !root.icon-only; text: root.label; color: root.destructive ? Theme.danger-ink : Theme.ink; font-size: root.font-size; horizontal-alignment: center; vertical-alignment: center; }
     Image { visible: root.icon-only; source: root.glyph; width: 18px; height: 18px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; colorize: Theme.ink; }
     Tooltip { text: @markdown("\{root.name}"); }
     tool-focus := FocusScope {
@@ -302,5 +308,8 @@ export component ToolButton inherits Rectangle {
         enabled: root.enabled;
         key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; } return reject; }
     }
-    tool-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.activated(); } }
+    tool-touch := TouchArea {
+        enabled: root.enabled; mouse-cursor: pointer;
+        clicked => { root.activated(); }
+    }
 }

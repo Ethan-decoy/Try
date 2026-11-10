@@ -4,6 +4,29 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.9.0]
+
+### Added
+
+- Expand typed logarithms and limits into editable fields, navigate fields with Tab/Shift+Tab, exit structures with Space, and undo an automatic expansion back to its literal command.
+
+### Changed
+
+- Organize formula tools into a compact structural palette and nine symbol categories, with matrix construction first, clearer previews and hints, and visible undo/redo availability.
+
+### Removed
+
+- Remove the redundant number, alphabet and on-screen navigation rows. Use the physical keyboard for text, Shift/arrow selection and Tab field navigation; pointer placement remains available.
+
+### Fixed
+
+- Give base-logarithm templates a separate argument and keep keyboard, keypad and pointer input in the intended field, including logarithms with an exponent.
+- Start editing function names and unfinished subscripts without waiting for a complete expression; keep typed logarithm bases at the caret and preserve ordinary text answers.
+- Keep the division outside the root when typing `sqrt(3)/2`, and preserve existing `log(x)` and `log_2(x)` input while using logarithm templates.
+- Update formula navigation through root degrees and operator bounds, and keep keypad power/subscript insertion consistent with typing.
+- Accept the component's degree, strict-superset, multiset-union, definition and homomorphism notation throughout saving, display and answer matching. Reset the symbol menu's scroll position when changing categories and complete its English labels.
+- Preserve keyboard/pointer selections when expanding or collapsing formula tools, and render binomial previews as stacked coefficients.
+
 ## [0.8.2] - 2026-11-07
 
 ### Changed
@@ -172,7 +195,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Ethan-decoy/Try/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/Ethan-decoy/Try/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/Ethan-decoy/Try/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/Ethan-decoy/Try/compare/v0.7.2...v0.8.0

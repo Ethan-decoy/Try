@@ -537,8 +537,9 @@ pub fn from_latex(tex: &str) -> Result<Node, String> {
             _ => return None,
         })
     }
-    let ast = latex_rust::parse(tex).map_err(|e| e.to_string())?;
-    Ok(convert(ast).unwrap_or_else(|| Node::leaf(Kind::Raw, tex)))
+    let compatible = crate::formula::compatible_latex(tex);
+    let ast = latex_rust::parse(&compatible).map_err(|e| e.to_string())?;
+    Ok(convert(ast).unwrap_or_else(|| Node::leaf(Kind::Raw, compatible.as_ref())))
 }
 
 /// UTF-8 offsets, matching Slint's text input selection. A range and a node

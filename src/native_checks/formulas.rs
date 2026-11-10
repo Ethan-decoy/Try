@@ -62,6 +62,27 @@ fn practice_bottom(card: &PracticeWindow) -> i32 {
     y + card.window().size().height as i32
 }
 
+fn catalog_action_position(card: &PracticeWindow, id: &str) -> (slint::LogicalPosition, f32) {
+    use slint::Model;
+    let ui = card.global::<crate::MathInputState>();
+    let model = ui.get_catalog();
+    let index = model
+        .iter()
+        .position(|key| key.token == format!("catalog:{id}"))
+        .unwrap();
+    let rows = model.row_count().div_ceil(3);
+    let scroll = ((index / 3) as f32 * 40.0).min((rows as f32 * 40.0 - 160.0).max(0.0));
+    (
+        slint::LogicalPosition::new(
+            ui.get_keypad_left()
+                + (index % 3) as f32 * ui.get_keypad_width() / 3.0
+                + ui.get_keypad_width() / 6.0,
+            ui.get_keypad_top() + (index / 3) as f32 * 40.0 - scroll + 18.0,
+        ),
+        scroll,
+    )
+}
+
 fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase: u8) {
     let delay = if phase >= 17 { 140 } else { 450 };
     Timer::single_shot(Duration::from_millis(delay), move || {
@@ -239,9 +260,9 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                         .size()
                         .to_logical(card.window().scale_factor());
                     assert!((size.width - 320.0).abs() < 2.0);
-                    assert!(size.height > 400.0 && size.height <= 561.0, "{size:?}");
+                    assert!(size.height > 300.0 && size.height <= 561.0, "{size:?}");
                     assert!(
-                        ui.get_apply_center_y() + 16.0 <= ui.get_pad_bottom() + 0.5,
+                        ui.get_keypad_top() + 154.0 <= ui.get_pad_bottom() + 0.5,
                         "inline buttons must fit their panel"
                     );
                     assert!(ui.get_keypad_width() > 200.0 && ui.get_keypad_width() <= 272.0);
@@ -281,15 +302,14 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                 8 => {
                     let card = practice_window(app);
                     let ui = card.global::<crate::MathInputState>();
-                    for (column, row) in [(1.0, 2.0), (3.0, 0.0)] {
-                        pointer_click(
-                            card.window(),
-                            slint::LogicalPosition::new(
-                                ui.get_keypad_left() + (column + 0.5) * ui.get_keypad_width() / 5.0,
-                                ui.get_keypad_top() + row * 36.0 + 16.0,
-                            ),
-                        );
-                    }
+                    key(card.window(), "2".into());
+                    pointer_click(
+                        card.window(),
+                        slint::LogicalPosition::new(
+                            ui.get_keypad_left() + ui.get_keypad_width() / 8.0,
+                            ui.get_keypad_top() + 16.0,
+                        ),
+                    );
                     key(card.window(), Key::Return.into());
                     assert!(!ui.get_error().is_empty());
                     assert_eq!(card.get_feedback(), 0);
@@ -356,7 +376,7 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                     pointer_click(
                         card.window(),
                         slint::LogicalPosition::new(
-                            ui.get_keypad_left() + ui.get_keypad_width() * 5.0 / 6.0,
+                            ui.get_keypad_left() + ui.get_keypad_width() * 3.0 / 4.0,
                             ui.get_keypad_top() - 22.0,
                         ),
                     );
@@ -461,7 +481,7 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                     pointer_click(
                         card.window(),
                         slint::LogicalPosition::new(
-                            ui.get_keypad_left() + ui.get_keypad_width() * 5.0 / 6.0,
+                            ui.get_keypad_left() + ui.get_keypad_width() * 3.0 / 4.0,
                             ui.get_keypad_top() - 22.0,
                         ),
                     );
@@ -517,7 +537,9 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                         card.window(),
                         checks.output.join("catalog_light_basic_top.png"),
                     );
-                    scroll_math_catalog(&card, -800.0);
+                    let (_, scroll) = catalog_action_position(&card, "text");
+                    scroll_math_catalog(&card, 10000.0);
+                    scroll_math_catalog(&card, -scroll);
                 }
                 49 => {
                     let card = practice_window(app);
@@ -526,15 +548,8 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                         card.window(),
                         checks.output.join("catalog_light_basic_bottom.png"),
                     );
-                    // Basic catalog index 15 is the native "文字" caption, now
-                    // on the second visible row after scrolling to the end.
-                    pointer_click(
-                        card.window(),
-                        slint::LogicalPosition::new(
-                            ui.get_keypad_left() + ui.get_keypad_width() / 6.0,
-                            ui.get_keypad_top() + 36.0 + 16.0,
-                        ),
-                    );
+                    let (position, _) = catalog_action_position(&card, "text");
+                    pointer_click(card.window(), position);
                     assert_eq!(
                         app.structured_math
                             .borrow()

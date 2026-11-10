@@ -23,7 +23,7 @@ pub fn recognize(input: &str, math_hint: bool) -> Option<Node> {
             .all(|c| c.is_ascii_digit() || ".+- ".contains(c))
         || ["pi", "theta", "alpha", "beta", "gamma", "infinity"].contains(&input)
     {
-        math_editor::expression(input).ok()?
+        notation_expression(input).ok()?
     } else {
         let node = math_editor::automatic_content(input).ok()?;
         if node.is_text() {
@@ -55,15 +55,24 @@ pub fn recognize_inline(input: &str, math_hint: bool) -> Option<Node> {
 /// Start structural editing as soon as notation needs it. Plain words and
 /// source-code answers retain native text/IME editing rather than a math overlay.
 pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
-    // Importing a completed power places the caret outside its exponent.
-    // Enter the empty slot while the base and ^ are still being typed.
-    let entering_power = input
+    // Importing a completed script places the caret outside it. Enter the
+    // empty slot while its base and ^ / _ are still being typed.
+    let entering_script = input
         .trim_end()
-        .strip_suffix('^')
+        .strip_suffix(['^', '_'])
         .is_some_and(|base| recognize_inline(base, true).is_some());
-    // Keep a partly written function call native until its parentheses close.
-    // Importing its complete expression avoids replaying written parentheses
-    // as an extra group inside the editor's automatic function shortcut.
+    // Hand commands to SMI before their slots are filled. Its own vocabulary
+    // covers functions and structures, including log, sqrt and limits.
+    // Bare words outside mathematical questions retain native text editing.
+    if math_hint && slint_math_input::catalog::is_typing_command(input)
+        || input
+            .strip_suffix(['_', '('])
+            .is_some_and(slint_math_input::catalog::is_typing_command)
+    {
+        return true;
+    }
+    // Unrecognized partly written calls stay native; supported structural
+    // commands above already handle their own opening/closing delimiters.
     if !input.contains('\\') && input.contains('(') && recognize_inline(input, math_hint).is_none()
     {
         return false;
@@ -71,7 +80,7 @@ pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
     // A trailing operator without mathematical context is ambiguous (C++,
     // command flags, word fragments). Wait for a complete expression instead.
     if !math_hint
-        && !entering_power
+        && !entering_script
         && input
             .trim_end()
             .ends_with(['+', '-', '*', '×', '/', '^', '_', '='])
@@ -88,7 +97,7 @@ pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
         || input.contains(['+', '-', '−', '*', '×']);
     notation
         && (math_hint
-            || entering_power
+            || entering_script
             || recognize_inline(input, false).is_some()
             || input.starts_with('\\'))
 }
@@ -107,7 +116,7 @@ pub fn incomplete_error(input: &str, math_hint: bool) -> Option<String> {
     let parsed = if input.contains('\\') {
         math_editor::from_latex(input)
     } else {
-        math_editor::expression(input)
+        notation_expression(input)
     };
     match parsed {
         Err(error) => Some(error),
@@ -129,6 +138,18 @@ pub fn matches(input: &str, answer: &str, latex: Option<&str>, aliases: &[String
         .into_iter()
         .chain(alternatives)
         .any(|node| notation(&node) == supplied)
+}
+
+fn notation_expression(input: &str) -> Result<Node, String> {
+    math_editor::expression(input).or_else(|error| {
+        // Lossless spellings of the SMI commands that the display parser does
+        // not name. Ordinary text and unfinished arithmetic keep their parser.
+        if input.contains(['°', '⊋', '⊎', '≔']) {
+            math_editor::from_latex(input)
+        } else {
+            Err(error)
+        }
+    })
 }
 
 fn notation(node: &Node) -> String {
@@ -225,9 +246,7 @@ mod tests {
         for text in ["1/2", "sqrt(3)/2", "x+y", "x^2", r"\frac{1}{2}"] {
             assert!(starts_structured_edit(text, false), "{text}");
         }
-        for text in ["sqrt(", "sqrt(3", "sin("] {
-            assert!(!starts_structured_edit(text, true), "{text}");
-        }
+        assert!(!starts_structured_edit("sqrt(3", true));
         for text in ["1/", "x^", r"\frac{1}{"] {
             assert!(starts_structured_edit(text, true), "{text}");
         }
@@ -271,6 +290,28 @@ mod tests {
             assert!(starts_structured_edit(prefix, true), "{prefix}");
         }
         for text in ["C+", "C++", "--help", "snake_", "汉字^"] {
+            assert!(!starts_structured_edit(text, false), "{text}");
+        }
+    }
+
+    #[test]
+    fn live_functions_and_subscripts_enter_before_their_content_is_complete() {
+        for prefix in [
+            "log", "ln", "sin", "cos", "exp", "sqrt", "frac", "sum", "int", "lim", "pi", "theta",
+        ] {
+            assert!(starts_structured_edit(prefix, true), "{prefix}");
+            assert!(!starts_structured_edit(prefix, false), "word: {prefix}");
+            assert!(
+                starts_structured_edit(&format!("{prefix}("), false),
+                "call: {prefix}"
+            );
+        }
+        for prefix in ["log_", "x_", "a_"] {
+            assert!(starts_structured_edit(prefix, false), "{prefix}");
+        }
+        for text in [
+            "logger", "sinister", "catalog", "snake_", "Vec<T>", "&mut T",
+        ] {
             assert!(!starts_structured_edit(text, false), "{text}");
         }
     }
@@ -377,5 +418,24 @@ mod tests {
         assert!(!matches("sqrt(", "√3/2", None, &[]));
         assert!(recognize("hesitate", false).is_none());
         assert!(recognize(&"1".repeat(1001), true).is_none());
+    }
+
+    #[test]
+    fn component_symbol_spellings_match_the_same_answer_and_keep_wrong_answers_wrong() {
+        for (input, latex, wrong) in [
+            ("30°", r"30\degree", "31°"),
+            ("A⊋B", r"A\supsetneq B", "A⊋C"),
+            ("A⊎B", r"A\uplus B", "A⊎C"),
+            ("a≔b", r"a\coloneqq b", "a≔c"),
+            (
+                r"\operatorname{hom}(x)",
+                r"\hom(x)",
+                r"\operatorname{hom}(y)",
+            ),
+        ] {
+            assert!(matches(input, input, Some(latex), &[]), "{input}: {latex}");
+            assert!(!matches(wrong, input, Some(latex), &[]), "{wrong}: {latex}");
+            assert!(incomplete_error(input, true).is_none(), "{input}");
+        }
     }
 }

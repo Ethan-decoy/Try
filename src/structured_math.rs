@@ -1,10 +1,11 @@
 //! Try's host adapter for slint-math-input. The editor has no native window.
-use crate::{MathInputView, MathKey};
-use slint::{ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
+use crate::MathInputView;
 use slint_math_input::gui::MathInputController;
 use r#try::{knowledge::AppResult, math_editor, tr};
 
 mod clipboard;
+mod keypad;
+pub use keypad::{catalog, categories, common_keys};
 
 pub struct Session {
     controller: MathInputController,
@@ -26,13 +27,22 @@ impl Session {
     ) -> AppResult<Self> {
         let mut controller = MathInputController::with_clipboard(clipboard::normalize(access));
         controller.editor.font_size = 22.0;
+        controller.editor.structured_typing = true;
         match seed {
             Seed::Latex(latex) if !latex.trim().is_empty() => controller
                 .editor
                 .import_latex(&latex)
                 .map_err(|e| e.to_string())?,
             Seed::Typing(text) if !text.is_empty() => {
-                insert_text(&mut controller, &text);
+                if clipboard::expression_latex(&text).is_some() {
+                    insert_text(&mut controller, &text);
+                } else {
+                    // Reproduce the native prefix as typing so the command's
+                    // literal form and earlier characters remain undoable.
+                    for ch in text.chars() {
+                        controller.insert(&ch.to_string());
+                    }
+                }
                 if let Some(error) = &controller.error {
                     return Err(error.to_string());
                 }
@@ -80,6 +90,9 @@ impl Session {
             caret_height: view.caret.height,
             font_size: view.font_size,
             accessible_text: view.spoken.into(),
+            can_undo: self.controller.editor.can_undo(),
+            can_redo: self.controller.editor.can_redo(),
+            has_content: !view.latex.is_empty(),
         })
     }
 }
@@ -105,6 +118,7 @@ fn complete(controller: &MathInputController) -> AppResult<String> {
     if latex.trim().is_empty() {
         return Err(tr!("请先填写完整的公式。").into());
     }
+    let latex = r#try::formula::compatible_latex(&latex).into_owned();
     // Knowledge packs deliberately have tighter limits than the general editor.
     r#try::formula::validate(&latex)?;
     Ok(latex)
@@ -130,95 +144,6 @@ fn theme_image(image: &slint::Image, dark: bool) -> slint::Image {
         }
     }
     slint::Image::from_rgba8(pixels)
-}
-
-pub fn categories() -> ModelRc<slint::SharedString> {
-    ModelRc::new(VecModel::from(
-        category_names()
-            .iter()
-            .map(|name| r#try::i18n::text(name).into())
-            .collect::<Vec<_>>(),
-    ))
-}
-
-fn category_names() -> &'static [&'static str] {
-    &[
-        "基本结构",
-        "常用函数与数论",
-        "微积分",
-        "三角函数",
-        "双曲与反双曲函数",
-        "统计与列表",
-        "概率与分布",
-        "矩阵与分段",
-        "线性代数函数",
-        "希腊字母",
-        "关系与集合",
-        "箭头与运算",
-        "常数与字母集",
-        "重音与注记",
-        "数学字母样式",
-    ]
-}
-
-pub fn catalog(index: i32) -> ModelRc<MathKey> {
-    let groups = category_names();
-    let index = index.clamp(0, groups.len() as i32 - 1);
-    let name = groups[index as usize];
-    ModelRc::new(VecModel::from(
-        slint_math_input::catalog::entries()
-            .iter()
-            .filter(|entry| entry.category == name)
-            .map(|entry| MathKey {
-                label: entry.label.clone().into(),
-                token: format!("catalog:{}", entry.id).into(),
-                hint: entry.description.clone().into(),
-                image: catalog_image(entry),
-            })
-            .collect::<Vec<_>>(),
-    ))
-}
-
-fn catalog_image(entry: &slint_math_input::catalog::CatalogEntry) -> slint::Image {
-    // Descriptive captions need the host's native font fallback. STIX Two Math
-    // covers notation, so rasterizing Chinese here would bake .notdef boxes
-    // into the image before Slint has a chance to choose a suitable font.
-    if entry
-        .label
-        .chars()
-        .any(|c| matches!(c, '\u{2e80}'..='\u{9fff}' | '\u{f900}'..='\u{faff}'))
-    {
-        return slint::Image::default();
-    }
-    let mut editor = slint_math_input::Editor::new();
-    editor.font_size = 17.0;
-    // These Unicode caption shortcuts are not all present in the math font.
-    // Draw the equivalent structure using ordinary base characters instead.
-    let latex = match entry.id.as_str() {
-        "power" => Some(r"a^{b}"),
-        "subscript" => Some(r"a_{n}"),
-        "indexed-root" => Some(r"\sqrt[n]{a}"),
-        "log-base" => Some(r"\log_{a}"),
-        "integral" => Some(r"\int_{a}^{b}"),
-        "dot" => Some(r"\dot{a}"),
-        _ => None,
-    };
-    let inserted = match latex {
-        Some(latex) => editor.import_latex(latex),
-        None => editor.apply(slint_math_input::Action::Insert(entry.label.clone())),
-    };
-    let rendered = inserted.and_then(|()| editor.render(2.0));
-    rendered
-        .map(|rendered| {
-            slint::Image::from_rgba8_premultiplied(
-                SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
-                    &rendered.pixels,
-                    rendered.pixel_width,
-                    rendered.pixel_height,
-                ),
-            )
-        })
-        .unwrap_or_default()
 }
 
 pub fn plain(latex: &str) -> String {
@@ -247,6 +172,64 @@ mod tests {
             *self.0.borrow_mut() = text;
             Ok(())
         }
+    }
+
+    #[test]
+    fn direct_typing_enters_log_base_before_it_is_filled() {
+        use slint::platform::Key;
+        for hint in [false, true] {
+            let mut text = String::new();
+            let mut session: Option<Session> = None;
+            for ch in "log_".chars() {
+                if let Some(session) = &mut session {
+                    session.insert(&ch.to_string());
+                } else {
+                    text.push(ch);
+                    if r#try::math_answer::starts_structured_edit(&text, hint) {
+                        session = Some(Session::new(Seed::Typing(text.clone())).unwrap());
+                    }
+                }
+            }
+            let mut session = session.expect("log_ opens its base before the next character");
+            assert!(session.complete().is_err(), "the base is still empty");
+            let base = session.controller.editor.cursor().row;
+            for ch in "n+1".chars() {
+                session.insert(&ch.to_string());
+            }
+            assert_eq!(session.controller.editor.cursor().row, base);
+            session.key(&char::from(Key::Tab).to_string(), false, false, false);
+            for ch in "(x)".chars() {
+                session.insert(&ch.to_string());
+            }
+            assert_eq!(session.complete().unwrap(), r"\log_{n+1}\left(x\right)");
+        }
+    }
+
+    #[test]
+    fn typed_commands_create_fields_and_preserve_written_function_calls() {
+        use slint::platform::Key;
+        let mut session = Session::new(Seed::Typing("log".into())).unwrap();
+        assert!(session.complete().is_err());
+        session.insert("2");
+        session.key(&char::from(Key::Tab).to_string(), false, false, false);
+        session.insert("x");
+        assert_eq!(session.complete().unwrap(), r"\log_{2}\left(x\right)");
+        for input in ["sqrt(3)/2", "log_2(x)", "log(x)", "sqrt(sqrt(3))/2"] {
+            let mut session = Session::new(Seed::Typing(String::new())).unwrap();
+            for ch in input.chars() {
+                session.insert(&ch.to_string());
+            }
+            let latex = session.complete().unwrap();
+            assert!(
+                r#try::math_answer::matches(input, "", Some(&latex), &[]),
+                "{input}: {latex}"
+            );
+        }
+        let mut session = Session::new(Seed::Typing("log".into())).unwrap();
+        session.key("z", true, false, false);
+        assert_eq!(session.source(), "log");
+        session.key("z", true, false, false);
+        assert_eq!(session.source(), "lo");
     }
 
     #[test]
@@ -299,10 +282,31 @@ mod tests {
                 handled
             });
         }
+        {
+            let state = session.clone();
+            let weak = window.as_weak();
+            ui.on_keypad(move |token, extend| {
+                state.borrow_mut().keypad(&token, extend);
+                refresh(&weak.unwrap(), &state.borrow());
+            });
+        }
         ui.set_practice(true);
+        ui.set_common_keys(common_keys());
         ui.set_open(true);
         window.set_prompt("Formula".into());
         window.show().unwrap();
+        let type_text = |text: &str| {
+            for ch in text.chars() {
+                let text: slint::SharedString = ch.to_string().into();
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyReleased { text });
+                paint(&adapter);
+            }
+        };
 
         for (density, dark, expanded) in [(1.0, false, false), (2.0, true, true)] {
             window
@@ -352,12 +356,7 @@ mod tests {
                     window.get_input_canvas_left() + caret.x + dx,
                     window.get_input_canvas_top() + caret.y + caret.height * 0.25,
                 );
-                for event in [
-                    WindowEvent::KeyPressed { text: "y".into() },
-                    WindowEvent::KeyReleased { text: "y".into() },
-                ] {
-                    window.window().dispatch_event(event);
-                }
+                type_text("y");
                 paint(&adapter);
                 assert_eq!(
                     session.borrow().complete().unwrap(),
@@ -366,6 +365,230 @@ mod tests {
                 );
                 assert!(session.borrow().error().is_empty());
             }
+            for (base, expected) in [
+                ("b", r"\log_{b}\left(x\right)"),
+                ("b^2", r"\log_{b}^{2}\left(x\right)"),
+            ] {
+                for navigation in [Key::RightArrow, Key::Tab] {
+                    *session.borrow_mut() = Session::with_clipboard(
+                        Seed::Typing(String::new()),
+                        TestClipboard(Rc::default()),
+                    )
+                    .unwrap();
+                    if expanded {
+                        refresh(&window, &session.borrow());
+                        paint(&adapter);
+                        click(
+                            &window,
+                            &adapter,
+                            ui.get_keypad_left() + ui.get_keypad_width() * 3.5 / 4.0,
+                            ui.get_keypad_top() + 18.0,
+                        );
+                    } else {
+                        session.borrow_mut().keypad("catalog:log-base", false);
+                    }
+                    refresh(&window, &session.borrow());
+                    window.invoke_focus_answer();
+                    type_text(base);
+                    let base_cursor = session.borrow().controller.editor.cursor();
+                    key(&window, &adapter, navigation);
+                    type_text("x");
+                    assert_eq!(session.borrow().complete().unwrap(), expected);
+
+                    let caret = {
+                        let state = session.borrow();
+                        let editor = &state.controller.editor;
+                        editor.layout().caret(editor.cursor()).unwrap().rect
+                    };
+                    session
+                        .borrow_mut()
+                        .controller
+                        .editor
+                        .set_position(base_cursor, false)
+                        .unwrap();
+                    refresh(&window, &session.borrow());
+                    paint(&adapter);
+                    click(
+                        &window,
+                        &adapter,
+                        window.get_input_canvas_left() + caret.x,
+                        window.get_input_canvas_top() + caret.y + caret.height * 0.5,
+                    );
+                    type_text("y");
+                    assert_eq!(
+                        session.borrow().complete().unwrap(),
+                        expected.replace("(x", "(xy"),
+                        "{base}, navigation={navigation:?}, density={density}, expanded={expanded}"
+                    );
+                    assert!(session.borrow().error().is_empty());
+                }
+            }
+        }
+        // Physical Shift selection and Shift-click remain available without
+        // onscreen modifier or navigation buttons.
+        *session.borrow_mut() =
+            Session::with_clipboard(Seed::Latex("x+y".into()), TestClipboard(Rc::default()))
+                .unwrap();
+        refresh(&window, &session.borrow());
+        ui.set_keypad_expanded(true);
+        window.invoke_focus_answer();
+        key(&window, &adapter, Key::End);
+        window.window().dispatch_event(WindowEvent::KeyPressed {
+            text: Key::Shift.into(),
+        });
+        key(&window, &adapter, Key::LeftArrow);
+        window.window().dispatch_event(WindowEvent::KeyReleased {
+            text: Key::Shift.into(),
+        });
+        assert!(session.borrow().controller.editor.has_selection());
+        type_text("z");
+        assert_eq!(session.borrow().complete().unwrap(), "x+z");
+        key(&window, &adapter, Key::End);
+        let caret = {
+            let state = session.borrow();
+            let editor = &state.controller.editor;
+            let mut before_last = editor.cursor();
+            before_last.offset -= 1;
+            editor.layout().caret(before_last).unwrap().rect
+        };
+        window.window().dispatch_event(WindowEvent::KeyPressed {
+            text: Key::Shift.into(),
+        });
+        click(
+            &window,
+            &adapter,
+            window.get_input_canvas_left() + caret.x + 0.6,
+            window.get_input_canvas_top() + caret.y + caret.height * 0.5,
+        );
+        window.window().dispatch_event(WindowEvent::KeyReleased {
+            text: Key::Shift.into(),
+        });
+        assert!(
+            session.borrow().controller.editor.has_selection(),
+            "Shift-click in the formula extends selection"
+        );
+        ui.set_keypad_expanded(false);
+        paint(&adapter);
+        assert!(
+            session.borrow().controller.editor.has_selection(),
+            "collapsing keeps the selected formula range"
+        );
+        window.hide().unwrap();
+    }
+
+    #[test]
+    fn native_practice_typing_hands_over_to_the_same_collapsed_or_expanded_editor() {
+        use crate::{MathInputState, PracticeWindow};
+        use slint::{
+            ComponentHandle, PhysicalSize,
+            platform::{Key, WindowEvent},
+        };
+        use test_support::{key, paint, software_window};
+        let adapter = software_window();
+        let window = PracticeWindow::new().unwrap();
+        let active: Rc<RefCell<Option<Session>>> = Rc::default();
+        let ui = window.global::<MathInputState>();
+        let refresh = |window: &PracticeWindow, session: &Session| {
+            window
+                .global::<MathInputState>()
+                .set_formula(session.view(1.0, true).unwrap());
+        };
+        {
+            let weak = window.as_weak();
+            let active = active.clone();
+            window.on_answer_edited(move |text| {
+                let window = weak.unwrap();
+                window.set_answer_text(text.clone());
+                if r#try::math_answer::starts_structured_edit(&text, true) {
+                    let session = Session::with_clipboard(
+                        Seed::Typing(text.into()),
+                        TestClipboard(Rc::default()),
+                    )
+                    .unwrap();
+                    refresh(&window, &session);
+                    *active.borrow_mut() = Some(session);
+                    let ui = window.global::<MathInputState>();
+                    ui.set_open(true);
+                    ui.set_focus_request(ui.get_focus_request() + 1);
+                }
+            });
+        }
+        {
+            let weak = window.as_weak();
+            let active = active.clone();
+            ui.on_committed(move |text| {
+                let mut active = active.borrow_mut();
+                let session = active.as_mut().unwrap();
+                session.insert(&text);
+                refresh(&weak.unwrap(), session);
+            });
+        }
+        {
+            let weak = window.as_weak();
+            let active = active.clone();
+            ui.on_key(move |text, control, shift, alt| {
+                let mut active = active.borrow_mut();
+                let session = active.as_mut().unwrap();
+                let handled = session.key(&text, control, shift, alt);
+                refresh(&weak.unwrap(), session);
+                handled
+            });
+        }
+        ui.set_practice(true);
+        ui.set_common_keys(common_keys());
+        window.show().unwrap();
+        adapter.set_size(PhysicalSize::new(320, 560));
+        let type_text = |text: &str| {
+            for ch in text.chars() {
+                let text: slint::SharedString = ch.to_string().into();
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyReleased { text });
+                paint(&adapter);
+            }
+        };
+        for expanded in [false, true] {
+            for (typed, expected) in [
+                ("sqrt(3)/2", r"\frac{\sqrt{3}}{2}"),
+                ("P^n+m", "P^{n+m}"),
+                ("log_2(x)", r"\log_{2}\left(x\right)"),
+            ] {
+                window.set_answer_text("".into());
+                ui.set_open(false);
+                *active.borrow_mut() = None;
+                ui.set_keypad_expanded(expanded);
+                window.invoke_focus_answer();
+                paint(&adapter);
+                type_text(typed);
+                assert_eq!(
+                    active.borrow().as_ref().unwrap().complete().unwrap(),
+                    expected,
+                    "{typed}, expanded={expanded}"
+                );
+            }
+            window.set_answer_text("".into());
+            ui.set_open(false);
+            *active.borrow_mut() = None;
+            ui.set_keypad_expanded(expanded);
+            window.invoke_focus_answer();
+            paint(&adapter);
+            type_text("log2");
+            let cursor = active.borrow().as_ref().unwrap().controller.editor.cursor();
+            ui.set_keypad_expanded(!expanded);
+            paint(&adapter);
+            assert_eq!(
+                active.borrow().as_ref().unwrap().controller.editor.cursor(),
+                cursor
+            );
+            key(&window, &adapter, Key::Tab);
+            type_text("x");
+            assert_eq!(
+                active.borrow().as_ref().unwrap().complete().unwrap(),
+                r"\log_{2}\left(x\right)"
+            );
         }
         window.hide().unwrap();
     }
@@ -396,6 +619,20 @@ mod tests {
             session.insert("q");
             assert_eq!(session.complete().unwrap(), "P^{n+m}+q");
         }
+    }
+
+    #[test]
+    fn view_reports_edit_history_and_clearing_preserves_undo() {
+        let mut session = Session::new(Seed::Typing(String::new())).unwrap();
+        let view = session.view(1.0, false).unwrap();
+        assert!(!view.can_undo && !view.can_redo && !view.has_content);
+        session.keypad("x", false);
+        assert!(session.view(1.0, false).unwrap().can_undo);
+        session.keypad("key:clear", false);
+        assert!(!session.view(1.0, false).unwrap().has_content);
+        session.keypad("key:undo", false);
+        assert_eq!(session.complete().unwrap(), "x");
+        assert!(session.view(1.0, false).unwrap().can_redo);
     }
 
     #[test]
@@ -487,83 +724,5 @@ mod tests {
         controller.keypad("key:clear", false);
         controller.insert(&"x".repeat(1001));
         assert!(complete(&controller).is_err());
-    }
-
-    #[test]
-    fn host_catalog_covers_the_pinned_modules_groups() {
-        let entries = slint_math_input::catalog::entries();
-        assert!(entries.len() >= 319);
-        for entry in entries {
-            assert!(
-                category_names().contains(&entry.category.as_str()),
-                "{}",
-                entry.category
-            );
-        }
-    }
-
-    #[test]
-    fn host_catalog_keeps_descriptive_labels_on_the_native_text_surface() {
-        use slint::Model;
-        let mut checked = 0;
-        for group in 0..category_names().len() {
-            let model = catalog(group as i32);
-            for key in model.iter() {
-                if key
-                    .label
-                    .chars()
-                    .any(|c| matches!(c, '\u{2e80}'..='\u{9fff}' | '\u{f900}'..='\u{faff}'))
-                {
-                    assert_eq!(
-                        key.image.size().width,
-                        0,
-                        "{}: {} must use native text",
-                        key.token,
-                        key.label
-                    );
-                    checked += 1;
-                }
-            }
-        }
-        assert!(checked >= 30);
-    }
-
-    #[test]
-    fn host_catalog_renders_unicode_scripts_and_accents_as_math_structure() {
-        use slint::Model;
-        for (group, id, latex) in [
-            (0, "power", r"a^{b}"),
-            (0, "subscript", r"a_{n}"),
-            (0, "indexed-root", r"\sqrt[n]{a}"),
-            (2, "log-base", r"\log_{a}"),
-            (2, "integral", r"\int_{a}^{b}"),
-            (13, "dot", r"\dot{a}"),
-        ] {
-            let model = catalog(group);
-            let key = model
-                .iter()
-                .find(|key| key.token == format!("catalog:{id}"))
-                .unwrap();
-            let mut expected = slint_math_input::Editor::new();
-            expected.font_size = 17.0;
-            expected.import_latex(latex).unwrap();
-            let rendered = expected.render(2.0).unwrap();
-            let expected = slint::Image::from_rgba8_premultiplied(
-                SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
-                    &rendered.pixels,
-                    rendered.pixel_width,
-                    rendered.pixel_height,
-                ),
-            )
-            .to_rgba8()
-            .unwrap();
-            let actual = key.image.to_rgba8().unwrap();
-            assert_eq!(
-                (actual.width(), actual.height()),
-                (expected.width(), expected.height()),
-                "{id}"
-            );
-            assert_eq!(actual.as_bytes(), expected.as_bytes(), "{id}");
-        }
     }
 }

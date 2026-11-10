@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 0.8.2 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 0.9.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -79,17 +79,23 @@ Export still produces one JSON file, with the pictures included. Importing it on
 
 Type common expressions such as `sin(pi/3)`, `sqrt(3)/2`, or supported LaTeX without opening the keypad first. Recognized structures are edited directly in their typeset layout. Unfinished fractions, roots and other structures in math questions remain drafts; submitting them shows a completion hint. Ordinary text retains native text input and input methods.
 
-Click a numerator, denominator or exponent to position the caret. Arrow keys move through layout; Shift plus arrows or dragging selects. Formula clipboard operations exchange supported LaTeX; ordinary text keeps its source. Ctrl+Z / Ctrl+Y undo and redo. Normalization supports written forms without arbitrary algebraic simplification or approximate numeric comparison.
+Click a numerator, denominator or exponent to position the caret. Arrow keys move through layout; hold Shift with arrows or click in the formula to extend selection, or drag to select. Formula clipboard operations exchange supported LaTeX; ordinary text keeps its source. Ctrl+Z / Ctrl+Y undo and redo. Normalization supports written forms without arbitrary algebraic simplification or approximate numeric comparison.
 
-Operators such as `+` and `-` stay in the current exponent or subscript. To continue outside it, press the right arrow at the end of that row or click ↗ first.
+Operators such as `+` and `-` stay in the current exponent or subscript. To continue outside it, press the right arrow at the end of that row or use Space to move out.
 
 ƒ opens the keypad below the field, with functions, symbols, fractions, roots, powers, integrals, sums, limits, matrices and cases. Practice uses the same input control with the keypad open or closed, retaining unfinished formulas, the caret, selection and undo history. Enter checks the answer directly; unfinished formulas show a completion hint. Esc collapses an open keypad; with it closed, Esc dismisses an unanswered card.
+
+The development tool palette has Structures and Symbols pages. Use your physical keyboard for numbers, letters and ordinary operators. Structures provides fractions, scripts, base logarithms, roots, derivatives, integrals, sums, products and limits; Symbols has nine categories. In math input, type `log` to fill its base, then Tab to the argument, using the same structure as the logarithm tool. Existing `log_2(x)` input remains valid; `log(x)` omits an explicit base. Commands including `sqrt`, `frac`, `sum`, `int` and `lim` create editable structures directly. Ordinary text answers retain text input.
+
+Tab and Shift+Tab visit the next or previous field in a structure; Space exits the current structure, while arrows move through its typeset positions. Operators stay inside an exponent or subscript until you move out. Typing `sqrt(3)/2` closes the root at the right parenthesis before entering the outer denominator. Immediately after automatic expansion, Ctrl+Z restores the literal command; Ctrl+Y reapplies the expansion.
+
+Hover for a tool's description. Undo and redo are enabled when their history is available. Collapsing the tools retains the selected range. In practice, use ƒ or Esc to collapse the keypad; the question editor retains Apply formula and Cancel.
 
 In the question editor, ƒ edits the selected formula content. Apply formula or Enter writes it back to that field; Esc cancels that edit. Ordinary text and mixed text/math remain available in the content editor.
 
 Expanding and collapsing follows the selected screen corner or your manually placed position. Temporary movement to fit the screen does not overwrite the remembered position.
 
-The move-out and unwrap controls adjust scope while retaining contents. C clears the current field; undo restores the previous draft and position. Clearing does not submit. Structural tools use the caret and selection; ↑ selects the outer structure and ↗ continues after it. Empty templates can be revisited.
+The content editor's move-out and unwrap controls adjust scope while retaining contents. The keypad's Clear button (C in older versions) clears the current field; undo restores the previous draft and position. Clearing does not submit. Structural tools use the caret and selection. Empty templates can be revisited.
 
 ## Settings and pauses
 
