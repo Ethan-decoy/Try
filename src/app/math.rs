@@ -357,7 +357,7 @@ impl App {
                     .as_mut()
                     .filter(|session| session.diagnostic_id == *id && !session.answered)
                     .ok_or_else(|| tr!("原内容已改变，请关闭公式输入后重新打开。").to_owned())?;
-                let input = crate::structured_math::plain(latex);
+                let input = crate::structured_math::answer_input(latex);
                 session.input_history.borrow_mut().record(&input);
                 session.window.set_answer_text(input.into());
                 session.window.set_input_error("".into());

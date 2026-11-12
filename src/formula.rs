@@ -142,6 +142,12 @@ pub fn render(
     if node.kind != math_editor::Kind::Raw {
         return render_node(&node, font_size_pt, scale_factor, ink);
     }
+    // The legacy display AST may collapse a binomial into a fraction. Render
+    // preserved formulas with the same structural engine used for editing.
+    let mut editor = slint_math_input::Editor::new();
+    if editor.import_latex(tex).is_ok() {
+        return render_structured(editor, font_size_pt, scale_factor, ink);
+    }
     let font = MathFont::stix_two_math().map_err(|error| error.to_string())?;
     let svg = latex_rust::latex_to_svg(
         tex,
@@ -163,6 +169,12 @@ pub fn render_node(
     ink: (u8, u8, u8),
 ) -> Result<RenderedFormula, String> {
     node.validate()?;
+    fn has_preserved_structure(node: &Node) -> bool {
+        node.kind == math_editor::Kind::Raw || node.children.iter().any(has_preserved_structure)
+    }
+    if has_preserved_structure(node) {
+        return render(&node.tex(), font_size_pt, scale_factor, ink);
+    }
     let (marked, leaves) = node.marked_tex();
     let font = MathFont::stix_two_math().map_err(|e| e.to_string())?;
     let mut svg = latex_rust::latex_to_svg(
@@ -247,6 +259,73 @@ pub fn render_node(
     Ok(rendered)
 }
 
+fn render_structured(
+    mut editor: slint_math_input::Editor,
+    font_size_pt: u16,
+    scale_factor: f32,
+    ink: (u8, u8, u8),
+) -> Result<RenderedFormula, String> {
+    let scale = if scale_factor.is_finite() {
+        scale_factor.clamp(1.0, 3.0)
+    } else {
+        1.0
+    };
+    editor.font_size = f32::from(font_size_pt) * 96.0 / 72.0;
+    let layout = editor.layout();
+    if (layout.width * scale).ceil() as u64 * (layout.height * scale).ceil() as u64
+        > MAX_BITMAP_PIXELS
+    {
+        return Err(tr!("这条公式的显示范围过大，请拆成更短的题目。").into());
+    }
+    let rendered = editor.render(scale).map_err(|error| error.to_string())?;
+    let (width, height) = (rendered.pixel_width, rendered.pixel_height);
+    let (mut left, mut top, mut right, mut bottom) = (width, height, 0, 0);
+    for (index, pixel) in rendered.pixels.chunks_exact(4).enumerate() {
+        if pixel[3] != 0 {
+            let (x, y) = (index as u32 % width, index as u32 / width);
+            left = left.min(x);
+            top = top.min(y);
+            right = right.max(x + 1);
+            bottom = bottom.max(y + 1);
+        }
+    }
+    if left >= right || top >= bottom {
+        return Err(tr!("无法建立公式图片。").into());
+    }
+    left = left.saturating_sub(1);
+    top = top.saturating_sub(1);
+    right = (right + 1).min(width);
+    bottom = (bottom + 1).min(height);
+    let mut pixels = SharedPixelBuffer::<Rgba8Pixel>::new(right - left, bottom - top);
+    let bytes = pixels.make_mut_bytes();
+    for (row, y) in (top..bottom).enumerate() {
+        for (column, x) in (left..right).enumerate() {
+            let alpha = rendered.pixels[((y * width + x) * 4 + 3) as usize];
+            let offset = (row * (right - left) as usize + column) * 4;
+            bytes[offset..offset + 4].copy_from_slice(&[
+                (u16::from(ink.0) * u16::from(alpha) / 255) as u8,
+                (u16::from(ink.1) * u16::from(alpha) / 255) as u8,
+                (u16::from(ink.2) * u16::from(alpha) / 255) as u8,
+                alpha,
+            ]);
+        }
+    }
+    let (width, height) = ((right - left) as f32 / scale, (bottom - top) as f32 / scale);
+    Ok(RenderedFormula {
+        image: Image::from_rgba8_premultiplied(pixels),
+        width,
+        height,
+        texts: vec![],
+        regions: vec![HitRegion {
+            path: vec![],
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+        }],
+    })
+}
+
 fn raster_svg(svg: &str, scale_factor: f32) -> Result<RenderedFormula, String> {
     let tree = resvg::usvg::Tree::from_data(svg.as_bytes(), &resvg::usvg::Options::default())
         .map_err(|error| error.to_string())?;
@@ -282,6 +361,59 @@ fn raster_svg(svg: &str, scale_factor: f32) -> Result<RenderedFormula, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bridge_renders_a_binomial_differently_from_a_fraction() {
+        let choose = render(r"\binom{5}{2}", 22, 1.0, (30, 30, 30)).unwrap();
+        let fraction = render(r"\left(\frac{5}{2}\right)", 22, 1.0, (30, 30, 30)).unwrap();
+        assert!(
+            choose.width != fraction.width
+                || choose.height != fraction.height
+                || choose.image.to_rgba8().unwrap().as_slice()
+                    != fraction.image.to_rgba8().unwrap().as_slice(),
+            "binomial coefficients must not gain a fraction bar"
+        );
+    }
+
+    #[test]
+    fn bridge_preserved_structures_render_the_same_inside_authoring_fields() {
+        let mut field = math_editor::Field::new("", r"\frac{x}{2}");
+        field.select(vec![0]);
+        field.replace_formula(r"\binom{5}{2}").unwrap();
+        let (_, latex) = field.content().unwrap();
+        for (scale, ink) in [(1.0, (30, 30, 30)), (2.0, (232, 232, 232))] {
+            let authoring = render_node(&field.root, 22, scale, ink).unwrap();
+            let reopened = render(&latex, 22, scale, ink).unwrap();
+            assert_eq!(
+                authoring.image.to_rgba8().unwrap().as_slice(),
+                reopened.image.to_rgba8().unwrap().as_slice()
+            );
+        }
+    }
+
+    #[test]
+    fn primed_formulas_render_like_explicit_derivative_marks() {
+        for (shorthand, explicit) in [
+            (
+                r"u^{'}f^{'}\left(u\right)",
+                r"u^{\prime}f^{\prime}\left(u\right)",
+            ),
+            ("f^{''}(x)", r"f^{\prime\prime}(x)"),
+            ("f^{'''}(x)", r"f^{\prime\prime\prime}(x)"),
+        ] {
+            for (scale, ink) in [(1.0, (30, 30, 30)), (2.0, (232, 232, 232))] {
+                let actual = render(shorthand, 22, scale, ink).unwrap();
+                let expected = render(explicit, 22, scale, ink).unwrap();
+                assert_eq!(actual.width, expected.width, "{shorthand}");
+                assert_eq!(actual.height, expected.height, "{shorthand}");
+                assert_eq!(
+                    actual.image.to_rgba8().unwrap().as_slice(),
+                    expected.image.to_rgba8().unwrap().as_slice(),
+                    "derivative display must not add an empty base: {shorthand}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn component_notation_can_be_saved_and_rendered_without_changing_its_meaning() {

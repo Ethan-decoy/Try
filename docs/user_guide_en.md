@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 0.9.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 0.9.1 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 

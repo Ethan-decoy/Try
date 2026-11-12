@@ -11,6 +11,7 @@ pub mod learning_store;
 pub mod math_answer;
 pub mod math_editor;
 pub mod math_palette;
+mod math_structure;
 mod math_vocabulary;
 pub mod media;
 pub mod practice;

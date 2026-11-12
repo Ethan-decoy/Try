@@ -350,7 +350,7 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                     ui.invoke_key("y".into(), true, false, false);
                     assert!(ui.get_complete());
                     assert_eq!(
-                        crate::structured_math::plain(
+                        crate::structured_math::answer_input(
                             &app.structured_math
                                 .borrow()
                                 .as_ref()

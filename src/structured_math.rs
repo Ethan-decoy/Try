@@ -67,7 +67,7 @@ impl Session {
         complete(&self.controller)
     }
     pub fn source(&self) -> String {
-        plain(&self.controller.editor.latex_preview())
+        answer_input(&self.controller.editor.latex_preview())
     }
     pub fn error(&self) -> String {
         self.controller
@@ -146,9 +146,22 @@ fn theme_image(image: &slint::Image, dark: bool) -> slint::Image {
     slint::Image::from_rgba8(pixels)
 }
 
-pub fn plain(latex: &str) -> String {
+/// A reimportable answer spelling, using LaTeX whenever friendly text would
+/// lose structure. This is also used when accepting the completed editor.
+pub fn answer_input(latex: &str) -> String {
+    if latex.trim().is_empty() {
+        return String::new();
+    }
     math_editor::from_latex(latex)
-        .map(|node| node.plain())
+        // Quoted text spans retain their role when answer recognition imports
+        // this spelling; unsupported friendly forms remain original LaTeX.
+        .map(|node| {
+            if node.is_text() {
+                node.tex()
+            } else {
+                node.editor_input()
+            }
+        })
         .unwrap_or_else(|_| latex.to_owned())
 }
 
@@ -171,6 +184,61 @@ mod tests {
         fn write_text(&mut self, text: String) -> Result<(), slint_math_input::Error> {
             *self.0.borrow_mut() = text;
             Ok(())
+        }
+    }
+
+    #[test]
+    fn bridge_complete_formulas_survive_paste_save_and_submission() {
+        for latex in [
+            r"\binom{5}{2}",
+            r"\prod_{i=1}^{n}i",
+            r"\overline{x}",
+            r"\underbrace{x+y}_{n}",
+            r"\overbrace{x+y}^{n}",
+            r"\underset{n}{x}",
+            r"\overset{n}{x}",
+            r"2^{3}!",
+            r"\frac{6}{3}!",
+            r"\begin{vmatrix}a&b\\c&d\end{vmatrix}",
+            r"x\text{ unit}",
+            r"\text{unit}",
+        ] {
+            let mut session =
+                Session::with_clipboard(Seed::Typing(String::new()), TestClipboard(Rc::default()))
+                    .unwrap();
+            session.insert(latex);
+            let completed = session.complete().unwrap();
+            let source = session.source();
+            assert!(!source.trim().is_empty(), "{latex}");
+            assert!(
+                r#try::math_answer::incomplete_error(&source, true).is_none(),
+                "{source}"
+            );
+            assert!(
+                r#try::math_answer::matches(&source, "", Some(latex), &[]),
+                "{source}: {latex}"
+            );
+            let mut original = slint_math_input::Editor::new();
+            original.import_latex(latex).unwrap();
+            assert_eq!(completed, original.latex().unwrap(), "paste: {latex}");
+            let mut field = math_editor::Field::new("", "");
+            field.replace_formula(&completed).unwrap();
+            let (text, saved) = field.content().unwrap();
+            assert!(!text.trim().is_empty(), "saved: {latex}");
+            if saved.is_empty() {
+                assert_eq!(text, "unit", "literal text remains plain authoring content");
+            } else {
+                let reopened = Session::new(Seed::Latex(saved)).unwrap();
+                assert_eq!(reopened.complete().unwrap(), completed, "reopen: {latex}");
+            }
+            session.keypad("key:clear", false);
+            assert!(session.source().is_empty(), "clear: {latex}");
+            session.key("z", true, false, false);
+            assert_eq!(
+                session.complete().unwrap(),
+                completed,
+                "undo clear: {latex}"
+            );
         }
     }
 
@@ -487,6 +555,11 @@ mod tests {
         let adapter = software_window();
         let window = PracticeWindow::new().unwrap();
         let active: Rc<RefCell<Option<Session>>> = Rc::default();
+        let submissions = Rc::new(std::cell::Cell::new(0));
+        {
+            let submissions = submissions.clone();
+            window.on_submit_answer(move |_| submissions.set(submissions.get() + 1));
+        }
         let ui = window.global::<MathInputState>();
         let refresh = |window: &PracticeWindow, session: &Session| {
             window
@@ -555,6 +628,7 @@ mod tests {
                 ("sqrt(3)/2", r"\frac{\sqrt{3}}{2}"),
                 ("P^n+m", "P^{n+m}"),
                 ("log_2(x)", r"\log_{2}\left(x\right)"),
+                ("u'f'(u)", r"u^{'}f^{'}\left(u\right)"),
             ] {
                 window.set_answer_text("".into());
                 ui.set_open(false);
@@ -567,6 +641,80 @@ mod tests {
                     active.borrow().as_ref().unwrap().complete().unwrap(),
                     expected,
                     "{typed}, expanded={expanded}"
+                );
+                let answer = active.borrow().as_ref().unwrap().source();
+                assert!(
+                    r#try::math_answer::incomplete_error(&answer, true).is_none(),
+                    "{typed} must reach feedback after conversion, expanded={expanded}"
+                );
+                assert!(r#try::math_answer::matches(
+                    &answer,
+                    "",
+                    Some(expected),
+                    &[]
+                ));
+                let before = submissions.get();
+                key(&window, &adapter, Key::Return);
+                assert_eq!(submissions.get(), before + 1, "Enter: {typed}");
+            }
+            window.set_answer_text("".into());
+            ui.set_open(false);
+            *active.borrow_mut() = None;
+            ui.set_keypad_expanded(expanded);
+            window.invoke_focus_answer();
+            paint(&adapter);
+            type_text("u'a^u");
+            key(&window, &adapter, Key::RightArrow);
+            type_text("lnu");
+            let answer = active.borrow().as_ref().unwrap().source();
+            assert!(r#try::math_answer::matches(
+                &answer,
+                "",
+                Some(r"u'a^{u}\ln u"),
+                &[]
+            ));
+            assert!(!r#try::math_answer::matches(
+                &answer,
+                "",
+                Some(r"u'a^{u\ln u}"),
+                &[]
+            ));
+            let before = submissions.get();
+            key(&window, &adapter, Key::Return);
+            assert_eq!(
+                submissions.get(),
+                before + 1,
+                "Enter after leaving exponent"
+            );
+            for latex in [
+                r"\binom{5}{2}",
+                r"\prod_{i=1}^{n}i",
+                r"\overline{x}",
+                r"\underbrace{x+y}_{n}",
+                r"2^{3}!",
+                r"\begin{vmatrix}a&b\\c&d\end{vmatrix}",
+            ] {
+                let session = Session::with_clipboard(
+                    Seed::Latex(latex.into()),
+                    TestClipboard(Rc::default()),
+                )
+                .unwrap();
+                let answer = session.source();
+                assert!(!answer.trim().is_empty());
+                assert!(r#try::math_answer::incomplete_error(&answer, true).is_none());
+                assert!(r#try::math_answer::matches(&answer, "", Some(latex), &[]));
+                refresh(&window, &session);
+                *active.borrow_mut() = Some(session);
+                ui.set_open(true);
+                ui.set_keypad_expanded(expanded);
+                ui.set_focus_request(ui.get_focus_request() + 1);
+                paint(&adapter);
+                let before = submissions.get();
+                key(&window, &adapter, Key::Return);
+                assert_eq!(
+                    submissions.get(),
+                    before + 1,
+                    "Enter: {latex}, expanded={expanded}"
                 );
             }
             window.set_answer_text("".into());
@@ -619,6 +767,59 @@ mod tests {
             session.insert("q");
             assert_eq!(session.complete().unwrap(), "P^{n+m}+q");
         }
+    }
+
+    #[test]
+    fn leaving_a_script_keeps_following_words_outside_during_submission() {
+        fn exponent_of_a(node: &r#try::math_editor::Node) -> Option<String> {
+            use r#try::math_editor::Kind;
+            if node.kind == Kind::Power && node.children[0].value == "a" {
+                Some(node.children[1].plain())
+            } else {
+                node.children.iter().find_map(exponent_of_a)
+            }
+        }
+        for prefix in ["a^u", "u'a^u"] {
+            for pointer in [false, true] {
+                for suffix in ["b", "lnu"] {
+                    let mut session = Session::new(Seed::Typing(String::new())).unwrap();
+                    for ch in prefix.chars() {
+                        session.insert(&ch.to_string());
+                    }
+                    let inside = session.view(1.0, false).unwrap();
+                    if pointer {
+                        session.pointer(inside.content_width + 20.0, inside.content_height, false);
+                    } else {
+                        session.key(
+                            &char::from(slint::platform::Key::RightArrow).to_string(),
+                            false,
+                            false,
+                            false,
+                        );
+                    }
+                    assert!(session.view(1.0, false).unwrap().caret_y > inside.caret_y);
+                    for ch in suffix.chars() {
+                        session.insert(&ch.to_string());
+                    }
+                    let latex = session.complete().unwrap();
+                    let original = math_editor::from_latex(&latex).unwrap();
+                    let answer = session.source();
+                    let restored = math_editor::expression(&answer).unwrap();
+                    assert_eq!(exponent_of_a(&original).as_deref(), Some("u"));
+                    assert_eq!(
+                        exponent_of_a(&restored).as_deref(),
+                        Some("u"),
+                        "{prefix}, pointer={pointer}, {suffix}: {latex} -> {answer}"
+                    );
+                }
+            }
+        }
+        let mut inside = Session::new(Seed::Typing(String::new())).unwrap();
+        for ch in "a^ub".chars() {
+            inside.insert(&ch.to_string());
+        }
+        let answer = math_editor::expression(&inside.source()).unwrap();
+        assert_eq!(exponent_of_a(&answer).as_deref(), Some("ub"));
     }
 
     #[test]

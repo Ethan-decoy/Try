@@ -6,7 +6,7 @@ pub fn recognize(input: &str, math_hint: bool) -> Option<Node> {
     if input.is_empty() || input.chars().count() > 1000 {
         return None;
     }
-    let normalized = if input.contains('\\') {
+    let normalized = if crate::math_structure::is_latex(input) {
         input.to_owned()
     } else {
         input
@@ -15,7 +15,7 @@ pub fn recognize(input: &str, math_hint: bool) -> Option<Node> {
             .replace('³', "^3")
     };
     let input = normalized.as_str();
-    let node = if input.contains('\\') {
+    let node = if crate::math_structure::is_latex(input) {
         math_editor::from_latex(input).ok()?
     } else if math_hint
         || input
@@ -113,7 +113,7 @@ pub fn incomplete_error(input: &str, math_hint: bool) -> Option<String> {
     {
         return None;
     }
-    let parsed = if input.contains('\\') {
+    let parsed = if crate::math_structure::is_latex(input) {
         math_editor::from_latex(input)
     } else {
         notation_expression(input)
@@ -153,11 +153,10 @@ fn notation_expression(input: &str) -> Result<Node, String> {
 }
 
 fn notation(node: &Node) -> String {
-    // Reparse friendly notation so inline LaTeX slashes and stacked fractions
-    // share the same tree. Parentheses inside a product/sum remain significant.
-    let friendly = node.editor_input().replace('−', "-");
-    let node = math_editor::expression(&friendly).unwrap_or_else(|_| node.clone());
-    normalize(node, true).tex()
+    let tex = normalize(node.clone(), true).tex();
+    crate::math_structure::key(&tex)
+        .map(|key| key.to_string())
+        .unwrap_or(tex)
 }
 
 fn normalize(mut node: Node, grouped_slot: bool) -> Node {
@@ -165,6 +164,12 @@ fn normalize(mut node: Node, grouped_slot: bool) -> Node {
     // Normalize that single glyph without rewriting other quoted content.
     if node.kind == Kind::Text && matches!(node.value.as_str(), "⋅" | "·") {
         return Node::leaf(Kind::Symbol, "cdot");
+    }
+    if node.kind == Kind::Symbol && node.value == "times" {
+        node.value = "cdot".into();
+    }
+    if node.kind == Kind::Literal && node.value == "−" {
+        node.value = "-".into();
     }
     if grouped_slot && matches!(&node.kind, Kind::Group(left, right) if left == "(" && right == ")")
     {
@@ -181,6 +186,17 @@ fn normalize(mut node: Node, grouped_slot: bool) -> Node {
         let mut children = vec![];
         let mut source = node.children.into_iter().peekable();
         while let Some(mut child) = source.next() {
+            if child.kind == Kind::Literal
+                && child.value == "°"
+                && let Some(base) = children.pop()
+            {
+                children.push(Node {
+                    kind: Kind::Power,
+                    value: String::new(),
+                    children: vec![base, Node::leaf(Kind::Symbol, "circ")],
+                });
+                continue;
+            }
             // sin²(x) and (sin(x))² are the same function notation. Keep
             // algebraic simplification and inverse-function inference out.
             if child.kind == Kind::Power
@@ -213,7 +229,7 @@ fn normalize(mut node: Node, grouped_slot: bool) -> Node {
     if is_row && node.children.len() == 1 {
         return normalize(node.children.remove(0), grouped_slot);
     }
-    node
+    math_editor::inline_division(node)
 }
 
 fn is_parentheses(node: &Node) -> bool {
@@ -228,6 +244,30 @@ fn is_function_name(node: &Node) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bridge_preserves_distinct_formula_meanings() {
+        for (expected, wrong) in [
+            (r"\binom{5}{2}", r"\frac{5}{2}"),
+            (r"\frac{6}{3}!", r"\frac{6}{3!}"),
+            (r"2^{3}!", r"2^{3!}"),
+            (r"\prod_{i=1}^{n}i", r"\prod_{i=1}^{m}i"),
+            (r"\prod_{i=1}^{n}i", r"\overline{x}"),
+            (
+                r"\begin{vmatrix}a&b\\c&d\end{vmatrix}",
+                r"\begin{bmatrix}a&b\\c&d\end{bmatrix}",
+            ),
+        ] {
+            assert!(
+                matches(expected, "", Some(expected), &[]),
+                "self: {expected}"
+            );
+            assert!(
+                !matches(wrong, "", Some(expected), &[]),
+                "{expected} != {wrong}"
+            );
+        }
+    }
 
     #[test]
     fn structural_editing_starts_without_a_keypad_and_preserves_plain_answers() {
@@ -273,7 +313,16 @@ mod tests {
 
     #[test]
     fn incomplete_math_is_retained_without_blocking_plain_text_answers() {
-        for input in ["sqrt(", "1/", "x^", r"\frac{1}{", r"\frac{}{2}"] {
+        for input in [
+            "sqrt(",
+            "1/",
+            "x^",
+            r"\frac{1}{",
+            r"\frac{}{2}",
+            r"\prod_{i=1}^{}i",
+            r"\overline{}",
+            r"\binom{5}{}",
+        ] {
             assert!(incomplete_error(input, true).is_some(), "{input}");
         }
         for input in ["1/2", "sqrt(3)/2", "Paris", "北京"] {
@@ -341,6 +390,60 @@ mod tests {
                 );
             }
             assert!(!matches("p^m*q^n", "", Some(latex), &[]));
+        }
+    }
+
+    #[test]
+    fn primed_structured_answers_can_submit_and_match_derivative_notation() {
+        let forms = [
+            r"u^{'}f^{'}\left(u\right)",
+            r"u^{\prime}f^{\prime}\left(u\right)",
+            "u'f'(u)",
+        ];
+        for latex in forms {
+            // The practice card writes the completed SMI expression back as
+            // plain notation before answer comparison and incomplete checks.
+            let plain = math_editor::from_latex(latex).unwrap().plain();
+            assert!(
+                incomplete_error(&plain, true).is_none(),
+                "complete answer must reach feedback: {latex} -> {plain}"
+            );
+            for expected in forms {
+                assert!(
+                    matches(&plain, "", Some(expected), &[]),
+                    "{plain}: {expected}"
+                );
+                assert!(
+                    matches(latex, "", Some(expected), &[]),
+                    "{latex}: {expected}"
+                );
+            }
+            assert!(!matches("u*f'(u)", "", Some(latex), &[]));
+            assert!(!matches("u'*f(u)", "", Some(latex), &[]));
+            assert!(!matches("u'*f''(u)", "", Some(latex), &[]));
+        }
+    }
+
+    #[test]
+    fn outer_factors_are_not_matched_as_part_of_a_script_scope() {
+        for (correct, wrong) in [
+            (r"a^{u}\ln u", r"a^{ulnu}"),
+            (r"a^{u}\ln u", r"a^{u\ln u}"),
+            (r"u'a^{u}\ln u", r"u'a^{u\ln u}"),
+            (r"a^{u}b", r"a^{ub}"),
+            (r"x_{i}y", r"x_{iy}"),
+        ] {
+            let supplied = math_editor::from_latex(correct).unwrap().plain();
+            assert!(incomplete_error(&supplied, true).is_none(), "{supplied}");
+            assert!(matches(&supplied, "", Some(correct), &[]), "{correct}");
+            assert!(
+                !matches(&supplied, "", Some(wrong), &[]),
+                "{correct} != {wrong}"
+            );
+            assert!(
+                !matches(wrong, "", Some(correct), &[]),
+                "{wrong} != {correct}"
+            );
         }
     }
 

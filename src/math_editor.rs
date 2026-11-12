@@ -189,10 +189,25 @@ impl Node {
     }
 
     pub fn plain(&self) -> String {
-        self.written(false)
+        self.lossless_written(false)
     }
     pub fn editor_input(&self) -> String {
-        self.written(true)
+        self.lossless_written(true)
+    }
+    fn lossless_written(&self, quoted_text: bool) -> String {
+        let written = self.written(quoted_text);
+        if self.accepts_prose() || !self.complete() || self.kind == Kind::Raw {
+            return written;
+        }
+        // Friendly text is useful only when reimporting it retains the formula.
+        // Otherwise keep LaTeX, including styles, bounds and postfix scope.
+        if expression(&written)
+            .is_ok_and(|node| crate::math_structure::same(&self.tex(), &node.tex()))
+        {
+            written
+        } else {
+            self.tex()
+        }
     }
     fn written(&self, quoted_text: bool) -> String {
         let c = self
@@ -215,6 +230,24 @@ impl Node {
                 let mut index = 0;
                 while index < self.children.len() {
                     let op = &self.children[index];
+                    // Keep neighboring math words separate: a^u followed by
+                    // ln u must not round-trip as a^(ulnu). Text spans retain
+                    // their authored spacing and concatenation.
+                    if index > 0
+                        && !op.is_text()
+                        && !self.children[index - 1].is_text()
+                        && result
+                            .chars()
+                            .next_back()
+                            .zip(c[index].chars().next())
+                            .is_some_and(|(left, right)| {
+                                left.is_ascii_alphabetic() && right.is_ascii_alphabetic()
+                                    || (left.is_ascii_digit() || left == '.')
+                                        && (right.is_ascii_digit() || right == '.')
+                            })
+                    {
+                        result.push(' ');
+                    }
                     if matches!(op.kind, Kind::BigOperator | Kind::Limit)
                         && let Some(body) = self.children.get(index + 1)
                         && !(body.kind == Kind::Literal
@@ -304,12 +337,14 @@ impl Node {
                     )
                 }
             }
-            Kind::Raw => "".into(),
             _ => self.value.clone(),
         }
     }
 
     pub fn complete(&self) -> bool {
+        if self.kind == Kind::Raw {
+            return crate::math_structure::complete(&self.value);
+        }
         !(self.kind == Kind::Literal && self.value.is_empty())
             && self.children.iter().all(Self::complete)
     }
@@ -382,6 +417,7 @@ pub fn from_latex(tex: &str) -> Result<Node, String> {
     fn convert(n: MathNode) -> Option<Node> {
         let branch = Node::branch;
         Some(match n {
+            MathNode::Atom('′', _) => Node::leaf(Kind::Symbol, "prime"),
             MathNode::Atom(c, _) => Node::leaf(Kind::Literal, c.to_string()),
             MathNode::Symbol(s) => Node::leaf(Kind::Symbol, s),
             MathNode::Operator(s, _) => Node::leaf(Kind::Operator, s),
@@ -446,14 +482,25 @@ pub fn from_latex(tex: &str) -> Result<Node, String> {
                     AccentKind::Vec => "vec",
                     AccentKind::Dot => "dot",
                     AccentKind::Ddot => "ddot",
-                    AccentKind::Bar => "bar",
-                    AccentKind::Hat => "hat",
+                    AccentKind::Bar | AccentKind::Overline => "bar",
+                    AccentKind::Hat | AccentKind::WideHat => "hat",
                     _ => return None,
                 }
                 .into();
                 node
             }
-            MathNode::Superscript(a, b) => branch(Kind::Power, vec![convert(*a)?, convert(*b)?]),
+            MathNode::Superscript(a, b) => {
+                let base = convert(*a)?;
+                let exponent = convert(*b)?;
+                // A leading apostrophe is parsed as a prime on an empty row,
+                // including inside SMI's u^{'} export. That row is an implicit
+                // anchor for the mark, rather than an unfilled formula slot.
+                if base == Node::blank() && is_primes(&exponent) {
+                    exponent
+                } else {
+                    branch(Kind::Power, vec![base, exponent])
+                }
+            }
             MathNode::Subscript(a, b) => branch(Kind::Subscript, vec![convert(*a)?, convert(*b)?]),
             MathNode::SubSup(a, b, c) => {
                 branch(Kind::SubSup, vec![convert(*a)?, convert(*b)?, convert(*c)?])
@@ -537,9 +584,20 @@ pub fn from_latex(tex: &str) -> Result<Node, String> {
             _ => return None,
         })
     }
-    let compatible = crate::formula::compatible_latex(tex);
+    let canonical = crate::math_structure::canonical(tex);
+    let compatible = crate::formula::compatible_latex(canonical.as_deref().unwrap_or(tex));
     let ast = latex_rust::parse(&compatible).map_err(|e| e.to_string())?;
-    Ok(convert(ast).unwrap_or_else(|| Node::leaf(Kind::Raw, compatible.as_ref())))
+    let node = convert(ast).unwrap_or_else(|| Node::leaf(Kind::Raw, compatible.as_ref()));
+    // Some display-parser nodes erase distinctions (notably binomial versus
+    // fraction). Keep a complete original whenever conversion is not lossless.
+    if node.kind != Kind::Raw
+        && node.complete()
+        && canonical.as_ref().is_some_and(|tex| !tex.trim().is_empty())
+        && !crate::math_structure::same(&compatible, &node.tex())
+    {
+        return Ok(Node::leaf(Kind::Raw, compatible.as_ref()));
+    }
+    Ok(node)
 }
 
 /// UTF-8 offsets, matching Slint's text input selection. A range and a node
@@ -608,9 +666,7 @@ impl Field {
         if *self.selected() == Node::blank() {
             return String::new();
         }
-        if self.selected().kind == Kind::Raw {
-            self.original.0.clone()
-        } else if self.selected().accepts_prose() {
+        if self.selected().accepts_prose() {
             self.selected().plain()
         } else {
             self.selected().editor_input()
@@ -675,7 +731,7 @@ impl Field {
         let parsed: Result<Node, String> = (|| {
             let node = if self.selected().accepts_prose() {
                 automatic_content(input)?
-            } else if input.contains('\\') {
+            } else if crate::math_structure::is_latex(input) {
                 let node = from_latex(input)?;
                 if node.kind == Kind::Raw {
                     return Err(tr!("这个公式暂不支持结构编辑。").into());
@@ -1486,9 +1542,54 @@ pub(crate) fn looks_mathematical(s: &str) -> bool {
 enum Token {
     Word(String),
     Quoted(String),
+    Atom(Box<Node>),
     Sign(char),
     Arrow,
     End,
+}
+
+/// Reuse the expression grammar for inline division, with already parsed
+/// structures as opaque operands. Serializing operands to text here would
+/// move factorials into scripts or denominators and erase matrix styles.
+pub(crate) fn inline_division(node: Node) -> Node {
+    if node.kind != Kind::Row
+        || !node.children.iter().any(|child| {
+            child.kind == Kind::Literal && child.value == "/"
+                || child.kind == Kind::Symbol && child.value == "div"
+        })
+    {
+        return node;
+    }
+    let mut tokens = node
+        .children
+        .iter()
+        .map(|child| {
+            if child.kind == Kind::Literal
+                && child.value.len() == 1
+                && "+-*/=<>!".contains(&child.value)
+            {
+                Token::Sign(child.value.chars().next().unwrap())
+            } else if child.kind == Kind::Symbol && child.value == "div" {
+                Token::Sign('/')
+            } else if child.kind == Kind::Symbol && matches!(child.value.as_str(), "times" | "cdot")
+            {
+                Token::Sign('*')
+            } else {
+                Token::Atom(Box::new(child.clone()))
+            }
+        })
+        .collect::<Vec<_>>();
+    tokens.push(Token::End);
+    let mut parser = Parser {
+        tokens,
+        pos: 0,
+        depth: 0,
+        limit_condition: false,
+    };
+    match parser.expr(0) {
+        Ok(parsed) if parser.peek() == &Token::End => parsed,
+        _ => node,
+    }
 }
 
 pub fn expression(input: &str) -> Result<Node, String> {
@@ -1665,7 +1766,7 @@ impl Parser {
                         false,
                     )
                 }
-                Token::Word(_) | Token::Quoted(_) | Token::Sign('(' | '√') => {
+                Token::Word(_) | Token::Quoted(_) | Token::Atom(_) | Token::Sign('(' | '√') => {
                     (3, Token::Sign(' '), true)
                 }
                 _ => break,
@@ -1719,6 +1820,7 @@ impl Parser {
     }
     fn atom(&mut self) -> Result<Node, String> {
         match self.take() {
+            Token::Atom(node) => Ok(*node),
             Token::Word(s)
                 if self.peek() == &Token::Sign('(') && vocabulary::function(&s).is_some() =>
             {
@@ -1940,6 +2042,101 @@ fn ungroup(node: Node) -> Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bridge_saves_complete_formulas_without_dropping_or_rewriting_them() {
+        for latex in [
+            r"\binom{5}{2}",
+            r"\prod_{i=1}^{n}i",
+            r"\overline{x}",
+            r"\underbrace{x+y}_{n}",
+            r"\overbrace{x+y}^{n}",
+            r"\underset{n}{x}",
+            r"\overset{n}{x}",
+            r"2^{3}!",
+            r"\frac{6}{3}!",
+            r"\frac{\binom{n}{k}}{n!}",
+            r"\begin{vmatrix}a&b\\c&d\end{vmatrix}",
+        ] {
+            let mut field = Field::new("", "");
+            field.replace_formula(latex).unwrap();
+            let (text, saved) = field.content().unwrap();
+            assert!(!text.trim().is_empty(), "blank answer: {latex}");
+            let mut before = slint_math_input::Editor::new();
+            before.import_latex(latex).unwrap();
+            let mut after = slint_math_input::Editor::new();
+            after.import_latex(&saved).unwrap();
+            assert_eq!(after.latex().unwrap(), before.latex().unwrap(), "{latex}");
+        }
+    }
+
+    #[test]
+    fn serialized_math_keeps_word_boundaries_and_script_scope() {
+        for (latex, plain) in [
+            (r"a^{u}\ln u", "a^u ln u"),
+            (r"u'a^{u}\ln u", "u^′a^u ln u"),
+            (r"a^{u}b", "a^u b"),
+            (r"a^{u}b^{v}", "a^u b^v"),
+            (r"a^{2}3", "a^2 3"),
+            (r"x_{i}y", "x_i y"),
+            (r"x_{1}2", "x_1 2"),
+            (r"x_{i}^{j}y", "x_i^j y"),
+            (r"\ln u", "ln u"),
+            (r"\sin x", "sin x"),
+        ] {
+            let node = from_latex(latex).unwrap();
+            assert_eq!(node.plain(), plain, "{latex}");
+            let restored = expression(&node.editor_input()).unwrap();
+            assert_eq!(restored.tex(), node.tex(), "{latex}");
+        }
+        for (latex, text) in [
+            (r"\text{un}\text{do}", "undo"),
+            (r"\text{中文}x", "中文x"),
+            (r"x\text{中文}", "x中文"),
+        ] {
+            assert_eq!(from_latex(latex).unwrap().plain(), text);
+        }
+    }
+
+    #[test]
+    fn latex_prime_shorthand_round_trips_without_empty_bases() {
+        for (shorthand, explicit) in [
+            ("u^{'}", r"u^{\prime}"),
+            ("f^{''}(x)", r"f^{\prime\prime}(x)"),
+            ("f^{'''}(x)", r"f^{\prime\prime\prime}(x)"),
+            (
+                r"u^{'}f^{'}\left(u\right)",
+                r"u^{\prime}f^{\prime}\left(u\right)",
+            ),
+        ] {
+            let node = from_latex(shorthand).unwrap();
+            assert!(node.complete(), "complete derivative: {shorthand}");
+            assert_eq!(
+                node.tex(),
+                from_latex(explicit).unwrap().tex(),
+                "{shorthand}"
+            );
+            assert_eq!(
+                from_latex(&node.tex()).unwrap().tex(),
+                node.tex(),
+                "{shorthand}"
+            );
+            let plain = expression(&node.plain()).unwrap();
+            assert!(plain.complete(), "round trip through {}", node.plain());
+            let mut field = Field::new("", "");
+            field.replace_formula(shorthand).unwrap();
+            assert!(field.content().is_ok(), "authoring: {shorthand}");
+        }
+
+        // A primed expression used as an exponent still has a real base.
+        assert_eq!(
+            from_latex("f^{n'}(x)").unwrap(),
+            from_latex(r"f^{n^{\prime}}(x)").unwrap()
+        );
+        for unfinished in [r"u^{}", r"{}^2", r"\frac{1}{}", r"\sqrt{}"] {
+            assert!(!from_latex(unfinished).unwrap().complete(), "{unfinished}");
+        }
+    }
 
     #[test]
     fn accepted_external_formula_preserves_context_and_undo() {

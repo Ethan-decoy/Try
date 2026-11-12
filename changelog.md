@@ -4,6 +4,14 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.9.1]
+
+### Fixed
+
+- Preserve apostrophe derivative marks such as `u^{'}f^{'}\left(u\right)` when converting structured formulas for display, authoring and answer submission; avoid phantom empty bases while retaining checks for genuinely unfinished formulas.
+- Preserve word boundaries when converting formulas back to answer text, so terms typed outside an exponent or subscript stay outside it and are not matched as part of the script.
+- Preserve binomial coefficients, products, annotations, matrix styles and postfix factorial scope through formula editing, saving and answer comparison; prevent supported formulas from becoming empty answers or being matched as a different structure.
+
 ## [0.9.0] - 2026-11-10
 
 ### Added
@@ -195,7 +203,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/Ethan-decoy/Try/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/Ethan-decoy/Try/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/Ethan-decoy/Try/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/Ethan-decoy/Try/compare/v0.8.0...v0.8.1
