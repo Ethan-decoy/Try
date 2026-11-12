@@ -4,6 +4,16 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.9.2]
+
+### Changed
+
+- Centralize formula syntax and rendering contracts and separate content-editor internals while preserving knowledge-pack, draft and learning-record compatibility.
+
+### Fixed
+
+- Fix Chinese annotations appearing as missing-glyph boxes in formulas with spacing or preserved structures, including binomial coefficients, nested fields and display-parser decorations; keep native text inside the returned display bounds.
+
 ## [0.9.1] - 2026-11-12
 
 ### Fixed

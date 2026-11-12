@@ -469,7 +469,7 @@ mod tests {
             if editor.insert_catalog(&entry.id).is_ok()
                 && let Ok(latex) = editor.latex()
             {
-                r#try::formula::validate(&latex)
+                r#try::math_latex::validate(&latex)
                     .unwrap_or_else(|error| panic!("{}: {latex}: {error}", entry.id));
                 checked += 1;
             }

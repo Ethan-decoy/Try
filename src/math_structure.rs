@@ -12,7 +12,7 @@ pub(crate) fn complete(input: &str) -> bool {
 }
 
 pub(crate) fn canonical(input: &str) -> Option<String> {
-    if input.chars().count() > 1000 {
+    if input.chars().count() > crate::math_latex::MAX_FORMULA_CHARS {
         return None;
     }
     let mut editor = Editor::new();
@@ -31,19 +31,24 @@ pub(crate) fn same(left: &str, right: &str) -> bool {
 /// cursor/layout state. Preserve unknown formula properties rather than erase
 /// them: a newly supported structure must not become equal to an empty node.
 pub(crate) fn key(latex: &str) -> Option<Value> {
-    if latex.chars().count() > 1000 {
+    if latex.chars().count() > crate::math_latex::MAX_FORMULA_CHARS {
         return None;
     }
     let mut editor = Editor::new();
     editor.import_latex(latex).ok()?;
     editor.latex().ok()?;
+    let draft = editor_draft(&editor)?;
+    let mut root = draft.get("state")?.get("root")?.clone();
+    normalize(&mut root);
+    Some(root)
+}
+
+pub(crate) fn editor_draft(editor: &Editor) -> Option<Value> {
     let draft: Value = serde_json::from_str(&editor.draft().ok()?).ok()?;
     if draft.get("version")?.as_u64()? != 1 {
         return None;
     }
-    let mut root = draft.get("state")?.get("root")?.clone();
-    normalize(&mut root);
-    Some(root)
+    Some(draft)
 }
 
 fn normalize(value: &mut Value) {

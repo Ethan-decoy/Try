@@ -1,96 +1,18 @@
+//! Formula display. Every backend returns the same logical geometry, native
+//! text overlays and hit regions. Rendering never changes serialized content.
 use crate::math_editor::{self, Node};
-use crate::tr;
-use latex_rust::{Color, Dim, MathFont, SvgOptions};
-use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
-use std::borrow::Cow;
+use slint::Image;
 
-const MAX_FORMULA_CHARS: usize = 1000;
-const MAX_BITMAP_PIXELS: u64 = 1024 * 512;
-type PaintBounds = std::collections::HashMap<(u8, u8, u8), (f32, f32, f32, f32)>;
+// Preserve the existing entry points while keeping parsing independent of display.
+pub use crate::math_latex::{compatible_latex, validate};
 
-/// Preserve notation shared by SMI and the display parser without changing
-/// command prefixes, escaped backslashes or literal text inside a formula.
-pub fn compatible_latex(tex: &str) -> Cow<'_, str> {
-    const ALIASES: [(&str, &str); 5] = [
-        (r"\degree", "°"),
-        (r"\supsetneq", "⊋"),
-        (r"\uplus", "⊎"),
-        (r"\coloneqq", "≔"),
-        (r"\hom", r"\operatorname{hom}"),
-    ];
-    if !ALIASES.iter().any(|(name, _)| tex.contains(*name)) {
-        return Cow::Borrowed(tex);
-    }
-    let mut output = String::with_capacity(tex.len());
-    let mut position = 0;
-    let mut changed = false;
-    while position < tex.len() {
-        let start = position;
-        let ch = tex[position..].chars().next().unwrap();
-        position += ch.len_utf8();
-        if ch != '\\' {
-            output.push(ch);
-            continue;
-        }
-        while position < tex.len() && tex.as_bytes()[position].is_ascii_alphabetic() {
-            position += 1;
-        }
-        let command = &tex[start..position];
-        if position == start + 1 {
-            if let Some(ch) = tex[position..].chars().next() {
-                position += ch.len_utf8();
-            }
-            output.push_str(&tex[start..position]);
-        } else if let Some((_, replacement)) = ALIASES.iter().find(|(name, _)| *name == command) {
-            output.push_str(replacement);
-            changed = true;
-        } else {
-            if matches!(
-                command,
-                r"\text"
-                    | r"\textrm"
-                    | r"\textbf"
-                    | r"\textit"
-                    | r"\textsf"
-                    | r"\texttt"
-                    | r"\mbox"
-                    | r"\operatorname"
-            ) {
-                let body = position + tex[position..].len() - tex[position..].trim_start().len();
-                if tex[body..].starts_with('{') {
-                    position = literal_group_end(tex, body);
-                }
-            }
-            output.push_str(&tex[start..position]);
-        }
-    }
-    if changed {
-        Cow::Owned(output)
-    } else {
-        Cow::Borrowed(tex)
-    }
-}
+mod output;
+mod structured;
+mod svg;
 
-fn literal_group_end(tex: &str, start: usize) -> usize {
-    let mut depth = 0;
-    let mut escaped = false;
-    for (offset, ch) in tex[start..].char_indices() {
-        if escaped {
-            escaped = false;
-        } else if ch == '\\' {
-            escaped = true;
-        } else if ch == '{' {
-            depth += 1;
-        } else if ch == '}' {
-            depth -= 1;
-            if depth == 0 {
-                return start + offset + 1;
-            }
-        }
-    }
-    tex.len()
-}
-
+/// Complete display projection. All geometry is in logical pixels; `image`
+/// contains premultiplied physical pixels at the requested (bounded) scale.
+/// Native text and hit regions lie inside `width`/`height` and share its origin.
 pub struct RenderedFormula {
     pub image: Image,
     pub width: f32,
@@ -118,17 +40,9 @@ pub struct HitRegion {
     pub height: f32,
 }
 
-pub fn validate(tex: &str) -> Result<(), String> {
-    if tex.trim().is_empty() || tex.chars().count() > MAX_FORMULA_CHARS {
-        return Err(tr!("公式须为 1 至 1000 个字符。").into());
-    }
-    latex_rust::parse(&compatible_latex(tex))
-        .map(|_| ())
-        .map_err(|error| tr!("公式暂时无法识别：{error}", error = error))
-}
-
-/// Typeset only the formula being shown. The window owns the returned pixels;
-/// no font instance, SVG, worker, or accumulating cache survives this call.
+/// Typeset only the formula being shown. The caller owns the returned pixels;
+/// no font instance, SVG, worker or accumulating cache survives this call.
+/// Valid syntax can still return a display error; the UI then uses its label.
 pub fn render(
     tex: &str,
     font_size_pt: u16,
@@ -142,24 +56,13 @@ pub fn render(
     if node.kind != math_editor::Kind::Raw {
         return render_node(&node, font_size_pt, scale_factor, ink);
     }
-    // The legacy display AST may collapse a binomial into a fraction. Render
-    // preserved formulas with the same structural engine used for editing.
+    // Retain structures the content tree cannot represent faithfully (binomials,
+    // for example). Only use the display parser when SMI cannot import them.
     let mut editor = slint_math_input::Editor::new();
     if editor.import_latex(tex).is_ok() {
-        return render_structured(editor, font_size_pt, scale_factor, ink);
+        return structured::render(editor, font_size_pt, scale_factor, ink);
     }
-    let font = MathFont::stix_two_math().map_err(|error| error.to_string())?;
-    let svg = latex_rust::latex_to_svg(
-        tex,
-        &font,
-        &SvgOptions {
-            font_size_pt: Dim::from_i64(font_size_pt.into()),
-            color: Color::rgb(ink.0, ink.1, ink.2),
-            display: true,
-        },
-    )
-    .map_err(|error| error.to_string())?;
-    raster_svg(&svg, scale_factor)
+    svg::preserved(tex, font_size_pt, scale_factor, ink)
 }
 
 pub fn render_node(
@@ -169,198 +72,184 @@ pub fn render_node(
     ink: (u8, u8, u8),
 ) -> Result<RenderedFormula, String> {
     node.validate()?;
-    fn has_preserved_structure(node: &Node) -> bool {
-        node.kind == math_editor::Kind::Raw || node.children.iter().any(has_preserved_structure)
+    fn preserved(node: &Node) -> bool {
+        node.kind == math_editor::Kind::Raw || node.children.iter().any(preserved)
     }
-    if has_preserved_structure(node) {
+    if preserved(node) {
         return render(&node.tex(), font_size_pt, scale_factor, ink);
     }
-    let (marked, leaves) = node.marked_tex();
-    let font = MathFont::stix_two_math().map_err(|e| e.to_string())?;
-    let mut svg = latex_rust::latex_to_svg(
-        &compatible_latex(&marked),
-        &font,
-        &SvgOptions {
-            font_size_pt: Dim::from_i64(font_size_pt.into()),
-            color: Color::rgb(ink.0, ink.1, ink.2),
-            display: true,
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    let tree = resvg::usvg::Tree::from_data(svg.as_bytes(), &resvg::usvg::Options::default())
-        .map_err(|e| e.to_string())?;
-    let mut bounds = PaintBounds::new();
-    fn collect(group: &resvg::usvg::Group, bounds: &mut PaintBounds) {
-        for node in group.children() {
-            match node {
-                resvg::usvg::Node::Group(group) => collect(group, bounds),
-                resvg::usvg::Node::Path(path) => {
-                    if let Some(fill) = path.fill()
-                        && let resvg::usvg::Paint::Color(c) = fill.paint()
-                    {
-                        let rect = path.abs_bounding_box();
-                        let key = (c.red, c.green, c.blue);
-                        let new = (rect.left(), rect.top(), rect.right(), rect.bottom());
-                        bounds
-                            .entry(key)
-                            .and_modify(|old| {
-                                old.0 = old.0.min(new.0);
-                                old.1 = old.1.min(new.1);
-                                old.2 = old.2.max(new.2);
-                                old.3 = old.3.max(new.3);
-                            })
-                            .or_insert(new);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    collect(tree.root(), &mut bounds);
-    let mut texts = vec![];
-    let mut regions = vec![];
-    let ink_hex = Color::rgb(ink.0, ink.1, ink.2).css_hex();
-    for leaf in leaves {
-        let hex = Color::rgb(leaf.paint.0, leaf.paint.1, leaf.paint.2).css_hex();
-        if let Some((left, top, right, bottom)) = bounds.get(&leaf.paint).copied() {
-            regions.push(HitRegion {
-                path: leaf.path,
-                x: left,
-                y: top,
-                width: (right - left).max(3.0),
-                height: (bottom - top).max(8.0),
-            });
-            if let Some(text) = &leaf.text {
-                // M's ink height is 0.7 em; native text keeps the same baseline
-                // and scales with the surrounding fraction/script layout.
-                let font_size = (bottom - top) / 0.7;
-                texts.push(NativeText {
-                    text: text.clone(),
-                    x: left,
-                    y: top - font_size * 0.15,
-                    width: (right - left).max(font_size),
-                    height: font_size * 1.2,
-                    font_size,
-                });
-            }
-        }
-        svg = svg.replace(
-            &hex,
-            if leaf.text.is_some() {
-                "none"
-            } else {
-                &ink_hex
-            },
-        );
-    }
-    let mut rendered = raster_svg(&svg, scale_factor)?;
-    rendered.texts = texts;
-    rendered.regions = regions;
-    Ok(rendered)
-}
-
-fn render_structured(
-    mut editor: slint_math_input::Editor,
-    font_size_pt: u16,
-    scale_factor: f32,
-    ink: (u8, u8, u8),
-) -> Result<RenderedFormula, String> {
-    let scale = if scale_factor.is_finite() {
-        scale_factor.clamp(1.0, 3.0)
-    } else {
-        1.0
-    };
-    editor.font_size = f32::from(font_size_pt) * 96.0 / 72.0;
-    let layout = editor.layout();
-    if (layout.width * scale).ceil() as u64 * (layout.height * scale).ceil() as u64
-        > MAX_BITMAP_PIXELS
-    {
-        return Err(tr!("这条公式的显示范围过大，请拆成更短的题目。").into());
-    }
-    let rendered = editor.render(scale).map_err(|error| error.to_string())?;
-    let (width, height) = (rendered.pixel_width, rendered.pixel_height);
-    let (mut left, mut top, mut right, mut bottom) = (width, height, 0, 0);
-    for (index, pixel) in rendered.pixels.chunks_exact(4).enumerate() {
-        if pixel[3] != 0 {
-            let (x, y) = (index as u32 % width, index as u32 / width);
-            left = left.min(x);
-            top = top.min(y);
-            right = right.max(x + 1);
-            bottom = bottom.max(y + 1);
-        }
-    }
-    if left >= right || top >= bottom {
-        return Err(tr!("无法建立公式图片。").into());
-    }
-    left = left.saturating_sub(1);
-    top = top.saturating_sub(1);
-    right = (right + 1).min(width);
-    bottom = (bottom + 1).min(height);
-    let mut pixels = SharedPixelBuffer::<Rgba8Pixel>::new(right - left, bottom - top);
-    let bytes = pixels.make_mut_bytes();
-    for (row, y) in (top..bottom).enumerate() {
-        for (column, x) in (left..right).enumerate() {
-            let alpha = rendered.pixels[((y * width + x) * 4 + 3) as usize];
-            let offset = (row * (right - left) as usize + column) * 4;
-            bytes[offset..offset + 4].copy_from_slice(&[
-                (u16::from(ink.0) * u16::from(alpha) / 255) as u8,
-                (u16::from(ink.1) * u16::from(alpha) / 255) as u8,
-                (u16::from(ink.2) * u16::from(alpha) / 255) as u8,
-                alpha,
-            ]);
-        }
-    }
-    let (width, height) = ((right - left) as f32 / scale, (bottom - top) as f32 / scale);
-    Ok(RenderedFormula {
-        image: Image::from_rgba8_premultiplied(pixels),
-        width,
-        height,
-        texts: vec![],
-        regions: vec![HitRegion {
-            path: vec![],
-            x: 0.0,
-            y: 0.0,
-            width,
-            height,
-        }],
-    })
-}
-
-fn raster_svg(svg: &str, scale_factor: f32) -> Result<RenderedFormula, String> {
-    let tree = resvg::usvg::Tree::from_data(svg.as_bytes(), &resvg::usvg::Options::default())
-        .map_err(|error| error.to_string())?;
-    let size = tree.size();
-    let scale = if scale_factor.is_finite() {
-        scale_factor.clamp(1.0, 3.0)
-    } else {
-        1.0
-    };
-    let width = (size.width() * scale).ceil() as u32;
-    let height = (size.height() * scale).ceil() as u32;
-    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > MAX_BITMAP_PIXELS {
-        return Err(tr!("这条公式的显示范围过大，请拆成更短的题目。").into());
-    }
-    let mut pixels = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
-    let mut pixmap =
-        resvg::tiny_skia::PixmapMut::from_bytes(pixels.make_mut_bytes(), width, height)
-            .ok_or(tr!("无法建立公式图片。"))?;
-    resvg::render(
-        &tree,
-        resvg::tiny_skia::Transform::from_scale(scale, scale),
-        &mut pixmap,
-    );
-    Ok(RenderedFormula {
-        image: Image::from_rgba8_premultiplied(pixels),
-        width: size.width(),
-        height: size.height(),
-        texts: vec![],
-        regions: vec![],
-    })
+    svg::node(node, font_size_pt, scale_factor, ink)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn boxed_native_text_keeps_its_line_box_inside_the_decoration() {
+        for scale in [1.0, 1.5, 2.0] {
+            let rendered = render(r"\boxed{\text{（中文说明）}}", 18, scale, (30, 30, 30)).unwrap();
+            let pixels = rendered.image.to_rgba8().unwrap();
+            let rows: Vec<_> = pixels
+                .as_slice()
+                .chunks_exact(pixels.width() as usize)
+                .enumerate()
+                .filter(|(_, row)| row.iter().any(|pixel| pixel.a > 0))
+                .map(|(index, _)| index)
+                .collect();
+            let top = *rows.first().unwrap() as f32 / scale;
+            let bottom = (*rows.last().unwrap() + 1) as f32 / scale;
+            let text = &rendered.texts[0];
+            assert!(text.y >= top, "native line starts above the box: {text:?}");
+            assert!(
+                text.y + text.height <= bottom,
+                "native line extends below the box: {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserved_text_keeps_existing_font_colors_and_phantom_visibility() {
+        let colored = render(r"\color{red}{\text{label}}", 18, 1.0, (30, 30, 30)).unwrap();
+        assert!(
+            colored.texts.is_empty(),
+            "supported styled text stays in its original AST"
+        );
+        let pixels = colored.image.to_rgba8().unwrap();
+        assert!(pixels.as_slice().iter().any(|p| p.r > p.g && p.a > 0));
+
+        let phantom = render(r"\phantom{\text{中文}}", 18, 1.0, (30, 30, 30)).unwrap();
+        assert!(
+            phantom.texts.is_empty(),
+            "a hidden placeholder must not become visible text"
+        );
+        assert!(
+            phantom
+                .image
+                .to_rgba8()
+                .unwrap()
+                .as_slice()
+                .iter()
+                .all(|p| p.a == 0)
+        );
+    }
+
+    #[test]
+    fn rendering_paths_share_native_text_bounds_and_hit_regions() {
+        for tex in [
+            r"x\text{（中文说明）}",
+            r"x\quad\text{（中文说明）}",
+            r"\binom{4}{2}\text{（中文说明）}",
+            r"\boxed{\text{（中文说明）}}",
+            r"\color{red}{\text{（中文说明）}}",
+        ] {
+            let node = math_editor::from_latex(tex).unwrap();
+            for scale in [1.0, 1.5, 2.0] {
+                for rendered in [
+                    render(tex, 18, scale, (30, 30, 30)).unwrap(),
+                    render_node(&node, 18, scale, (232, 232, 232)).unwrap(),
+                ] {
+                    assert!(!rendered.regions.is_empty(), "hit regions: {tex}");
+                    assert_eq!(rendered.texts.len(), 1, "native caption: {tex}");
+                    for text in &rendered.texts {
+                        assert_eq!(text.text, "（中文说明）");
+                        assert!(text.x >= 0.0 && text.y >= 0.0, "{tex}: {text:?}");
+                        assert!(
+                            text.x + text.width <= rendered.width + 0.001,
+                            "{tex}: {text:?}"
+                        );
+                        assert!(
+                            text.y + text.height <= rendered.height + 0.001,
+                            "{tex}: {text:?}"
+                        );
+                    }
+                    for region in rendered.regions {
+                        assert!(node.at(&region.path).is_some(), "editable path: {tex}");
+                        assert!(region.x >= 0.0 && region.y >= 0.0);
+                        assert!(region.x + region.width <= rendered.width + 0.001);
+                        assert!(region.y + region.height <= rendered.height + 0.001);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_text_keeps_native_font_fallback_in_preserved_formulas() {
+        for tex in [
+            r"x\quad\text{（中文说明）}",
+            r"\binom{4}{2}\text{（中文说明）}",
+        ] {
+            for (scale, ink) in [(1.0, (30, 30, 30)), (2.0, (232, 232, 232))] {
+                let rendered = render(tex, 18, scale, ink).unwrap();
+                let text = rendered
+                    .texts
+                    .iter()
+                    .find(|run| run.text == "（中文说明）")
+                    .unwrap_or_else(|| panic!("native text missing: {tex}"));
+                assert!(text.x >= 0.0 && text.y >= 0.0);
+                assert!(text.x + text.width <= rendered.width);
+                assert!(text.y + text.height <= rendered.height);
+                let pixels = rendered.image.to_rgba8().unwrap();
+                // The math font supplies no text glyphs here. Chinese is
+                // painted by FormulaLabel's native text layer instead.
+                let left = (text.x * scale).ceil() as u32;
+                let right = ((text.x + text.width) * scale).floor() as u32;
+                let top = (text.y * scale).ceil() as u32;
+                let bottom = ((text.y + text.height) * scale).floor() as u32;
+                assert!(
+                    (top..bottom).all(|y| (left..right)
+                        .all(|x| pixels.as_slice()[(y * pixels.width() + x) as usize].a == 0)),
+                    "text must not be baked as missing-glyph boxes: {tex}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_text_in_nested_fields_keeps_its_own_size_and_bounds() {
+        let rendered = render(
+            r"\binom{\text{上标}}{2}\quad\text{说明}",
+            22,
+            2.0,
+            (30, 30, 30),
+        )
+        .unwrap();
+        let upper = rendered
+            .texts
+            .iter()
+            .find(|run| run.text == "上标")
+            .unwrap();
+        let outer = rendered
+            .texts
+            .iter()
+            .find(|run| run.text == "说明")
+            .unwrap();
+        assert!(upper.font_size < outer.font_size);
+        assert!(upper.x + upper.width < outer.x);
+        for text in &rendered.texts {
+            assert!(text.x >= 0.0 && text.y >= 0.0);
+            assert!(text.x + text.width <= rendered.width);
+            assert!(text.y + text.height <= rendered.height);
+        }
+    }
+
+    #[test]
+    fn mixed_text_only_formula_can_use_a_transparent_math_bitmap() {
+        let rendered = render(r"\quad\text{中文}", 18, 1.0, (30, 30, 30)).unwrap();
+        assert_eq!(rendered.texts.len(), 1);
+        assert_eq!(rendered.texts[0].text, "中文");
+        assert!(rendered.width > 0.0 && rendered.height > 0.0);
+        assert!(
+            rendered
+                .image
+                .to_rgba8()
+                .unwrap()
+                .as_slice()
+                .iter()
+                .all(|pixel| pixel.a == 0)
+        );
+    }
 
     #[test]
     fn bridge_renders_a_binomial_differently_from_a_fraction() {
@@ -439,24 +328,6 @@ mod tests {
                 "{source}"
             );
         }
-    }
-
-    #[test]
-    fn notation_aliases_respect_command_boundaries_and_literal_text() {
-        for source in [
-            r"\degreeC+\homogeneous+\uplusx",
-            r"\\degree",
-            r"\text{\degree {\hom}}",
-            r"\text{\degree",
-            r"\operatorname{\hom}",
-        ] {
-            assert_eq!(compatible_latex(source), source);
-        }
-        assert_eq!(
-            compatible_latex(r"\text{\degree \{x\}}+\degree"),
-            r"\text{\degree \{x\}}+°"
-        );
-        assert!(validate(r"\degreeC").is_err());
     }
 
     #[test]

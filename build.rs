@@ -100,6 +100,7 @@ fn compile_translations() -> std::path::PathBuf {
         "src/formula.rs",
         "src/math_answer.rs",
         "src/math_editor.rs",
+        "src/math_latex.rs",
         "src/text_history.rs",
         "src/structured_math.rs",
         "src/autostart.rs",
@@ -113,13 +114,20 @@ fn compile_translations() -> std::path::PathBuf {
     .into_iter()
     .map(str::to_owned)
     .collect();
-    for directory in ["src/app", "src/app/main_window", "src/structured_math"] {
+    for directory in [
+        "src/app",
+        "src/app/main_window",
+        "src/structured_math",
+        "src/math_editor",
+        "src/formula",
+    ] {
         println!("cargo:rerun-if-changed={directory}");
         sources.extend(
             std::fs::read_dir(directory)
                 .expect("Source directory must be readable")
                 .map(|entry| entry.expect("Source entry must be readable").path())
                 .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+                .filter(|path| path.file_name().is_some_and(|name| name != "tests.rs"))
                 .map(|path| path.to_string_lossy().replace('\\', "/")),
         );
     }

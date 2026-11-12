@@ -307,7 +307,7 @@ impl KnowledgePack {
                 (tr!("答案"), &card.answer_latex),
             ] {
                 if let Some(tex) = value {
-                    crate::formula::validate(tex).map_err(|error| {
+                    crate::math_latex::validate(tex).map_err(|error| {
                         tr!(
                             "第 {p0} 题的{field}{error}",
                             p0 = index + 1,
@@ -333,7 +333,7 @@ impl KnowledgePack {
                     ));
                 }
                 if let Some(tex) = latex {
-                    crate::formula::validate(tex)
+                    crate::math_latex::validate(tex)
                         .map_err(|error| tr!("第 {p0} 题{error}", p0 = index + 1, error = error))?;
                 }
                 Ok(())

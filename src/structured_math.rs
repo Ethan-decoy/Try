@@ -1,7 +1,8 @@
 //! Try's host adapter for slint-math-input. The editor has no native window.
 use crate::MathInputView;
 use slint_math_input::gui::MathInputController;
-use r#try::{knowledge::AppResult, math_editor, tr};
+pub use r#try::math_editor::answer_input;
+use r#try::{knowledge::AppResult, tr};
 
 mod clipboard;
 mod keypad;
@@ -118,9 +119,9 @@ fn complete(controller: &MathInputController) -> AppResult<String> {
     if latex.trim().is_empty() {
         return Err(tr!("请先填写完整的公式。").into());
     }
-    let latex = r#try::formula::compatible_latex(&latex).into_owned();
+    let latex = r#try::math_latex::compatible_latex(&latex).into_owned();
     // Knowledge packs deliberately have tighter limits than the general editor.
-    r#try::formula::validate(&latex)?;
+    r#try::math_latex::validate(&latex)?;
     Ok(latex)
 }
 
@@ -146,25 +147,6 @@ fn theme_image(image: &slint::Image, dark: bool) -> slint::Image {
     slint::Image::from_rgba8(pixels)
 }
 
-/// A reimportable answer spelling, using LaTeX whenever friendly text would
-/// lose structure. This is also used when accepting the completed editor.
-pub fn answer_input(latex: &str) -> String {
-    if latex.trim().is_empty() {
-        return String::new();
-    }
-    math_editor::from_latex(latex)
-        // Quoted text spans retain their role when answer recognition imports
-        // this spelling; unsupported friendly forms remain original LaTeX.
-        .map(|node| {
-            if node.is_text() {
-                node.tex()
-            } else {
-                node.editor_input()
-            }
-        })
-        .unwrap_or_else(|_| latex.to_owned())
-}
-
 #[cfg(test)]
 #[path = "../tests/support/mod.rs"]
 mod test_support;
@@ -174,6 +156,7 @@ mod tests {
     use super::*;
     use slint_math_input::gui::ClipboardAccess;
     use std::{cell::RefCell, rc::Rc};
+    use r#try::math_editor;
 
     struct TestClipboard(Rc<RefCell<String>>);
 
