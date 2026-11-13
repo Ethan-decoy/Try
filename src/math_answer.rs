@@ -17,10 +17,14 @@ pub fn recognize(input: &str, math_hint: bool) -> Option<Node> {
     let input = normalized.as_str();
     let node = if crate::math_structure::is_latex(input) {
         math_editor::from_latex(input).ok()?
-    } else if math_hint
-        || input
-            .chars()
-            .all(|c| c.is_ascii_digit() || ".+- ".contains(c))
+    } else if math_hint {
+        compact_function(input)
+            .map(Ok)
+            .unwrap_or_else(|| notation_expression(input))
+            .ok()?
+    } else if input
+        .chars()
+        .all(|c| c.is_ascii_digit() || ".+- ".contains(c))
         || ["pi", "theta", "alpha", "beta", "gamma", "infinity"].contains(&input)
     {
         notation_expression(input).ok()?
@@ -41,11 +45,16 @@ pub fn recognize_inline(input: &str, math_hint: bool) -> Option<Node> {
     if let Some(node) = recognize(input, false) {
         return Some(node);
     }
+    if math_hint && let Some(node) = function_notation(input) {
+        return Some(node);
+    }
     let short_variables = input
         .split(|c: char| !c.is_alphabetic())
         .filter(|word| !word.is_empty())
         .all(|word| word.is_ascii() && word.len() <= 2);
-    let expression = input.contains(['+', '-', '−', '*', '×']) && short_variables;
+    let expression = input.contains(['+', '-', '−', '*', '×'])
+        && short_variables
+        && !input.ends_with(['+', '-', '−', '*', '×', '/', '^', '_', '=']);
     let variable = math_hint && input.chars().count() == 1 && input.is_ascii();
     (expression || variable)
         .then(|| recognize(input, true))
@@ -64,11 +73,8 @@ pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
     // Hand commands to SMI before their slots are filled. Its own vocabulary
     // covers functions and structures, including log, sqrt and limits.
     // Bare words outside mathematical questions retain native text editing.
-    if math_hint && slint_math_input::catalog::is_typing_command(input)
-        || input
-            .strip_suffix(['_', '('])
-            .is_some_and(slint_math_input::catalog::is_typing_command)
-    {
+    let command = |word: &str| crate::math_vocabulary::typing_command(word, math_hint);
+    if math_hint && command(input) || input.strip_suffix(['_', '(']).is_some_and(command) {
         return true;
     }
     // Unrecognized partly written calls stay native; supported structural
@@ -94,7 +100,8 @@ pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
     }
     let notation = math_editor::looks_mathematical(input)
         || input.starts_with('\\')
-        || input.contains(['+', '-', '−', '*', '×']);
+        || input.contains(['+', '-', '−', '*', '×'])
+        || math_hint && function_notation(input).is_some();
     notation
         && (math_hint
             || entering_script
@@ -152,11 +159,180 @@ fn notation_expression(input: &str) -> Result<Node, String> {
     })
 }
 
+/// Whole native commits lack the command prefixes seen while typing. Import
+/// compact calls through SMI, while limiting inference to a short coefficient
+/// and argument so prose and source-code identifiers retain text editing.
+fn compact_function(input: &str) -> Option<Node> {
+    if input.len() > 32
+        || !input
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'.')
+    {
+        return None;
+    }
+    let mut editor = slint_math_input::Editor::new();
+    editor.paste(input).ok()?;
+    let latex = editor.latex().ok()?;
+    let node = math_editor::from_latex(&latex).ok()?;
+    let call = match node.children.as_slice() {
+        [function, argument] => is_function_name(function) && short_operand(argument),
+        [coefficient, function, argument] => {
+            short_operand(coefficient) && is_function_name(function) && short_operand(argument)
+        }
+        _ => false,
+    };
+    (node.kind == Kind::Row && call && node.complete() && node.validate().is_ok()).then_some(node)
+}
+
+fn function_notation(input: &str) -> Option<Node> {
+    fn contains_function(node: &Node) -> bool {
+        is_function_name(node)
+            || node.kind == Kind::Root
+            || matches!(&node.kind, Kind::Group(left, _) if left == "|" || left == r"\lVert")
+            || node.children.iter().any(contains_function)
+    }
+    let node = recognize(input, true)?;
+    contains_function(&node).then_some(node)
+}
+
+fn short_operand(node: &Node) -> bool {
+    node.kind == Kind::Symbol && crate::math_vocabulary::symbol(&node.value).is_some()
+        || node.kind == Kind::Literal
+            && (node.value.parse::<f64>().is_ok()
+                || node.value.len() <= 2 && node.value.bytes().all(|c| c.is_ascii_alphabetic())
+                || crate::math_vocabulary::numeric_variable(&node.value))
+}
+
 fn notation(node: &Node) -> String {
     let tex = normalize(node.clone(), true).tex();
     crate::math_structure::key(&tex)
-        .map(|key| key.to_string())
+        .map(|mut key| {
+            normalize_products(&mut key);
+            key.to_string()
+        })
         .unwrap_or(tex)
+}
+
+/// Answer comparison permits scalar multiplication with or without a dot.
+/// Keep this separate from the lossless keys used by editing and rendering.
+fn normalize_products(value: &mut serde_json::Value) {
+    use serde_json::Value;
+    match value {
+        Value::Object(object) => {
+            for child in object.values_mut() {
+                normalize_products(child);
+            }
+            if let Some(Value::Array(nodes)) = object.get_mut("nodes") {
+                let mut factors: Vec<Value> = Vec::with_capacity(nodes.len());
+                let mut previous_group = false;
+                for node in nodes.iter() {
+                    if !factors.last().is_some_and(function_token)
+                        && let Some(body) = scalar_group(node)
+                    {
+                        // Parentheses delimit a factor. Keep that boundary
+                        // when both sides are numeric, e.g. 2(3) versus 23.
+                        if factors.last().is_some_and(numeric_symbol)
+                            && body.first().is_some_and(numeric_symbol)
+                        {
+                            factors.push(serde_json::json!({"kind":"symbol", "text":"·"}));
+                        }
+                        factors.extend(body.iter().cloned());
+                        previous_group = true;
+                    } else {
+                        if previous_group
+                            && factors.last().is_some_and(numeric_symbol)
+                            && numeric_symbol(node)
+                        {
+                            factors.push(serde_json::json!({"kind":"symbol", "text":"·"}));
+                        }
+                        factors.push(node.clone());
+                        previous_group = false;
+                    }
+                }
+                *nodes = factors;
+                let mut result = Vec::with_capacity(nodes.len());
+                for (index, node) in nodes.iter().enumerate() {
+                    let dot = node.get("kind").and_then(Value::as_str) == Some("symbol")
+                        && matches!(node.get("text").and_then(Value::as_str), Some("·" | "⋅"));
+                    if dot
+                        && let (Some(left), Some(right)) =
+                            (index.checked_sub(1).and_then(|i| nodes.get(i)), nodes.get(index + 1))
+                        && product_operand(left, false)
+                        && product_operand(right, true)
+                        // SMI stores digits separately: erasing this dot would
+                        // merge two numbers, e.g. 2*3 into the number 23.
+                        && !(numeric_symbol(left) && numeric_symbol(right))
+                    {
+                        continue;
+                    }
+                    result.push(node.clone());
+                }
+                *nodes = result;
+            }
+        }
+        Value::Array(array) => array.iter_mut().for_each(normalize_products),
+        _ => {}
+    }
+}
+
+fn scalar_group(node: &serde_json::Value) -> Option<&Vec<serde_json::Value>> {
+    use serde_json::Value;
+    if node.get("kind").and_then(Value::as_str) != Some("group")
+        || node.get("open").and_then(Value::as_str) != Some("(")
+        || node.get("close").and_then(Value::as_str) != Some(")")
+        || node.get("closed").and_then(Value::as_bool) != Some(true)
+    {
+        return None;
+    }
+    let body = node.get("body")?.get("nodes")?.as_array()?;
+    let atomic = body.len() == 1 && product_operand(&body[0], false) && !numeric_symbol(&body[0])
+        || body.len() == 2
+            && function_token(&body[0])
+            && body[1].get("kind").and_then(Value::as_str) == Some("group");
+    let number = !body.is_empty()
+        && body.iter().all(numeric_symbol)
+        && body
+            .iter()
+            .filter_map(|node| node.get("text")?.as_str())
+            .collect::<String>()
+            .parse::<f64>()
+            .is_ok();
+    (atomic || number).then_some(body)
+}
+
+fn function_token(node: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    node.get("kind").and_then(Value::as_str) == Some("function")
+        || node.get("kind").and_then(Value::as_str) == Some("script")
+            && node
+                .get("base")
+                .and_then(|base| base.get("nodes"))
+                .and_then(Value::as_array)
+                .is_some_and(|nodes| nodes.len() == 1 && function_token(&nodes[0]))
+}
+
+fn numeric_symbol(node: &serde_json::Value) -> bool {
+    node.get("kind").and_then(serde_json::Value::as_str) == Some("symbol")
+        && node
+            .get("text")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|text| {
+                !text.is_empty() && text.chars().all(|c| c.is_ascii_digit() || c == '.')
+            })
+}
+
+fn product_operand(node: &serde_json::Value, start: bool) -> bool {
+    match node.get("kind").and_then(serde_json::Value::as_str) {
+        Some("symbol") => node
+            .get("text")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|text| {
+                !text.is_empty() && text.chars().all(|c| c.is_alphanumeric() || c == '.')
+            }),
+        Some("function") => start,
+        Some("group" | "script" | "fraction" | "root") => true,
+        _ => false,
+    }
 }
 
 fn normalize(mut node: Node, grouped_slot: bool) -> Node {
@@ -176,12 +352,7 @@ fn normalize(mut node: Node, grouped_slot: bool) -> Node {
         return normalize(node.children.remove(0), true);
     }
     let is_row = node.kind == Kind::Row;
-    node.children = node
-        .children
-        .into_iter()
-        .filter(|child| child.kind != Kind::Space)
-        .map(|child| normalize(child, !is_row))
-        .collect();
+    node.children.retain(|child| child.kind != Kind::Space);
     if is_row {
         let mut children = vec![];
         let mut source = node.children.into_iter().peekable();
@@ -199,33 +370,64 @@ fn normalize(mut node: Node, grouped_slot: bool) -> Node {
             }
             // sin²(x) and (sin(x))² are the same function notation. Keep
             // algebraic simplification and inverse-function inference out.
-            if child.kind == Kind::Power
-                && is_function_name(&child.children[0])
-                && source.peek().is_some_and(is_parentheses)
+            if children.last().is_some_and(is_function_name)
+                && child.kind == Kind::Power
+                && is_parentheses(&child.children[0])
             {
-                let body = source.next().unwrap();
+                // In \ln(x)^2 the power applies to the call. Bind it before
+                // simplifying structural-slot parentheses around its base.
+                let function = children.pop().unwrap();
+                let argument = child.children.remove(0);
+                child.children.insert(
+                    0,
+                    Node {
+                        kind: Kind::Row,
+                        value: String::new(),
+                        children: vec![function, argument],
+                    },
+                );
+            } else if child.kind == Kind::Power
+                && is_function_name(&child.children[0])
+                && source
+                    .peek()
+                    .is_some_and(|next| is_parentheses(next) || function_argument(next))
+            {
+                let mut body = source.next().unwrap();
+                if !is_parentheses(&body) {
+                    body = Node {
+                        kind: Kind::Group("(".into(), ")".into()),
+                        value: String::new(),
+                        children: vec![body],
+                    };
+                }
                 let base = child.children.remove(0);
-                let argument = if body.children[0].kind == Kind::Row {
-                    body
-                } else {
-                    normalize(body, true)
-                };
                 let call = Node {
                     kind: Kind::Row,
                     value: String::new(),
-                    children: vec![base, argument],
+                    children: vec![base, body],
                 };
                 child.children.insert(0, call);
             } else if children.last().is_some_and(is_function_name)
-                && is_parentheses(&child)
-                && child.children[0].kind != Kind::Row
+                && !is_parentheses(&child)
+                && function_argument(&child)
             {
-                child = normalize(child, true);
+                // Canonicalize the argument boundary, rather than removing
+                // it: ln(xy) must stay distinct from ln(x)y.
+                child = Node {
+                    kind: Kind::Group("(".into(), ")".into()),
+                    value: String::new(),
+                    children: vec![child],
+                };
             }
             children.push(child);
         }
         node.children = children;
     }
+    node.children = node
+        .children
+        .into_iter()
+        .map(|child| normalize(child, !is_row))
+        .collect();
     if is_row && node.children.len() == 1 {
         return normalize(node.children.remove(0), grouped_slot);
     }
@@ -241,9 +443,238 @@ fn is_function_name(node: &Node) -> bool {
         || node.kind == Kind::Subscript && is_function_name(&node.children[0])
 }
 
+fn function_argument(node: &Node) -> bool {
+    match node.kind {
+        Kind::Literal => !node.value.is_empty() && node.value.chars().all(char::is_alphanumeric),
+        Kind::Symbol => !matches!(
+            node.value.as_str(),
+            "cdot"
+                | "times"
+                | "div"
+                | "leq"
+                | "geq"
+                | "neq"
+                | "approx"
+                | "in"
+                | "notin"
+                | "subseteq"
+                | "cup"
+                | "cap"
+                | "pm"
+                | "mp"
+                | "to"
+                | "prime"
+                | "circ"
+        ),
+        Kind::Fraction | Kind::Root | Kind::Power | Kind::Subscript => true,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notation_entry_recognizes_compact_functions_in_math_context() {
+        for (input, latex) in [
+            ("lnx", r"\ln(x)"),
+            ("sinx", r"\sin(x)"),
+            ("ylnx", r"y\ln(x)"),
+            ("ysqrt(x)", r"y\sqrt{x}"),
+            ("yabs(x)", r"y\left|x\right|"),
+            ("ynorm(x)", r"y\left\lVert x\right\rVert"),
+            ("sin^2x", r"\sin^{2}(x)"),
+            ("abcln(x)", r"abc\ln(x)"),
+        ] {
+            assert!(matches(input, "", Some(latex), &[]), "{input}: {latex}");
+            assert!(recognize_inline(input, true).is_some(), "inline: {input}");
+            assert!(starts_structured_edit(input, true), "entry: {input}");
+        }
+        for input in ["2ln", "2yln", "2sqrt", "ysqrt", "yabs", "ynorm"] {
+            assert!(starts_structured_edit(input, true), "command: {input}");
+        }
+        for text in [
+            "Paris",
+            "println(x)",
+            "sinister(x)",
+            "catalog(x)",
+            "2px",
+            "12ms",
+            "3eV",
+            "C++",
+            "Vec<T>",
+            "1 海里",
+        ] {
+            assert!(recognize_inline(text, false).is_none(), "text: {text}");
+            assert!(!starts_structured_edit(text, false), "native text: {text}");
+        }
+        for text in [
+            "lnx",
+            "sinx",
+            "ylnx",
+            "Paris",
+            "sinister",
+            "println(x)",
+            "abcln(x)",
+        ] {
+            assert!(
+                recognize_inline(text, false).is_none(),
+                "context required: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn notation_scalar_groups_preserve_function_and_number_boundaries() {
+        for (input, latex) in [
+            ("2*(x)", "2x"),
+            ("2(x)", "2x"),
+            ("(x)y", "xy"),
+            ("y*(x/2)", r"y\frac{x}{2}"),
+            ("(x^2)y", "x^{2}y"),
+            ("(2)(x)", "2x"),
+            ("2(3)", r"2\cdot3"),
+            ("(2)(3)", r"2\cdot3"),
+            ("(23)(45)", r"23\cdot45"),
+            ("2*(ln(x))", r"2\ln(x)"),
+        ] {
+            assert!(matches(input, "", Some(latex), &[]), "{input}: {latex}");
+        }
+        for (input, wrong) in [
+            ("2(3)", "23"),
+            ("(2)3", "23"),
+            ("1(.2)", "1.2"),
+            ("ln(xy)", r"\ln(x)y"),
+            ("ln(23)", r"\ln(2)3"),
+            ("ln(x^2)", r"\ln(x)^2"),
+            ("(x+y)*z", "x+y*z"),
+            ("x^(n+m)", "x^{n}+m"),
+            ("(x_i)^2", "x_{i^{2}}"),
+            ("2*(ln(xy))", r"2\ln(x)y"),
+        ] {
+            assert!(
+                !matches(input, "", Some(wrong), &[]),
+                "scope: {input} == {wrong}"
+            );
+        }
+    }
+
+    #[test]
+    fn notation_plain_answers_infer_a_numeric_coefficient_without_latex() {
+        for (answer, input) in [
+            ("2x", "2*x"),
+            ("2x", "2·x"),
+            ("2x", "2(x)"),
+            ("-2x", "-2*x"),
+            ("0.5x", "0.5*x"),
+        ] {
+            for latex in [None, Some(answer)] {
+                let card: crate::knowledge::Card = serde_json::from_value(serde_json::json!({
+                    "prompt":"Derivative formula", "answer":answer, "answer_latex":latex
+                }))
+                .unwrap();
+                assert!(
+                    card.accepts(input),
+                    "{input}, answer={answer}, latex={latex:?}"
+                );
+                for wrong in ["3*x", "2+x", "2*x^2"] {
+                    assert!(!card.accepts(wrong), "wrong: {wrong}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn adjacent_function_answers_accept_coefficients_and_multiplication_notation() {
+        let card: crate::knowledge::Card = serde_json::from_str(
+            r#"{
+            "prompt":"Simplify ln(x^y) for x > 0",
+            "answer":"y ln(x)",
+            "answer_latex":"y\\ln\\left(x\\right)"
+        }"#,
+        )
+        .unwrap();
+        for input in ["yln(x)", "y ln(x)", "y*ln(x)", "y⋅ln(x)", r"y\cdot\ln(x)"] {
+            assert!(
+                card.accepts(input),
+                "the same logarithm product was rejected: {input}"
+            );
+        }
+        for input in ["ln(x)", "y+ln(x)", "yln(x+1)", "yln(x)^2"] {
+            assert!(
+                !card.accepts(input),
+                "different formula was accepted: {input}"
+            );
+        }
+        for (input, expected) in [
+            ("xsin(t)", r"x\sin(t)"),
+            ("xyln(x)", r"xy\ln(x)"),
+            ("2yln(x)", r"2y\ln(x)"),
+            ("xarcsin(t)", r"x\arcsin(t)"),
+            ("xasin(t)", r"x\arcsin(t)"),
+            ("yLog_2(x)", r"y\log_{2}(x)"),
+        ] {
+            assert!(
+                matches(input, "", Some(expected), &[]),
+                "{input}: {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn adjacent_function_entry_preserves_prose_and_reserved_names() {
+        for word in ["yln", "xsin", "xyln", "xarcsin"] {
+            assert!(starts_structured_edit(word, true), "math command: {word}");
+            assert!(!starts_structured_edit(word, false), "plain word: {word}");
+        }
+        assert!(starts_structured_edit("yln(", false));
+        assert!(recognize_inline("yln(x)", true).is_some());
+        for word in ["println(x)", "sinister(x)", "catalog(x)", "hello world"] {
+            assert!(
+                recognize_inline(word, false).is_none(),
+                "plain/code: {word}"
+            );
+            assert!(!starts_structured_edit(word, false), "plain/code: {word}");
+        }
+        assert!(matches("asin(x)", "", Some(r"\arcsin(x)"), &[]));
+        assert!(!matches("asin(x)", "", Some(r"a\sin(x)"), &[]));
+        assert!(!matches("asinh(x)", "", Some(r"a\sinh(x)"), &[]));
+        assert!(!matches(r#""yln(x)""#, "", Some(r"y\ln(x)"), &[]));
+    }
+
+    #[test]
+    fn product_notation_keeps_numbers_and_function_arguments_distinct() {
+        for (input, expected) in [
+            ("x*y", "xy"),
+            ("2*sin(x)", r"2\sin(x)"),
+            ("x*sin(y)", r"x\sin(y)"),
+            ("ln(x)*y", r"\ln(x)y"),
+            ("x/(y*z)", r"\frac{x}{yz}"),
+        ] {
+            assert!(
+                matches(input, "", Some(expected), &[]),
+                "{input}: {expected}"
+            );
+        }
+        for (input, wrong) in [
+            ("2*3", "23"),
+            ("1.2*3", "1.23"),
+            ("x*2*3", "x23"),
+            ("x*y", "yx"),
+            ("yln(xy)", r"y\ln(x)y"),
+            ("yln(x+y)", r"y\ln(x)+y"),
+            ("sin(xy)", r"\sin(x)y"),
+            ("ln(23)", r"\ln(2)3"),
+            ("ln(x^2)", r"\ln(x)^2"),
+            ("x/(y*z)", r"\frac{x}{y}z"),
+        ] {
+            assert!(
+                !matches(input, "", Some(wrong), &[]),
+                "different product/argument: {input} == {wrong}"
+            );
+        }
+    }
 
     #[test]
     fn bridge_preserves_distinct_formula_meanings() {

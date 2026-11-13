@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 0.9.2 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 0.9.3 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -78,6 +78,8 @@ Export still produces one JSON file, with the pictures included. Importing it on
 ## Formulas
 
 Type common expressions such as `sin(pi/3)`, `sqrt(3)/2`, or supported LaTeX without opening the keypad first. Recognized structures are edited directly in their typeset layout. Unfinished fractions, roots and other structures in math questions remain drafts; submitting them shows a completion hint. Ordinary text retains native text input and input methods.
+
+In math questions, paste compact forms such as `lnx` and `sinx`, or enter coefficient expressions such as `yln(x)` and `ysqrt(x)` using the math editor's recognition. Answer matching accepts implicit multiplication and redundant scalar parentheses, for example `2x`, `2*x` and `2*(x)`, while retaining function-argument and exponent boundaries.
 
 Click a numerator, denominator or exponent to position the caret. Arrow keys move through layout; hold Shift with arrows or click in the formula to extend selection, or drag to select. Formula clipboard operations exchange supported LaTeX; ordinary text keeps its source. Ctrl+Z / Ctrl+Y undo and redo. Normalization supports written forms without arbitrary algebraic simplification or approximate numeric comparison.
 

@@ -57,6 +57,43 @@ pub(crate) fn is_operator(name: &str) -> bool {
     )
 }
 
+/// Split coefficients in an explicitly parsed expression. Callers that infer
+/// math from ordinary text must additionally restrict ambiguous long prefixes.
+pub(crate) fn prefixed_function(word: &str) -> Option<(&str, &'static str)> {
+    if !word.bytes().all(|c| c.is_ascii_alphabetic())
+        || function(word).is_some()
+        || symbol(word).is_some()
+        || slint_math_input::catalog::is_typing_command(word)
+    {
+        return None;
+    }
+    (1..word.len()).find_map(|index| {
+        let (coefficient, suffix) = word.split_at(index);
+        function(suffix)
+            .filter(|name| is_operator(name) || matches!(*name, "sqrt" | "abs" | "norm"))
+            .map(|name| (coefficient, name))
+    })
+}
+
+/// Keep numeric coefficients such as 2x recognizable without interpreting
+/// unit strings or identifiers with several trailing letters (2px, 3eV).
+pub(crate) fn numeric_variable(input: &str) -> bool {
+    let Some(index) = input.find(|c: char| c.is_ascii_alphabetic()) else {
+        return false;
+    };
+    let (number, variable) = input.split_at(index);
+    variable.len() == 1 && number.trim().parse::<f64>().is_ok()
+}
+
+pub(crate) fn typing_command(input: &str, math_hint: bool) -> bool {
+    let word = input.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.');
+    let number = &input[..input.len() - word.len()];
+    (number.is_empty() || number.parse::<f64>().is_ok())
+        && (slint_math_input::catalog::is_typing_command(word)
+            || prefixed_function(word)
+                .is_some_and(|(coefficient, _)| math_hint || coefficient.len() <= 2))
+}
+
 const SYMBOLS: &[(&str, char)] = &[
     ("pi", 'π'),
     ("theta", 'θ'),

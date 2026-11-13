@@ -56,6 +56,7 @@ pub fn automatic_content(input: &str) -> Result<Node, String> {
 
 pub(crate) fn looks_mathematical(s: &str) -> bool {
     s.contains(['/', '^', '_', '=', '|'])
+        || vocabulary::numeric_variable(s)
         || s.contains("[[")
         || s.contains("'(")
         || s.chars().any(vocabulary::math_char)
@@ -65,8 +66,11 @@ pub(crate) fn looks_mathematical(s: &str) -> bool {
                 && s[..index]
                     .rsplit(|c: char| !c.is_ascii_alphabetic())
                     .next()
-                    .and_then(vocabulary::function)
-                    .is_some()
+                    .is_some_and(|word| {
+                        vocabulary::function(word).is_some()
+                            || vocabulary::prefixed_function(word)
+                                .is_some_and(|(coefficient, _)| coefficient.len() <= 2)
+                    })
         })
 }
 
@@ -175,7 +179,16 @@ pub fn expression(input: &str) -> Result<Node, String> {
                     break;
                 }
             }
-            tokens.push(Token::Word(word));
+            if matches!(
+                chars.clone().find(|c| !c.is_whitespace()),
+                Some('(' | '^' | '_')
+            ) && let Some((coefficient, function)) = vocabulary::prefixed_function(&word)
+            {
+                tokens.push(Token::Word(coefficient.into()));
+                tokens.push(Token::Word(function.into()));
+            } else {
+                tokens.push(Token::Word(word));
+            }
         } else if c == '-' && chars.peek() == Some(&'>') {
             chars.next();
             tokens.push(Token::Arrow);

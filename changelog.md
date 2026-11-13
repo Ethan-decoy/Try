@@ -4,6 +4,13 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.9.3]
+
+### Fixed
+
+- Recognize adjacent coefficients and functions such as `yln(x)` and `ysqrt(x)`, and route compact native commits such as `lnx` through the math editor's expression input.
+- Accept explicit or implicit multiplication and redundant scalar parentheses, including recognizable plain answers without `answer_latex`, while preserving number, function-argument and script boundaries.
+
 ## [0.9.2] - 2026-11-12
 
 ### Changed

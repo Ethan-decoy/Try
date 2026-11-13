@@ -612,6 +612,12 @@ mod tests {
                 ("P^n+m", "P^{n+m}"),
                 ("log_2(x)", r"\log_{2}\left(x\right)"),
                 ("u'f'(u)", r"u^{'}f^{'}\left(u\right)"),
+                ("yln(x)", r"y\ln \left(x\right)"),
+                ("y*ln(x)", r"y\cdot \ln \left(x\right)"),
+                ("xyln(x)", r"xy\ln \left(x\right)"),
+                ("ysqrt(x)", r"y\sqrt{x}"),
+                ("2ln(x)", r"2\ln \left(x\right)"),
+                ("abcln(x)", r"abc\ln \left(x\right)"),
             ] {
                 window.set_answer_text("".into());
                 ui.set_open(false);
@@ -639,6 +645,43 @@ mod tests {
                 let before = submissions.get();
                 key(&window, &adapter, Key::Return);
                 assert_eq!(submissions.get(), before + 1, "Enter: {typed}");
+            }
+            // A native paste or IME commit arrives in one event, rather than
+            // passing through the individual l -> ln -> lnx prefixes.
+            for (text, expected) in [
+                ("lnx", r"\ln(x)"),
+                ("sinx", r"\sin(x)"),
+                ("ysqrt(x)", r"y\sqrt{x}"),
+            ] {
+                window.set_answer_text("".into());
+                ui.set_open(false);
+                *active.borrow_mut() = None;
+                ui.set_keypad_expanded(expanded);
+                window.invoke_focus_answer();
+                paint(&adapter);
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyPressed { text: text.into() });
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyReleased { text: text.into() });
+                paint(&adapter);
+                let answer = active
+                    .borrow()
+                    .as_ref()
+                    .expect("native commit enters structural editing")
+                    .source();
+                assert!(
+                    r#try::math_answer::matches(&answer, "", Some(expected), &[]),
+                    "native commit: {text}"
+                );
+                let before = submissions.get();
+                key(&window, &adapter, Key::Return);
+                assert_eq!(
+                    submissions.get(),
+                    before + 1,
+                    "Enter after native commit: {text}"
+                );
             }
             window.set_answer_text("".into());
             ui.set_open(false);
