@@ -102,7 +102,7 @@ fn run_phase(checks: Rc<Checks>, phase: u8) {
         5 => {
             let window = practice_window(app);
             assert_eq!(window.get_feedback(), 2);
-            assert!(!app.feedback_timer.running());
+            assert!(!app.card_close_timer.running());
             key(window.window(), Key::Escape.into());
             assert!(
                 app.practice.borrow().is_some(),

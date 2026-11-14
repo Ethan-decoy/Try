@@ -405,7 +405,7 @@ fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         window.window(),
                         checks.output.join("multiple_choice_wrong.png"),
                     );
-                    assert!(!app.feedback_timer.running());
+                    assert!(!app.card_close_timer.running());
                     key(window.window(), Key::Escape.into());
                     assert!(app.practice.borrow().is_some());
                     key(window.window(), Key::Return.into());
@@ -497,7 +497,7 @@ fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 7 => {
                     let window = practice_window(app);
                     assert_eq!(window.get_feedback(), 2);
-                    assert!(!app.feedback_timer.running());
+                    assert!(!app.card_close_timer.running());
                     key(window.window(), Key::Escape.into());
                     assert!(app.practice.borrow().is_some());
                     key(window.window(), Key::Return.into());
@@ -517,7 +517,7 @@ fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         .unwrap();
                     click_option(&window, correct);
                     assert_eq!(window.get_feedback(), 1);
-                    assert!(app.feedback_timer.running());
+                    assert!(app.card_close_timer.running());
                     let checks = checks.clone();
                     Timer::single_shot(Duration::from_millis(2300), move || {
                         answer_phase(checks, 8);
@@ -533,7 +533,7 @@ fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     main_window(app).invoke_toggle_knowledge_mode();
                     app.show_practice().unwrap();
                     assert!(practice_window(app).get_knowledge_only());
-                    assert!(app.feedback_timer.running());
+                    assert!(app.card_close_timer.running());
                     let checks = checks.clone();
                     Timer::single_shot(Duration::from_millis(2300), move || {
                         answer_phase(checks, 9);
@@ -564,7 +564,7 @@ fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 11 => {
                     let window = practice_window(app);
                     assert_eq!(window.get_feedback(), 2);
-                    assert!(!app.feedback_timer.running());
+                    assert!(!app.card_close_timer.running());
                     snapshot(window.window(), checks.output.join("typed_wrong.png"));
                     key(window.window(), Key::Escape.into());
                     assert!(app.practice.borrow().is_some());

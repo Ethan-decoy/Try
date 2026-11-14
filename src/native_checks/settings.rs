@@ -335,7 +335,10 @@ fn settings_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     );
                 }
                 4 => {
-                    assert!(!app.feedback_timer.running(), "Unanswered cards stay open");
+                    assert!(
+                        !app.card_close_timer.running(),
+                        "Unanswered cards stay open"
+                    );
                     snapshot(
                         practice_window(app).window(),
                         checks.output.join("manual_during_pause.png"),
