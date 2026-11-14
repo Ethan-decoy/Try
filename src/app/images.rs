@@ -119,7 +119,7 @@ impl App {
         if image.size().width == 0 {
             return;
         }
-        self.feedback_timer.stop();
+        self.cancel_card_close();
         self.close_image_preview();
         let result = (|| -> AppResult<()> {
             let window = crate::ImagePreviewWindow::new().map_err(|e| e.to_string())?;

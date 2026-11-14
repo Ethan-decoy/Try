@@ -1,0 +1,127 @@
+import { Theme } from "theme.slint";
+import { DesktopButton } from "desktop_controls.slint";
+
+export enum PracticeAction { exclude-question, pause, custom-pause, record-problem }
+export enum ProblemRecordStatus { idle, saved, failed }
+
+// A window-local popup keeps card geometry and the current answer unchanged.
+export component PracticeMenu inherits Rectangle {
+    x: 0px; y: 0px;
+    width: 0px; height: 0px;
+    in property <length> viewport-width;
+    in property <length> viewport-height;
+    in property <ProblemRecordStatus> problem-record-status: ProblemRecordStatus.idle;
+    in property <string> problem-record-error;
+    out property <bool> opened: popup.is-open;
+    out property <length> menu-width: min(240px, root.viewport-width - 16px);
+    out property <length> menu-height: root.pause-page ? 171px : 115px;
+    out property <length> menu-left: min(max(root.anchor-x, 8px), root.viewport-width - root.menu-width - 8px);
+    out property <length> menu-top: min(max(root.anchor-y, 8px), root.viewport-height - root.menu-height - 8px);
+    private property <length> anchor-x;
+    private property <length> anchor-y;
+    private property <bool> pause-page;
+    private property <int> cursor;
+    private property <bool> keyboard-used;
+    callback state-changed(bool);
+    callback activated(PracticeAction, int);
+    callback cancelled();
+    changed opened => { root.state-changed(root.opened); }
+    public function open(x: length, y: length) {
+        if popup.is-open { popup.close(); }
+        root.anchor-x = x; root.anchor-y = y;
+        root.pause-page = false; root.cursor = 0; root.keyboard-used = false;
+        popup.show();
+    }
+    public function close() { popup.close(); }
+    function choose(action: PracticeAction, minutes: int) { popup.close(); root.activated(action, minutes); }
+    function activate(index: int) {
+        if root.pause-page {
+            if index == 0 { root.pause-page = false; root.cursor = 1; }
+            else if index == 4 { root.choose(PracticeAction.custom-pause, 0); }
+            else { root.choose(PracticeAction.pause, index * 60); }
+        } else if index == 0 { root.choose(PracticeAction.exclude-question, 0); }
+        else if index == 1 { root.pause-page = true; root.cursor = 0; }
+        else if root.problem-record-status != ProblemRecordStatus.saved { root.activated(PracticeAction.record-problem, 0); }
+    }
+    popup := PopupWindow {
+        width: root.menu-width; height: root.menu-height;
+        x: root.menu-left; y: root.menu-top;
+        close-policy: close-on-click-outside;
+        forward-focus: menu-focus;
+        Rectangle {
+            background: Theme.panel; border-radius: 8px;
+            border-width: 1px; border-color: Theme.border;
+            menu-focus := FocusScope {
+                capture-key-pressed(event) => {
+                    root.keyboard-used = true;
+                    if event.text == Key.Escape {
+                        popup.close(); root.cancelled(); return accept;
+                    }
+                    if event.text == Key.LeftArrow && root.pause-page { root.pause-page = false; root.cursor = 1; return accept; }
+                    if event.text == Key.RightArrow && !root.pause-page && root.cursor == 1 { root.activate(1); return accept; }
+                    if event.text == Key.UpArrow { root.cursor = max(0, root.cursor - 1); return accept; }
+                    if event.text == Key.DownArrow { root.cursor = min(root.pause-page ? 4 : 2, root.cursor + 1); return accept; }
+                    if event.text == Key.Tab {
+                        if event.modifiers.shift { root.cursor = root.cursor > 0 ? root.cursor - 1 : root.pause-page ? 4 : 2; }
+                        else { root.cursor = root.cursor < (root.pause-page ? 4 : 2) ? root.cursor + 1 : 0; }
+                        return accept;
+                    }
+                    if event.text == Key.Home { root.cursor = 0; return accept; }
+                    if event.text == Key.End { root.cursor = root.pause-page ? 4 : 2; return accept; }
+                    if event.text == Key.Return || event.text == Key.Space { root.activate(root.cursor); return accept; }
+                    return reject;
+                }
+                VerticalLayout {
+                    padding: 5px; spacing: 0px;
+                    if !root.pause-page : VerticalLayout {
+                        spacing: 0px;
+                        DesktopButton {
+                            width: parent.width; text: @tr("不再练习此题");
+                            glyph: @image-url("../assets/exclude_question.svg");
+                            highlighted: root.keyboard-used && root.cursor == 0;
+                            activated => { root.activate(0); }
+                            Tooltip { text: @markdown("\{@tr("可在知识包中重新勾选")}"); }
+                        }
+                        Rectangle {
+                            height: 32px;
+                            DesktopButton {
+                                width: parent.width; text: @tr("暂离");
+                                glyph: @image-url("../assets/step_away.svg");
+                                highlighted: root.keyboard-used && root.cursor == 1;
+                                activated => { root.activate(1); }
+                            }
+                            Text {
+                                x: parent.width - 22px; width: 12px; height: parent.height;
+                                text: "›"; font-size: 17px; color: Theme.muted;
+                                horizontal-alignment: center; vertical-alignment: center;
+                            }
+                        }
+                        Rectangle {
+                            height: 9px;
+                            Rectangle { x: 6px; y: 4px; width: parent.width - 12px; height: 1px; background: Theme.border; }
+                        }
+                        DesktopButton {
+                            width: parent.width;
+                            glyph: @image-url("../assets/record_problem.svg");
+                            text: root.problem-record-status == ProblemRecordStatus.saved ? @tr("已在本地记录") : root.problem-record-status == ProblemRecordStatus.failed ? @tr("记录失败，重试") : @tr("记录此题问题");
+                            enabled: root.problem-record-status != ProblemRecordStatus.saved;
+                            destructive: root.problem-record-status == ProblemRecordStatus.failed;
+                            highlighted: root.keyboard-used && root.cursor == 2;
+                            activated => { root.activate(2); }
+                            Tooltip { text: @markdown("\{root.problem-record-status == ProblemRecordStatus.failed ? root.problem-record-error : @tr("保存到数据目录的 bug_reports 文件夹")}"); }
+                        }
+                    }
+                    if root.pause-page : VerticalLayout {
+                        spacing: 0px;
+                        DesktopButton { width: parent.width; text: "‹  " + @tr("返回"); highlighted: root.keyboard-used && root.cursor == 0; activated => { root.activate(0); } }
+                        Rectangle { height: 1px; background: Theme.border; }
+                        for label[index] in [@tr("1 小时"), @tr("2 小时"), @tr("3 小时"), @tr("自定…")] : DesktopButton {
+                            width: parent.width; text: label; highlighted: root.keyboard-used && root.cursor == index + 1;
+                            activated => { root.activate(index + 1); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -8,6 +8,7 @@
 /dist/
 /build/
 /data/
+bug_reports/
 *.log
 **/bin/
 **/obj/

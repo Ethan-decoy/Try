@@ -4,6 +4,16 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.10.0]
+
+### Added
+
+- Add a practice-card context menu to stop practicing the current question, step away for a preset or custom duration, or record a problem locally with the question, input, formula and grading state. Excluded questions retain their content and learning records; automatic closing pauses while the menu is open.
+
+### Changed
+
+- Separate practice-window event bindings, answer handling and timing; share named menu actions and recording states across the UI and application while preserving practice behavior and saved data.
+
 ## [0.9.3] - 2026-11-13
 
 ### Fixed

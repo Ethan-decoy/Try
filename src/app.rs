@@ -38,6 +38,7 @@ mod images;
 mod main_window;
 mod math;
 mod packs;
+mod practice_menu;
 mod practice_window;
 mod settings;
 mod updates;
@@ -94,7 +95,7 @@ pub struct App {
     reminder_timer: Timer,
     reminder_environment: Cell<fn(bool) -> bool>,
     pause_timer: Timer,
-    feedback_timer: Timer,
+    card_close_timer: Timer,
     autostart: RefCell<AppResult<Autostart>>,
     autostart_enabled: Cell<bool>,
     autostart_error: RefCell<String>,
@@ -161,6 +162,8 @@ struct PracticeSession {
     input_guard: Option<ReminderInputGuard>,
     review_token: Option<ReviewToken>,
     input_history: RefCell<InputHistory>,
+    last_attempt: Option<r#try::problem_report::AnswerAttempt>,
+    close_countdown: practice_window::CloseCountdown,
 }
 
 enum MathTarget {
@@ -276,7 +279,7 @@ impl App {
             reminder_timer: Timer::default(),
             reminder_environment: Cell::new(FloatingWindow::reminders_allowed),
             pause_timer: Timer::default(),
-            feedback_timer: Timer::default(),
+            card_close_timer: Timer::default(),
             autostart: RefCell::new(autostart),
             autostart_enabled: Cell::new(false),
             autostart_error: RefCell::new(String::new()),
@@ -502,7 +505,7 @@ impl App {
         self.close_practice();
         self.reminder_timer.stop();
         self.pause_timer.stop();
-        self.feedback_timer.stop();
+        self.cancel_card_close();
         self.automatic_update_timer.stop();
         self.update_transfer_timer.stop();
         if let UpdateTransfer::Running { cancel, .. } = &*self.update_transfer.lock().unwrap() {

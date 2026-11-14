@@ -8,6 +8,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/app.slint");
     println!("cargo:rerun-if-changed=ui/main_window.slint");
     println!("cargo:rerun-if-changed=ui/practice_window.slint");
+    println!("cargo:rerun-if-changed=ui/practice_menu.slint");
     println!("cargo:rerun-if-changed=ui/app_shell.slint");
     println!("cargo:rerun-if-changed=ui/about.slint");
     println!("cargo:rerun-if-changed=ui/theme.slint");
@@ -78,6 +79,7 @@ fn compile_translations() -> std::path::PathBuf {
         "ui/app.slint",
         "ui/main_window.slint",
         "ui/practice_window.slint",
+        "ui/practice_menu.slint",
         "ui/app_shell.slint",
         "ui/about.slint",
         "ui/image_preview.slint",
@@ -106,6 +108,7 @@ fn compile_translations() -> std::path::PathBuf {
         "src/autostart.rs",
         "src/reminder_schedule.rs",
         "src/practice.rs",
+        "src/problem_report.rs",
         "src/learning.rs",
         "src/learning_store.rs",
         "src/updater.rs",
@@ -117,6 +120,7 @@ fn compile_translations() -> std::path::PathBuf {
     for directory in [
         "src/app",
         "src/app/main_window",
+        "src/app/practice_window",
         "src/structured_math",
         "src/math_editor",
         "src/formula",

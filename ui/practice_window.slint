@@ -2,6 +2,7 @@ import { Theme } from "theme.slint";
 import { Palette, ScrollView } from "std-widgets.slint";
 import { AnswerOption, FormulaLabel, NativeText, ToolButton, QuestionPicture, FormulaPosition } from "content.slint";
 import { MathInputState, StructuredMathSurface, StructuredMathPad } from "structured_math.slint";
+import { PracticeMenu, PracticeAction, ProblemRecordStatus } from "practice_menu.slint";
 
 component AnswerTile inherits Rectangle {
     in property <AnswerOption> option;
@@ -135,6 +136,19 @@ export component PracticeWindow inherits Window {
     callback submit-answer(string);
     callback choose-answer(int);
     callback dismiss();
+    callback practice-action(PracticeAction, int);
+    callback context-menu-changed(bool);
+    in-out property <ProblemRecordStatus> problem-record-status: ProblemRecordStatus.idle;
+    in-out property <string> problem-record-error;
+    out property <bool> context-menu-open: card-menu.opened;
+    out property <length> context-menu-left: card-menu.menu-left;
+    out property <length> context-menu-top: card-menu.menu-top;
+    out property <length> context-menu-width: card-menu.menu-width;
+    out property <length> context-menu-height: card-menu.menu-height;
+    public function open-context-menu(x: length, y: length) {
+        root.problem-record-status = ProblemRecordStatus.idle; root.problem-record-error = "";
+        card-menu.open(x, y);
+    }
     callback rasterize-formulas(float);
     changed pixel-scale => { root.rasterize-formulas(root.pixel-scale); MathInputState.refresh-view(); }
 
@@ -148,6 +162,7 @@ export component PracticeWindow inherits Window {
     tag-measure := Text { visible: false; text: root.pack-tag; font-size: 11px; }
     card-focus := FocusScope {
         capture-key-pressed(event) => {
+            if event.text == Key.Menu || (event.text == Key.F10 && event.modifiers.shift) { root.open-context-menu(root.width - 24px, 24px); return accept; }
             if event.text == Key.Escape && MathInputState.open { MathInputState.dismiss(); return accept; }
             if event.text == Key.Escape && root.feedback == 2 { return accept; }
             if event.text == Key.Escape || ((root.feedback != 0 || root.knowledge-only) && event.text == Key.Return) {
@@ -159,6 +174,11 @@ export component PracticeWindow inherits Window {
                 if root.answer-mode == 1 && event.text == "3" { root.choose-answer(2); return accept; }
             }
             return reject;
+        }
+        TouchArea {
+            pointer-event(event) => {
+                if event.button == PointerEventButton.right && event.kind == PointerEventKind.up { root.open-context-menu(self.mouse-x, self.mouse-y); }
+            }
         }
         WindowMoveArea { }
         tag-badge := Rectangle {
@@ -346,5 +366,13 @@ export component PracticeWindow inherits Window {
                 }
             }
         }
+    }
+    card-menu := PracticeMenu {
+        viewport-width: root.width; viewport-height: root.height;
+        problem-record-status: root.problem-record-status;
+        problem-record-error: root.problem-record-error;
+        state-changed(opened) => { root.context-menu-changed(opened); }
+        activated(action, minutes) => { root.practice-action(action, minutes); }
+        cancelled => { root.focus-answer(); }
     }
 }

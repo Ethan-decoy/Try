@@ -52,6 +52,8 @@ Windows 的两种准备入口按用途区分：
 
 `src/app.rs` 负责应用生命周期、托盘和共享资源。其私有模块放在 `src/app/`，按主窗口、知识包、题目编辑、图片、公式接入、练习窗口、设置和更新组织。`main_window.rs` 保留窗口创建、激活和关闭；其内部 `bindings.rs` 按功能注册事件，`view_model.rs` 生成列表、设置和待确认操作的显示状态。功能通过 `App` 内部协作，题库、判分、学习调度、存储和更新安装等领域逻辑仍由独立库模块负责。
 
+`practice_window.rs` 保留闪卡创建、展示与关闭；其私有的 `bindings.rs` 注册界面和原生事件，`answer.rs` 处理输入、判分反馈及问题现场采集，`timing.rs` 管理提醒和自动收起，集中维护收起倒计时的启动、暂停、恢复与取消。菜单和图片预览通过该入口控制计时。`practice_menu.rs` 只分派具名菜单动作；动作和记录状态使用 Slint 导出的枚举，由 Rust 与界面共享。问题现场先冻结，再交给 `problem_report` 原子保存；记录包含当前显示内容与最近提交的输入，独立于题库和学习数据。
+
 `ui/app.slint` 保留 Rust 侧使用的统一导出，窗口实现分别位于 `main_window.slint`、`practice_window.slint` 与 `app_shell.slint`。`about.slint` 负责关于内容；弹出位置和文字测量仍由主窗口持有，保证更新状态变化时几何稳定。`tests/support/mod.rs` 共用无窗口渲染与输入驱动，各测试保留自己的界面夹具和行为断言。
 
 `src/structured_math.rs` 负责结构化编辑器的宿主接入；其剪贴板适配与整段输入共用表达式规范化，保留组件的结构、选区与撤销语义。`src/text_history.rs` 只维护普通文字的有界撤销记录。原生检查按功能放在 `src/native_checks/`，`mod.rs` 保留共享窗口与输入驱动；测试通过当前可见的输入框和 ƒ 入口验证练习，不保留已退役的公式面板入口。

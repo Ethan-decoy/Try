@@ -1,4 +1,12 @@
 {
+  "不再练习此题": "Stop practicing this question",
+  "可在知识包中重新勾选": "Re-enable it in the knowledge pack",
+  "记录此题问题": "Record this problem",
+  "已在本地记录": "Recorded locally",
+  "记录失败，重试": "Save failed, retry",
+  "保存到数据目录的 bug_reports 文件夹": "Save in bug_reports in the data folder",
+  "无法创建问题记录目录：{error}": "Could not create the problem-report folder: {error}",
+  "返回": "Back",
   "标签": "Tag",
   "留空不显示": "Leave blank to hide",
   "知识包标签": "Knowledge-pack tag",

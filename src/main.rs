@@ -194,3 +194,7 @@ fn main() -> std::process::ExitCode {
     }
     code
 }
+
+#[cfg(test)]
+#[path = "../tests/support/mod.rs"]
+mod test_support;

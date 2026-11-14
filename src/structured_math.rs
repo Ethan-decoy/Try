@@ -70,6 +70,9 @@ impl Session {
     pub fn source(&self) -> String {
         answer_input(&self.controller.editor.latex_preview())
     }
+    pub fn latex_source(&self) -> String {
+        self.controller.editor.latex_preview()
+    }
     pub fn error(&self) -> String {
         self.controller
             .error
@@ -148,8 +151,7 @@ fn theme_image(image: &slint::Image, dark: bool) -> slint::Image {
 }
 
 #[cfg(test)]
-#[path = "../tests/support/mod.rs"]
-mod test_support;
+use crate::test_support;
 
 #[cfg(test)]
 mod tests {

@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 0.9.3 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 0.10.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -11,6 +11,8 @@ Place the Windows executable in a writable folder and open `try.exe`. Closing th
 Click the tray icon on Windows/Linux to start a card. On macOS, choose Practice from the menu-bar icon. The menu also opens Settings or About, pauses automatic practice, resumes it, or quits. Mac/Linux remain experimental; complete tray, focus and file-dialog behavior needs desktop testing.
 
 Enter submits a typed answer. Click a multiple-choice option or use 1, 2, 3; click ✓ / ✕ for true/false. Green means correct; red reveals the expected answer and stays open until you press Enter to acknowledge it. Esc does not dismiss an incorrect answer. Esc closes unanswered or correct cards, and Enter can also dismiss correct feedback early. Closing without submitting does not record a result.
+
+Right-click a practice card to open its menu, or press the Menu key or Shift+F10 while the card has focus. **Stop practicing this question** unchecks the current question and closes the card, keeping its content and learning records; re-enable it in the knowledge pack. **Pause for** offers 1, 2 or 3 hours, or a custom duration. **Record this problem** saves the question, expected answer, current input and formula, result and build information as JSON in `bug_reports/` within the current data folder. The menu confirms **Recorded locally**. No network connection or written explanation is needed. The same version and reproduction case reuse one file; a failed save can be retried. Recording does not change the question or grade, and also supports incomplete or unsubmitted formulas. The menu works for answering and fact viewing. It suspends automatic closing and resumes the remaining time when closed; Esc closes only the menu.
 
 Scheduled answer cards request keyboard focus by default, so you can type or use the number keys immediately. When gaming or avoiding interruptions, turn off **Automatically focus new cards** under Settings > Card. The complete card stays visible without activating on appearance or hover. Release the mouse and click the card to answer, or start practice from the system tray. On Windows, the card lets mouse input pass through while another window hides the cursor or captures the mouse; releasing it restores click interaction. Returning to the game keeps the card visible. Presentation recording begins when you activate the card. The preference persists through restarting; fact viewing does not take keyboard focus automatically.
 

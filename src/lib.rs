@@ -16,6 +16,7 @@ mod math_structure;
 mod math_vocabulary;
 pub mod media;
 pub mod practice;
+pub mod problem_report;
 pub mod reminder_schedule;
 pub mod storage;
 #[cfg(any(test, feature = "native_checks"))]
