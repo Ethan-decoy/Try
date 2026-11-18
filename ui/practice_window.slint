@@ -21,6 +21,7 @@ component AnswerTile inherits Rectangle {
     accessible-role: button;
     accessible-label: root.option.label;
     accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.activated(); } }
     Image {
         visible: root.symbol-only;
         source: root.symbol;
@@ -76,8 +77,14 @@ export component PracticeWindow inherits Window {
     private property <length> picture-height: root.question-image-width > 0 ? min(220px, (root.width - 48px) * root.question-image-height / root.question-image-width) : 0px;
     private property <length> practice-content-height: (root.has-prompt ? max(48px, practice-prompt.preferred-height) : 0px) + root.picture-height + (root.has-prompt && root.question-image-width > 0 ? 14px : 0px) + 20px + root.answer-row-height + root.answer-footer-height;
     private property <length> knowledge-content-height: (root.has-prompt ? max(48px, knowledge-prompt.preferred-height) + 32px : 0px) + root.picture-height + (root.has-prompt && root.question-image-width > 0 ? 16px : 0px) + (root.standard-answer != "" ? 24px + max(32px, standard-label.preferred-height) : 0px);
-    private property <length> answer-footer-height: MathInputState.open ? (MathInputState.keypad-expanded ? root.structured-pad-height + 13px : max(64px, structured-error.preferred-height + 26px)) : root.feedback == 2 ? max(64px, standard-label.preferred-height + 39px) : 64px;
-    private property <length> desired-height: min(560px, max(230px, root.knowledge-only ? root.knowledge-content-height + 64px : root.practice-content-height + 42px) + root.tag-space);
+    private property <length> practice-bottom-inset: root.feedback == 2 ? 36px : 18px;
+    private property <length> standard-answer-top: 34px;
+    private property <length> answer-footer-height: MathInputState.open && MathInputState.keypad-expanded ? root.structured-pad-height + 13px
+        : root.feedback == 2 ? max(64px, root.standard-answer-top + standard-label.preferred-height + 8px)
+        : max(64px, answer-error.preferred-height + 26px);
+    private property <length> desired-height: min(560px, max(230px,
+        root.knowledge-only ? root.knowledge-content-height + 64px
+            : root.practice-content-height + 24px + root.practice-bottom-inset) + root.tag-space);
     height: root.desired-height;
     // Native resize events assign height. Retain the content-derived target
     // separately so a taller formula updates the window after expansion.
@@ -111,6 +118,7 @@ export component PracticeWindow inherits Window {
     in property <int> feedback: 0;
     in property <int> answer-mode: 0;
     in property <bool> knowledge-only;
+    in property <bool> awaiting-interaction;
     in property <[AnswerOption]> options;
     in property <float> option-formula-height;
     in property <int> selected-option: -1;
@@ -236,7 +244,7 @@ export component PracticeWindow inherits Window {
         practice-scroll := ScrollView {
             visible: !root.knowledge-only;
             x: 24px; y: 24px + root.tag-space;
-            width: parent.width - 36px; height: parent.height - 42px - root.tag-space;
+            width: parent.width - 36px; height: parent.height - self.y - root.practice-bottom-inset;
             horizontal-scrollbar-policy: always-off;
             content-width: self.visible-width;
             content-height: max(self.visible-height, root.practice-content-height);
@@ -276,7 +284,6 @@ export component PracticeWindow inherits Window {
                         border-color: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 || root.input-error != "" ? Theme.wrong-ink : answer-input.has-focus || MathInputState.open ? Theme.focus : Theme.control-border;
                         accessible-role: text-input;
                         accessible-label: @tr("你的答案");
-                        if root.input-error != "" : Tooltip { text: @markdown("\{root.input-error}"); }
                         answer-input := StructuredMathSurface {
                             visible: root.feedback == 0;
                             x: 0px; y: 0px; width: parent.width - 42px; height: parent.height;
@@ -293,7 +300,7 @@ export component PracticeWindow inherits Window {
                             submitted => { root.submit-answer(root.answer-text); }
                         }
                         if root.feedback != 0 : FormulaLabel {
-                            x: 12px; y: 8px; width: parent.width - 62px; height: parent.height - 16px;
+                            x: 12px; y: 8px; width: parent.width - 24px; height: parent.height - 16px;
                             fallback: root.answer-text; formula: root.input-preview.formula;
                             formula-width: root.input-preview.formula-width; formula-height: root.input-preview.formula-height;
                             texts: root.input-preview.texts; font-size: 22px;
@@ -301,6 +308,7 @@ export component PracticeWindow inherits Window {
                             formula-tint: root.feedback == 1 ? Theme.correct-ink : Theme.wrong-ink;
                         }
                         formula-toggle := ToolButton {
+                            visible: root.feedback == 0;
                             x: parent.width - 38px; y: (parent.height - 32px) / 2;
                             width: 32px; height: 32px;
                             label: "ƒ"; name: MathInputState.open && MathInputState.keypad-expanded ? @tr("收起公式输入") : @tr("公式输入");
@@ -337,16 +345,40 @@ export component PracticeWindow inherits Window {
                         changed natural-height => { root.structured-pad-height = self.natural-height; }
                         init => { root.structured-pad-height = self.natural-height; }
                     }
-                    structured-error := Text {
-                        visible: MathInputState.open && !MathInputState.keypad-expanded && MathInputState.error != "";
+                    answer-error := Text {
+                        visible: self.text != "";
                         x: 0px; y: 13px; width: parent.width; height: self.preferred-height;
-                        text: MathInputState.error; color: Theme.wrong-ink; font-size: 12px; wrap: word-wrap;
+                        text: root.feedback != 0 || (MathInputState.open && MathInputState.keypad-expanded) ? ""
+                            : MathInputState.open ? MathInputState.error : root.input-error;
+                        color: Theme.wrong-ink; font-size: 12px; wrap: word-wrap;
+                        accessible-role: text; accessible-label: self.text; accessible-live-region: polite;
+                    }
+                    Text {
+                        visible: root.feedback == 0 && answer-error.text == "" && !(MathInputState.open && MathInputState.keypad-expanded);
+                        y: 13px; width: parent.width; height: 18px;
+                        text: root.awaiting-interaction ? @tr("点击题板后作答")
+                            : root.answer-mode == 0 ? @tr("按 Enter 核对答案")
+                            : root.answer-mode == 1 ? @tr("按 1、2、3 选择答案")
+                            : @tr("1 选正确，2 选不正确");
+                        color: Theme.muted; font-size: 12px;
+                        horizontal-alignment: center; vertical-alignment: center;
+                    }
+                    Text {
+                        visible: root.feedback != 0;
+                        y: 12px; width: parent.width; height: 18px;
+                        text: root.feedback == 1 ? @tr("答对了") : @tr("正确答案");
+                        font-size: 13px; font-weight: 600;
+                        color: root.feedback == 1 ? Theme.correct-ink : Theme.wrong-ink;
+                        horizontal-alignment: center; vertical-alignment: center;
+                        accessible-role: text;
+                        accessible-label: root.feedback == 2 ? self.text + " · " + root.standard-answer : self.text;
+                        accessible-live-region: polite;
                     }
                     standard-label := FormulaLabel {
                         visible: root.feedback == 2;
-                        x: 0px; y: 13px;
+                        x: 0px; y: root.standard-answer-top;
                         width: parent.width;
-                        height: parent.height - 39px;
+                        height: parent.height - self.y - 8px;
                         fallback: root.standard-answer;
                         formula: root.answer-formula;
                         formula-width: root.answer-formula-width;
@@ -355,16 +387,13 @@ export component PracticeWindow inherits Window {
                         font-size: 20px;
                         ink: Theme.wrong-ink;
                     }
-                    if root.feedback == 2 : Text {
-                        y: parent.height - 16px;
-                        width: parent.width; height: 16px;
-                        text: @tr("按 Enter 确认");
-                        font-size: 12px; color: Theme.wrong-ink;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
                 }
             }
+        }
+        if !root.knowledge-only && root.feedback == 2 : Text {
+            x: 24px; y: parent.height - 28px; width: parent.width - 48px; height: 16px;
+            text: @tr("按 Enter 确认"); color: Theme.wrong-ink; font-size: 12px;
+            horizontal-alignment: center; vertical-alignment: center;
         }
     }
     card-menu := PracticeMenu {

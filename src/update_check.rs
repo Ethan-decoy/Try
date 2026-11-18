@@ -6,6 +6,7 @@ use std::cmp::Ordering;
 
 const RELEASES_API: &str = "https://api.github.com/repos/Ethan-decoy/try/releases?per_page=100";
 const RELEASES_PAGE: &str = "https://github.com/Ethan-decoy/Try/releases/tag/";
+const LATEST_RELEASE: &str = "https://github.com/Ethan-decoy/Try/releases/latest";
 const RELEASES_FEED: &str = "https://github.com/Ethan-decoy/Try/releases.atom";
 const RELEASES_DOWNLOAD: &str = "https://github.com/Ethan-decoy/Try/releases/download/";
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
@@ -74,13 +75,47 @@ struct ApiRelease {
     prerelease: bool,
 }
 
-/// The first public version is a preview, so GitHub prereleases are eligible too.
-/// Change this policy to Stable when shipping the first stable release.
 pub fn check() -> Result<CheckOutcome, CheckError> {
-    check_with_fetch(
-        env!("CARGO_PKG_VERSION"),
-        ReleaseChannel::Preview,
-        transport::get,
+    check_stable(env!("CARGO_PKG_VERSION"), transport::get, || {
+        crate::update_transport::redirect_location(LATEST_RELEASE).map_err(|_| CheckError::Network)
+    })
+}
+
+fn check_stable(
+    current: &str,
+    fetch: impl FnMut(&str) -> Result<(u16, Vec<u8>), CheckError>,
+    latest: impl FnOnce() -> Result<Option<String>, CheckError>,
+) -> Result<CheckOutcome, CheckError> {
+    let result = check_with_fetch(current, ReleaseChannel::Stable, fetch);
+    if result != Err(CheckError::RateLimited) {
+        return result;
+    }
+    // The public latest-release redirect identifies a stable release even when
+    // a shared IP has exhausted the REST quota. The Atom feed includes previews.
+    log::info!(target: "try::updates", "event=api_rate_limited fallback=latest_stable");
+    let Some(location) = latest().map_err(|_| CheckError::RateLimited)? else {
+        return Ok(CheckOutcome::NoPublicRelease);
+    };
+    if location == "https://github.com/Ethan-decoy/Try/releases"
+        || location == "/Ethan-decoy/Try/releases"
+    {
+        return Ok(CheckOutcome::NoPublicRelease);
+    }
+    let tag = location
+        .strip_prefix(RELEASES_PAGE)
+        .or_else(|| location.strip_prefix("/Ethan-decoy/Try/releases/tag/"))
+        .ok_or(CheckError::RateLimited)?;
+    let release = Release::from_tag(tag).map_err(|_| CheckError::RateLimited)?;
+    if !release.version.pre.is_empty() {
+        return Err(CheckError::RateLimited);
+    }
+    let current = Version::parse(current).map_err(|_| CheckError::InvalidResponse)?;
+    Ok(
+        if release.version.cmp_precedence(&current) == Ordering::Greater {
+            CheckOutcome::Available(release)
+        } else {
+            CheckOutcome::UpToDate
+        },
     )
 }
 
@@ -272,6 +307,70 @@ mod tests {
 
     fn release(tag: &str, prerelease: bool) -> serde_json::Value {
         json!({"tag_name": tag, "prerelease": prerelease, "draft": false})
+    }
+
+    #[test]
+    fn stable_client_offers_only_published_stable_updates() {
+        let releases = json!([
+            {"tag_name":"v3.0.0","draft":true,"prerelease":false},
+            release("v2.0.0", true), release("v2.0.0-rc.1", false), release("v1.0.1", false)
+        ]);
+        assert_eq!(
+            check_stable(
+                "1.0.0",
+                |url| {
+                    assert_eq!(url, RELEASES_API);
+                    Ok((200, serde_json::to_vec(&releases).unwrap()))
+                },
+                || panic!("API succeeded")
+            ),
+            Ok(CheckOutcome::Available(
+                Release::from_tag("v1.0.1").unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn stable_rate_limit_uses_only_this_repositorys_latest_release() {
+        let available = Ok(CheckOutcome::Available(
+            Release::from_tag("v1.1.0").unwrap(),
+        ));
+        for (location, expected) in [
+            (
+                Some("https://github.com/Ethan-decoy/Try/releases/tag/v1.1.0"),
+                available.clone(),
+            ),
+            (Some("/Ethan-decoy/Try/releases/tag/v1.1.0"), available),
+            (
+                Some("/Ethan-decoy/Try/releases/tag/v1.0.0"),
+                Ok(CheckOutcome::UpToDate),
+            ),
+            (
+                Some("/Ethan-decoy/Try/releases"),
+                Ok(CheckOutcome::NoPublicRelease),
+            ),
+            (None, Ok(CheckOutcome::NoPublicRelease)),
+            (
+                Some("/Ethan-decoy/Try/releases/tag/v2.0.0-rc.1"),
+                Err(CheckError::RateLimited),
+            ),
+            (
+                Some("https://example.org/releases/tag/v2.0.0"),
+                Err(CheckError::RateLimited),
+            ),
+        ] {
+            assert_eq!(
+                check_stable(
+                    "1.0.0",
+                    |url| {
+                        assert_eq!(url, RELEASES_API);
+                        Ok((429, Vec::new()))
+                    },
+                    || Ok(location.map(str::to_owned))
+                ),
+                expected
+            );
+        }
     }
 
     fn evaluate(current: &str, channel: ReleaseChannel, values: serde_json::Value) -> CheckOutcome {

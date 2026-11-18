@@ -4,35 +4,35 @@ English · [简体中文](README.md)
 
 **A little practice, now and then.**
 
-Try is a lightweight desktop flashcard app for active recall and spaced repetition. Practice formulas, vocabulary and other knowledge during breaks between work and play.
+Try is a lightweight, open-source desktop flashcard app that runs in the system tray. At intervals you choose, a question pops up in a corner of your screen. Make a deck of formulas, words or bits of code you keep looking up, and practice recalling them while you work.
 
-At your chosen interval, answer one short question or glance at a knowledge card, then return to what you were doing. Typed answers, multiple choice and true/false are supported. Answer practice covers unanswered questions first, then uses your results and elapsed time to guide reviews.
+For active recall, type an answer, pick an option or mark a statement true or false. Try starts with unanswered questions, then uses spaced repetition based on your results and the time since you last answered each question. Knowledge mode shows the answers directly. You can practice offline, and your decks and review history stay on your computer.
 
-![A Try v0.6.0 formula practice card in a desktop corner](docs/images/practice_desktop.png)
+![A vocabulary card in the corner of the desktop shows “hesitate” with 犹豫 entered as the answer](docs/images/practice_desktop.png)
 
-*Actual Try v0.6.0 practice card on Windows, enlarged in an illustrative desktop layout.*
+[Watch one question from start to finish](docs/images/practice_demo.gif) · The card is rendered by the Windows UI against an illustrative desktop.
 
 ## Download
 
-Download the file for your platform from the [latest version (v0.10.0 prerelease)](https://github.com/Ethan-decoy/Try/releases/tag/v0.10.0).
+Download the asset for your platform from the [latest GitHub release](https://github.com/Ethan-decoy/Try/releases/latest).
 
 | Platform | Download | Status |
 | --- | --- | --- |
-| Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v0.10.0/try.exe) | Portable |
-| macOS arm64 | [try_macos_arm64_0.10.0.zip](https://github.com/Ethan-decoy/Try/releases/download/v0.10.0/try_macos_arm64_0.10.0.zip) | Experimental |
-| Linux x64 | [try_linux_x64_0.10.0.AppImage](https://github.com/Ethan-decoy/Try/releases/download/v0.10.0/try_linux_x64_0.10.0.AppImage) | Experimental |
+| Windows x64 | `try.exe` | Single-file portable app |
+| macOS arm64 | `try_macos_arm64_<version>.zip` | Experimental, not notarized |
+| Linux x64 | `try_linux_x64_<version>.AppImage` | Experimental |
 
-On Windows, put `try.exe` in a writable folder and open it. Closing the main window returns to the tray. First launch creates an adjacent `data/` folder; keep it with the executable. Choose Update & restart in About to download, verify, install and restart automatically. Versions `0.2.1` and earlier need one manual upgrade first.
+On Windows, put `try.exe` in a writable folder and open it. Your decks, settings and review history live in the adjacent `data/` folder. Keep it with the executable when moving the app. To install a newer stable release, choose **Update & restart** in About.
 
-The macOS version supports arm64 only. macOS/Linux versions are experimental, and macOS packages are not notarized. See the [user guide](docs/user_guide_en.md) for detailed controls.
+Compatibility starts with 1.0.0. If you are upgrading from a 0.x preview, back up your data folder first. Try reuses any data it can read.
+
+Sample decks are ready on first launch. Close the main window to start the reminder timer. To see a card right away, left-click the tray icon on Windows or Linux, or choose **Practice** from the Try menu in the macOS menu bar. To keep typing in your current window when a card appears, turn off **Automatically focus new cards** in Settings. See the [user guide](docs/user_guide_en.md) for details.
 
 ## Choose what to practice
 
-Manage knowledge packs and choose which questions to practice. Click a prompt to edit it, with support for formulas and images.
+The starter decks include a vocabulary card pairing *hesitate* with 犹豫 and a Rust card asking how to write a mutable reference (`&mut T`). Select the questions you want to practice in the main window, or click a prompt to edit it. Prompts can include images, and you can type common LaTeX expressions directly into the answer field.
 
-![Public knowledge packs and calculus formulas in Try v0.6.0's main window](docs/images/knowledge_library.png)
-
-*Try v0.6.0 on Windows, using public sample knowledge packs.*
+![The five starter decks in Try's Chinese interface, with math prompts and answers side by side](docs/images/knowledge_library.png)
 
 ## Create knowledge packs with AI
 

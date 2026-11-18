@@ -62,6 +62,21 @@ pub(crate) fn get(url: &str) -> Result<(u16, Vec<u8>), Error> {
     Ok((response.status, body))
 }
 
+pub(crate) fn redirect_location(url: &str) -> Result<Option<String>, Error> {
+    let response = platform::request(
+        url,
+        &mut std::io::sink(),
+        16 * 1024,
+        &AtomicBool::new(false),
+        &mut |_, _| {},
+    )?;
+    match response.status {
+        301 | 302 | 303 | 307 | 308 => response.location.map(Some).ok_or(Error::Network),
+        404 => Ok(None),
+        status => Err(Error::Status(status)),
+    }
+}
+
 #[cfg(all(test, not(target_os = "windows")))]
 pub(crate) fn probe_native_tls_handshake(url: &str) -> Result<(u16, Vec<u8>), Error> {
     // This fixture reaches the real connector without widening the production

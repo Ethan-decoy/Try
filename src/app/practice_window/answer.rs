@@ -11,6 +11,7 @@ impl App {
             return;
         };
         session.awaiting_interaction = false;
+        session.window.set_awaiting_interaction(false);
         if !session.prepared.knowledge_only {
             session.review_token = self.learner.borrow_mut().presented(
                 &session.question,

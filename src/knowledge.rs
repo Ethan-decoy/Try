@@ -165,6 +165,26 @@ impl Card {
                     &self.aliases,
                 ))
     }
+
+    pub(crate) fn discard_stale_aliases(&mut self, original: &Self) {
+        if !self.aliases.is_empty()
+            && !original.aliases.is_empty()
+            && self.answer.trim() != original.answer.trim()
+            && !crate::math_answer::matches(
+                &self.answer,
+                &original.answer,
+                original.answer_latex.as_deref(),
+                &[],
+            )
+        {
+            self.aliases.retain(|alias| {
+                !original
+                    .aliases
+                    .iter()
+                    .any(|old| old.trim() == alias.trim())
+            });
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1009,6 +1029,9 @@ impl Library {
                 .find(|card| card.id.as_deref() == Some(id))
                 .ok_or(tr!("这道题已不存在，请重新选择。"))?;
             card.id = target.id.clone();
+            if mode == AnswerMode::MultipleChoice {
+                card.discard_stale_aliases(target);
+            }
             *target = card;
         } else {
             card.id = None;
@@ -1417,6 +1440,44 @@ mod tests {
         assert!(library.settings.pack_practice_configs.is_empty());
         assert_eq!(library.uniform_answer_mode(&pack_id), None);
         assert_eq!(library.settings.excluded_card_ids, participation);
+    }
+
+    #[test]
+    fn alias_edits_respect_equivalent_formulas_and_explicit_input_answers() {
+        let mut library = crate::test_fixtures::regression_library();
+        let pack_id = library.packs[0].id.clone();
+        let mut card = library.packs[0].cards[0].clone();
+        let id = card.id.clone().unwrap();
+        assert_eq!(card.answer, "1/2");
+        card.answer = "1 / 2".into();
+        library
+            .save_card_with_mode(
+                &pack_id,
+                Some(&id),
+                card.clone(),
+                AnswerMode::MultipleChoice,
+            )
+            .unwrap();
+        assert_eq!(library.packs[0].cards[0].aliases, ["0.5"]);
+
+        card.answer = "blue".into();
+        card.answer_latex = None;
+        card.aliases = vec!["0.5".into(), "azure".into()];
+        library
+            .save_card_with_mode(
+                &pack_id,
+                Some(&id),
+                card.clone(),
+                AnswerMode::MultipleChoice,
+            )
+            .unwrap();
+        assert_eq!(library.packs[0].cards[0].aliases, ["azure"]);
+
+        card.answer = "sky blue".into();
+        library
+            .save_card_with_mode(&pack_id, Some(&id), card, AnswerMode::Input)
+            .unwrap();
+        assert_eq!(library.packs[0].cards[0].aliases, ["0.5", "azure"]);
     }
 
     #[test]

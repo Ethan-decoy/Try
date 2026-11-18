@@ -1,6 +1,6 @@
 [package]
 name = "try"
-version = "0.10.0"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.92"
 publish = false
@@ -21,7 +21,7 @@ required-features = ["native_checks", "distribution"]
 resolver = "3"
 
 [workspace.dependencies]
-slint-math-input = { git = "https://github.com/Ethan-decoy/slint_math_input.git", rev = "51446458130f5922fc579cbd8a2fa1f25b360cc1", default-features = false }
+slint-math-input = { git = "https://github.com/Ethan-decoy/slint_math_input.git", rev = "7a55427c204582eeb65c214edd8b35198edbb006", default-features = false }
 
 [dependencies]
 slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "system-tray", "compat-1-18", "unstable-winit-030"] }
@@ -55,6 +55,8 @@ libc = "0.2"
 ureq = { version = "=3.4.2", default-features = false, features = ["native-tls"] }
 
 [build-dependencies]
+litrs = "1"
+proc-macro2 = "1"
 slint-math-input = { workspace = true }
 serde_json = "1"
 latex-rust = { version = "=2.1.0", default-features = false }

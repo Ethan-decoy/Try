@@ -1,5 +1,7 @@
 //! Main-window creation, activation and teardown.
 mod bindings;
+#[cfg(all(test, target_os = "windows"))]
+mod tests;
 mod view_model;
 use super::*;
 

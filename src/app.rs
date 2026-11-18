@@ -17,7 +17,9 @@ use r#try::autostart::Autostart;
 use r#try::card_editor::CardDraft;
 use r#try::formula;
 use r#try::i18n::{self, InterfaceLanguage};
-use r#try::knowledge::{AnswerContent, AnswerMode, AppResult, Appearance, KnowledgePack, Library};
+use r#try::knowledge::{
+    AnswerContent, AnswerMode, AppResult, Appearance, KnowledgePack, Library, Settings,
+};
 use r#try::learning::{Learner, Origin as LearningOrigin, ReviewToken};
 use r#try::math_answer;
 use r#try::math_editor::Field;
@@ -429,15 +431,23 @@ impl App {
         self.tray.set_settings_available(available);
     }
 
-    fn commit(self: &Rc<Self>, edit: impl FnOnce(&mut Library) -> AppResult<()>) -> AppResult<()> {
+    fn save_library_edit(&self, edit: impl FnOnce(&mut Library) -> AppResult<()>) -> AppResult<()> {
         let mut candidate = self.library.borrow().clone();
         edit(&mut candidate)?;
-        let language_changed = candidate.settings.interface_language
-            != self.library.borrow().settings.interface_language;
         self.store.save(&candidate)?;
-        self.knowledge_only.set(candidate.settings.knowledge_only);
-        self.floating.configure(&candidate.settings);
         self.library.replace(candidate);
+        Ok(())
+    }
+
+    fn commit(self: &Rc<Self>, edit: impl FnOnce(&mut Library) -> AppResult<()>) -> AppResult<()> {
+        let previous_language = self.library.borrow().settings.interface_language;
+        self.save_library_edit(edit)?;
+        let language = {
+            let library = self.library.borrow();
+            self.knowledge_only.set(library.settings.knowledge_only);
+            self.floating.configure(&library.settings);
+            library.settings.interface_language
+        };
         self.collect_media();
         if !self.knowledge_only.get()
             && let Err(error) = self.learner.borrow_mut().reconcile(&self.library.borrow())
@@ -445,8 +455,8 @@ impl App {
             self.pending_learning_error
                 .replace(Some(tr!("练习记录未能保存：{error}", error = error)));
         }
-        if language_changed {
-            i18n::activate(self.library.borrow().settings.interface_language);
+        if language != previous_language {
+            i18n::activate(language);
             i18n::apply_to_slint().map_err(|error| error.to_string())?;
             self.read_autostart_status();
             if let Some(window) = self.main_window.borrow().as_ref() {
@@ -454,7 +464,7 @@ impl App {
                 window.set_math_symbols(Self::palette_model(r#try::math_palette::SYMBOLS));
                 window.set_message("".into());
             }
-            log::info!(target: "try::app", "event=interface_language_changed preference={:?}", self.library.borrow().settings.interface_language);
+            log::info!(target: "try::app", "event=interface_language_changed preference={language:?}");
         }
         self.refresh();
         self.arm_pause_expiry();

@@ -1,4 +1,15 @@
 import { Theme } from "theme.slint";
+
+export component FocusOutline inherits Rectangle {
+    in property <color> ink: Theme.focus;
+    Rectangle {
+        x: 2px; y: 2px;
+        width: max(0px, parent.width - 4px); height: max(0px, parent.height - 4px);
+        border-radius: 5px; border-width: 2px; border-color: root.ink;
+        background: transparent;
+    }
+}
+
 export component IconButton inherits Rectangle {
     in property <image> glyph;
     in property <length> glyph-size: 18px;
@@ -32,13 +43,7 @@ export component IconButton inherits Rectangle {
         y: (parent.height - self.height) / 2;
         colorize: !root.tint ? transparent : root.enabled ? root.ink : Theme.disabled;
     }
-    if root.borderless && icon-focus.has-focus : Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: parent.height - 4px;
-        width: 18px; height: 2px;
-        border-radius: 1px;
-        background: Theme.focus;
-    }
+    if root.borderless && icon-focus.has-focus : FocusOutline { }
     Tooltip { text: @markdown("\{root.label}"); }
     icon-focus := FocusScope {
         enabled: root.enabled;
@@ -138,6 +143,7 @@ export component SettingsCheck inherits Rectangle {
 }
 
 export component AnswerPick inherits Rectangle {
+    in property <bool> enabled: true;
     in property <bool> selected;
     in property <bool> symbol-only;
     in property <bool> compact;
@@ -147,12 +153,14 @@ export component AnswerPick inherits Rectangle {
     forward-focus: pick-focus;
     width: 36px; height: 36px;
     border-radius: 6px;
+    opacity: root.enabled ? 1 : 0.5;
     background: root.compact ? transparent : root.symbol-only && root.selected ? Theme.primary : pick-touch.has-hover ? Theme.hover : transparent;
     accessible-role: button;
     accessible-label: root.label;
+    accessible-enabled: root.enabled;
     accessible-checkable: true;
     accessible-checked: root.selected;
-    accessible-action-default => { root.activated(); }
+    accessible-action-default => { if root.enabled { root.activated(); } }
     Rectangle {
         visible: !root.symbol-only;
         x: (parent.width - 20px) / 2; y: (parent.height - 20px) / 2;
@@ -167,13 +175,13 @@ export component AnswerPick inherits Rectangle {
         background: root.selected ? Theme.primary : pick-touch.has-hover ? Theme.hover : transparent;
     }
     Image { visible: root.symbol-only; source: root.glyph; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: root.compact ? 16px : 20px; height: self.width; colorize: root.selected ? Theme.primary-ink : Theme.muted; }
-    if pick-focus.has-focus : Rectangle { x: (parent.width - 18px) / 2; y: parent.height - 2px; width: 18px; height: 2px; background: Theme.focus; }
+    if pick-focus.has-focus : FocusOutline { }
     Tooltip { text: @markdown("\{root.label}"); }
     pick-focus := FocusScope {
-        width: 0px;
+        width: 0px; enabled: root.enabled;
         key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; } return reject; }
     }
-    pick-touch := TouchArea { mouse-cursor: pointer; clicked => { root.activated(); } }
+    pick-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.activated(); } }
 }
 
 export component ParticipationSwitch inherits Rectangle {
@@ -208,10 +216,7 @@ export component ParticipationSwitch inherits Rectangle {
         }
     }
     Tooltip { text: @markdown("\{root.label}"); }
-    if root.borderless && switch-focus.has-focus : Rectangle {
-        x: (parent.width - self.width) / 2; y: parent.height - 3px;
-        width: 18px; height: 2px; border-radius: 1px; background: Theme.focus;
-    }
+    if root.borderless && switch-focus.has-focus : FocusOutline { }
     switch-focus := FocusScope {
         enabled: root.enabled;
         width: root.borderless ? 0px : parent.width;

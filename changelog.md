@@ -1,8 +1,22 @@
 # Changelog
 
-Notable changes are recorded here using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See the [release policy](docs/release_policy.md) for Try's conventions during `0.x` development. Try's `0.x` releases are published as GitHub prereleases.
+Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Compatibility for stable releases starts at 1.0.0. See the [release policy](docs/release_policy.md).
 
 ## [Unreleased]
+
+These changes are planned for **1.0.0**, the first stable release. Back up your data directory before upgrading from a 0.x preview. Try reuses data it can read, with no guaranteed migration from previews.
+
+### Changed
+
+- The app checks for published stable updates. When the GitHub API rate limit is reached, it checks the repository's latest stable release.
+- Offer create and import actions in empty libraries, show more questions in compact windows, and explain how to start practice from the tray or menu bar.
+- Make keyboard focus easier to see and show answer shortcuts, input errors, and labeled results directly on practice cards. Keep the Enter prompt visible while scrolling an incorrect answer.
+
+### Fixed
+
+- With `slint-math-input 0.1.0-preview.6`, Tab and Shift+Tab move between a logarithm's base, exponent and parenthesized argument in either direction. A square-bracketed expression beside the logarithm keeps its own editing scope.
+- Retrying a multiple-choice edit after a validation error now drops aliases for the previous correct answer, just like saving the edit on the first attempt.
+- Changing the reminder interval, correct-answer duration or knowledge-display duration preserves unfinished quiet-hours edits.
 
 ## [0.10.0] - 2026-11-14
 
@@ -230,23 +244,26 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v0.9.1...HEAD
-[0.9.1]: https://github.com/Ethan-decoy/Try/compare/v0.9.0...v0.9.1
-[0.9.0]: https://github.com/Ethan-decoy/Try/compare/v0.8.2...v0.9.0
-[0.8.2]: https://github.com/Ethan-decoy/Try/compare/v0.8.1...v0.8.2
-[0.8.1]: https://github.com/Ethan-decoy/Try/compare/v0.8.0...v0.8.1
-[0.8.0]: https://github.com/Ethan-decoy/Try/compare/v0.7.2...v0.8.0
-[0.7.2]: https://github.com/Ethan-decoy/Try/compare/v0.7.1...v0.7.2
-[0.7.1]: https://github.com/Ethan-decoy/Try/compare/v0.7.0...v0.7.1
-[0.7.0]: https://github.com/Ethan-decoy/Try/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/Ethan-decoy/Try/compare/v0.5.2...v0.6.0
-[0.5.2]: https://github.com/Ethan-decoy/Try/compare/v0.5.1...v0.5.2
-[0.5.1]: https://github.com/Ethan-decoy/Try/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/Ethan-decoy/Try/compare/v0.4.1...v0.5.0
-[0.4.1]: https://github.com/Ethan-decoy/Try/compare/v0.4.0...v0.4.1
-[0.4.0]: https://github.com/Ethan-decoy/Try/compare/v0.3.2...v0.4.0
-[0.3.2]: https://github.com/Ethan-decoy/Try/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/Ethan-decoy/Try/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/Ethan-decoy/Try/compare/v0.2.1...v0.3.0
-[0.2.1]: https://github.com/Ethan-decoy/Try/compare/v0.1.0...v0.2.1
-[0.1.0]: https://github.com/Ethan-decoy/Try/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/c54ae2170a9ede713720d2df68dfd8ca936777f5...HEAD
+[0.10.0]: https://github.com/Ethan-decoy/Try/compare/e067294199e559e5c09121641f5e01e429b830e8...c54ae2170a9ede713720d2df68dfd8ca936777f5
+[0.9.3]: https://github.com/Ethan-decoy/Try/compare/19a9c2a4d147f9b63be85f7289b2050d4b559425...e067294199e559e5c09121641f5e01e429b830e8
+[0.9.2]: https://github.com/Ethan-decoy/Try/compare/dcadbe986423058c8a4157f9ac07d30d49558061...19a9c2a4d147f9b63be85f7289b2050d4b559425
+[0.9.1]: https://github.com/Ethan-decoy/Try/compare/61e14a0fdcbeb74c39159ab64cf910469f52402d...dcadbe986423058c8a4157f9ac07d30d49558061
+[0.9.0]: https://github.com/Ethan-decoy/Try/compare/ce825ec91392d87ef6a1c5f6807b0f6538553790...61e14a0fdcbeb74c39159ab64cf910469f52402d
+[0.8.2]: https://github.com/Ethan-decoy/Try/compare/4dbc2a9541cc9989adf8f69176ee070f7c1327cf...ce825ec91392d87ef6a1c5f6807b0f6538553790
+[0.8.1]: https://github.com/Ethan-decoy/Try/compare/4f8a0a1b9aca34259d77a82d826dfba754a2dc4f...4dbc2a9541cc9989adf8f69176ee070f7c1327cf
+[0.8.0]: https://github.com/Ethan-decoy/Try/compare/c91d99aaa2cdaff27d4e3157d964fe223f6c9cc0...4f8a0a1b9aca34259d77a82d826dfba754a2dc4f
+[0.7.2]: https://github.com/Ethan-decoy/Try/compare/ee492486a186dd4f7d447a19c0d06d3c92ba6c6b...c91d99aaa2cdaff27d4e3157d964fe223f6c9cc0
+[0.7.1]: https://github.com/Ethan-decoy/Try/compare/40b7cc523d07a4fb04cf6e28ac317905723a7596...ee492486a186dd4f7d447a19c0d06d3c92ba6c6b
+[0.7.0]: https://github.com/Ethan-decoy/Try/compare/cbb964675599ef7c9c3b1ecd90aea3eedce80530...40b7cc523d07a4fb04cf6e28ac317905723a7596
+[0.6.0]: https://github.com/Ethan-decoy/Try/compare/278e50a4b335ff78b605d83dc175e0d27b2f9310...cbb964675599ef7c9c3b1ecd90aea3eedce80530
+[0.5.2]: https://github.com/Ethan-decoy/Try/compare/9d4e3a7cd1079d996f284296ac9dca10314f3095...278e50a4b335ff78b605d83dc175e0d27b2f9310
+[0.5.1]: https://github.com/Ethan-decoy/Try/compare/b25b2e52e940d907b583583c72b10f0cc1d876c3...9d4e3a7cd1079d996f284296ac9dca10314f3095
+[0.5.0]: https://github.com/Ethan-decoy/Try/compare/f6936a4a185bd1c65764b371073e40b63636e21f...b25b2e52e940d907b583583c72b10f0cc1d876c3
+[0.4.1]: https://github.com/Ethan-decoy/Try/compare/659a1f147fb6c80eb44d4af9f7d54ecdbe59402b...f6936a4a185bd1c65764b371073e40b63636e21f
+[0.4.0]: https://github.com/Ethan-decoy/Try/compare/bb20f2f9b0d57515427e7c991c4baec123287f3e...659a1f147fb6c80eb44d4af9f7d54ecdbe59402b
+[0.3.2]: https://github.com/Ethan-decoy/Try/compare/417218acc3ce26440b6fc3ee5315fdbd87412db4...bb20f2f9b0d57515427e7c991c4baec123287f3e
+[0.3.1]: https://github.com/Ethan-decoy/Try/compare/b42f801ac2132add00d35421a0f752c0841e4357...417218acc3ce26440b6fc3ee5315fdbd87412db4
+[0.3.0]: https://github.com/Ethan-decoy/Try/compare/33e87365e939b124e454f3fe2d075eaf54c5c372...b42f801ac2132add00d35421a0f752c0841e4357
+[0.2.1]: https://github.com/Ethan-decoy/Try/compare/3c09e19272c5db71cf7369cd4e173dba52fa071b...33e87365e939b124e454f3fe2d075eaf54c5c372
+[0.1.0]: https://github.com/Ethan-decoy/Try/commit/3c09e19272c5db71cf7369cd4e173dba52fa071b

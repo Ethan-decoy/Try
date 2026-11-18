@@ -534,84 +534,13 @@ impl App {
             window.set_editor_error(tr!("请选择正确答案。").into());
             return;
         }
-        let old_answer = window.get_editor_answer();
-        let old_latex = window.get_editor_answer_latex();
-        for (index, field) in self.math_fields.borrow().iter().enumerate() {
-            if !(field.is_dirty()
-                || (mode == AnswerMode::TrueFalse
-                    && index == 4
-                    && window.get_editor_statement().trim().is_empty()))
-            {
-                continue;
+        let draft = match self.editor_draft(&window, mode) {
+            Ok(draft) => draft,
+            Err(error) => {
+                window.set_editor_error(error.into());
+                return;
             }
-            let (text, tex) = match field.content() {
-                Ok(content) => content,
-                Err(error) => {
-                    window.set_editor_error(error.into());
-                    return;
-                }
-            };
-            match index {
-                0 => {
-                    window.set_editor_prompt(text.into());
-                    window.set_editor_prompt_latex(tex.into());
-                }
-                1 => {
-                    window.set_editor_answer(text.into());
-                    window.set_editor_answer_latex(tex.into());
-                }
-                2 => {
-                    window.set_editor_choice_one(text.into());
-                    window.set_editor_choice_one_latex(tex.into());
-                }
-                3 => {
-                    window.set_editor_choice_two(text.into());
-                    window.set_editor_choice_two_latex(tex.into());
-                }
-                4 => {
-                    window.set_editor_statement(text.into());
-                    window.set_editor_statement_latex(tex.into());
-                }
-                5 => {
-                    window.set_editor_correction(text.into());
-                    window.set_editor_correction_latex(tex.into());
-                }
-                _ => {}
-            }
-        }
-        let mut draft = CardDraft {
-            prompt_image: self.editor_image.borrow().clone(),
-            prompt: window.get_editor_prompt().to_string(),
-            answer: window.get_editor_answer().to_string(),
-            aliases: window.get_editor_aliases().to_string(),
-            prompt_latex: window.get_editor_prompt_latex().to_string(),
-            answer_latex: window.get_editor_answer_latex().to_string(),
-            choice_one: window.get_editor_choice_one().to_string(),
-            choice_two: window.get_editor_choice_two().to_string(),
-            choice_one_latex: window.get_editor_choice_one_latex().to_string(),
-            choice_two_latex: window.get_editor_choice_two_latex().to_string(),
-            has_judgment: window.get_editor_answer_mode() == AnswerMode::TrueFalse.index()
-                || !window.get_editor_statement().trim().is_empty()
-                || !window.get_editor_statement_latex().trim().is_empty()
-                || !window.get_editor_correction().trim().is_empty()
-                || !window.get_editor_correction_latex().trim().is_empty(),
-            statement: window.get_editor_statement().to_string(),
-            statement_latex: window.get_editor_statement_latex().to_string(),
-            is_true: window.get_editor_is_true(),
-            correction: window.get_editor_correction().to_string(),
-            correction_latex: window.get_editor_correction_latex().to_string(),
         };
-        if mode == AnswerMode::MultipleChoice
-            && draft.answer.trim() != old_answer.trim()
-            && !math_answer::matches(
-                &draft.answer,
-                old_answer.as_str(),
-                (!old_latex.is_empty()).then_some(old_latex.as_str()),
-                &[],
-            )
-        {
-            draft.aliases.clear();
-        }
         let card = draft.into_card_for_mode(
             mode,
             usize::try_from(window.get_editor_correct_choice()).unwrap_or_default(),
@@ -659,6 +588,52 @@ impl App {
                 window.set_editor_error(error.into());
             }
         }
+    }
+
+    fn editor_draft(&self, window: &MainWindow, mode: AnswerMode) -> AppResult<CardDraft> {
+        let mut draft = CardDraft {
+            prompt_image: self.editor_image.borrow().clone(),
+            prompt: window.get_editor_prompt().to_string(),
+            prompt_latex: window.get_editor_prompt_latex().to_string(),
+            answer: window.get_editor_answer().to_string(),
+            answer_latex: window.get_editor_answer_latex().to_string(),
+            aliases: window.get_editor_aliases().to_string(),
+            choice_one: window.get_editor_choice_one().to_string(),
+            choice_one_latex: window.get_editor_choice_one_latex().to_string(),
+            choice_two: window.get_editor_choice_two().to_string(),
+            choice_two_latex: window.get_editor_choice_two_latex().to_string(),
+            statement: window.get_editor_statement().to_string(),
+            statement_latex: window.get_editor_statement_latex().to_string(),
+            is_true: window.get_editor_is_true(),
+            correction: window.get_editor_correction().to_string(),
+            correction_latex: window.get_editor_correction_latex().to_string(),
+            ..Default::default()
+        };
+        // seed_judgment can initialize an untouched statement from the prompt.
+        let seeded_statement = mode == AnswerMode::TrueFalse && draft.statement.trim().is_empty();
+        let contents = [
+            (&mut draft.prompt, &mut draft.prompt_latex, false),
+            (&mut draft.answer, &mut draft.answer_latex, false),
+            (&mut draft.choice_one, &mut draft.choice_one_latex, false),
+            (&mut draft.choice_two, &mut draft.choice_two_latex, false),
+            (
+                &mut draft.statement,
+                &mut draft.statement_latex,
+                seeded_statement,
+            ),
+            (&mut draft.correction, &mut draft.correction_latex, false),
+        ];
+        for (field, (text, latex, seeded)) in self.math_fields.borrow().iter().zip(contents) {
+            if field.is_dirty() || seeded {
+                (*text, *latex) = field.content()?;
+            }
+        }
+        draft.has_judgment = mode == AnswerMode::TrueFalse
+            || !draft.statement.trim().is_empty()
+            || !draft.statement_latex.trim().is_empty()
+            || !draft.correction.trim().is_empty()
+            || !draft.correction_latex.trim().is_empty();
+        Ok(draft)
     }
 
     pub(super) fn close_editor(&self) {

@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 0.10.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+This guide covers Try 1.0.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
 
 ## Practice
 
@@ -67,15 +67,15 @@ Updating retains existing packs and preferences without adding starter content o
 
 ## Picture prompts
 
-Try 0.2.0 supports one static PNG or JPEG per question. Version 0.1.0 does not include this feature. In the question editor, choose **Add image** to select a file, or drop an image file onto the main window while editing a question. You can replace or remove an existing picture, and click the preview to enlarge it. Save commits the complete question; cancel preserves its original picture.
+Each question can include one static PNG or JPEG. In the question editor, choose **Add image** to select a file, or drop an image file onto the main window while editing a question. You can replace or remove an existing picture, and click the preview to enlarge it. Save commits the complete question; cancel preserves its original picture.
 
-Practice uses the compact card: short prompt, picture, then the answer controls. From 0.5.0, Try supports an empty prompt when a picture is present. Input, multiple-choice and knowledge cards then omit the caption and its spacing. A numbered “Picture question” entry remains in the main list for editing. Picture questions that need a text prompt keep it; true/false still shows the judgment statement. A prompt is required when there is no picture.
+Practice uses the compact card: short prompt, picture, then the answer controls. A picture can serve as the entire prompt. Input, multiple-choice and knowledge cards then omit the caption and its spacing. A numbered “Picture question” entry remains in the main list for editing. Picture questions that need a text prompt keep it; true/false still shows the judgment statement. A prompt is required when there is no picture.
 
 Pictures keep their colors and aspect ratio, and work with input, multiple choice, true/false and knowledge display. Click a picture to open a larger window; Esc closes that window. Automatic dismissal pauses while viewing the enlarged picture; continue answering or dismiss the card manually afterwards. Incorrect answers still require Enter to acknowledge.
 
 Try copies images into its own `media/` data folder, so moving or deleting the original file does not affect the question. Source files are limited to 8 MiB, 12 million pixels and 8192 pixels per dimension. Background processing resizes the display image to at most 524288 pixels. Each pack can use up to 128 distinct images totaling 16 MiB after processing. Shared pictures are removed only when no question or active draft references them.
 
-Export still produces one JSON file, with the pictures included. Importing it on another computer restores them. Existing text/formula packs remain compatible; captioned picture packs require Try 0.2.0 or later, and image-only questions additionally need a version that accepts empty prompts. Preserve the complete Windows portable `data/` folder, including `media/`, when moving the app. Missing or damaged pictures produce an error instead of a wrong-answer result.
+Export still produces one JSON file, with the pictures included. Importing it on another computer restores them. Text, formulas and images share the same pack format. Preserve the complete Windows portable `data/` folder, including `media/`, when moving the app. Missing or damaged pictures produce an error instead of a wrong-answer result.
 
 ## Formulas
 
@@ -89,9 +89,9 @@ Operators such as `+` and `-` stay in the current exponent or subscript. To cont
 
 ƒ opens the keypad below the field, with functions, symbols, fractions, roots, powers, integrals, sums, limits, matrices and cases. Practice uses the same input control with the keypad open or closed, retaining unfinished formulas, the caret, selection and undo history. Enter checks the answer directly; unfinished formulas show a completion hint. Esc collapses an open keypad; with it closed, Esc dismisses an unanswered card.
 
-The development tool palette has Structures and Symbols pages. Use your physical keyboard for numbers, letters and ordinary operators. Structures provides fractions, scripts, base logarithms, roots, derivatives, integrals, sums, products and limits; Symbols has nine categories. In math input, type `log` to fill its base, then Tab to the argument, using the same structure as the logarithm tool. Existing `log_2(x)` input remains valid; `log(x)` omits an explicit base. Commands including `sqrt`, `frac`, `sum`, `int` and `lim` create editable structures directly. Ordinary text answers retain text input.
+The math keypad has Structures and Symbols pages. Use your physical keyboard for numbers, letters and ordinary operators. Structures provides fractions, scripts, base logarithms, roots, derivatives, integrals, sums, products and limits; Symbols has nine categories. In math input, type `log` to fill its base, then Tab to the argument, using the same structure as the logarithm tool. Existing `log_2(x)` input remains valid; `log(x)` omits an explicit base. Commands including `sqrt`, `frac`, `sum`, `int` and `lim` create editable structures directly. Ordinary text answers retain text input.
 
-Tab and Shift+Tab visit the next or previous field in a structure; Space exits the current structure, while arrows move through its typeset positions. Operators stay inside an exponent or subscript until you move out. Typing `sqrt(3)/2` closes the root at the right parenthesis before entering the outer denominator. Immediately after automatic expansion, Ctrl+Z restores the literal command; Ctrl+Y reapplies the expansion.
+Tab moves to the next field and Shift+Tab returns to the previous one. In `log²(x)`, press Shift+Tab from `x` to edit the exponent, then Tab to return to the argument. Space exits the current structure. Arrow keys move through its typeset positions. Operators stay inside an exponent or subscript until you move out. Typing `sqrt(3)/2` closes the root at the right parenthesis before entering the outer denominator. Immediately after automatic expansion, Ctrl+Z restores the literal command and Ctrl+Y reapplies the expansion.
 
 Hover for a tool's description. Undo and redo are enabled when their history is available. Collapsing the tools retains the selected range. In practice, use ƒ or Esc to collapse the keypad; the question editor retains Apply formula and Cancel.
 
@@ -109,7 +109,7 @@ Under Practice, set Correct answer duration and Knowledge display duration indep
 
 A temporary pause lasts for its selected duration; Pause lasts until Resume. Pauses survive restarting. Resume starts the full interval without catching up missed cards. Manual practice works during pauses and quiet hours and does not resume automatic reminders.
 
-From `0.7.1`, the answering/knowledge-display choice is saved automatically and restored on normal startup, launch at login and in-app updates. Versions `0.7.0` and earlier kept this choice only in memory. After first upgrading to `0.7.1` or later, select your mode once; subsequent starts and updates retain it.
+Try saves your practice mode and restores it on normal startup, launch at login and after an in-app update.
 
 Daily quiet hours and launch at login are off by default. Quiet hours can span midnight, with 22:00–08:00 as the initial range. Launch at login starts in the tray. On Windows, choose a work-area corner or drag the card's prompt/empty area to position it.
 
@@ -117,11 +117,11 @@ Daily quiet hours and launch at login are off by default. Quiet hours can span m
 
 Windows distribution builds create `data/` beside the executable, with settings and packs in `state.json` and personal practice state in `learning_state.json`. Existing profiles without history start as unassessed; fact viewing does not create learning records. Pack exports contain no personal history. Mac/Linux use system application data folders. Development profiles and custom directory arguments are in the [development guide](development.md).
 
-In-app updates are supported from `0.3.0`. From 0.5.0, choose **Update & restart** in About to start the download, view progress or cancel. After downloading and verification, Try installs the update and restarts automatically without another confirmation. Save or cancel open edits before starting. New edits or a pending import opened during the download defer restarting; saving or cancelling them resumes the update automatically. You can still cancel the update while it waits. Failed downloads or verification do not restart the application. Try replaces the program at its original location and restarts with the same data directory, preserving settings, packs, pictures and learning records. The previous program is kept until the updated application loads its profile and starts successfully. A failed replacement or startup attempts to restore the previous program and profile backups; if recovery is blocked, Try shows where the backups were preserved.
+About checks for published stable releases. Choose **Update & restart** to download one. You can view progress or cancel. After downloading and verification, Try installs the update and restarts automatically without another confirmation. Save or cancel open edits before starting. New edits or a pending import opened during the download defer restarting; saving or cancelling them resumes the update automatically. You can still cancel the update while it waits. Failed downloads or verification do not restart the application. Try replaces the program at its original location and restarts with the same data directory, preserving settings, packs, pictures and learning records. The previous program is kept until the updated application loads its profile and starts successfully. A failed replacement or startup attempts to restore the previous program and profile backups; if recovery is blocked, Try shows where the backups were preserved.
 
 Choosing the download action first checks the latest public release again, independently of the daily automatic-check interval, then downloads that version. You can cancel during checking or downloading and retry after a failure. A failed check does not continue installing an older cached version.
 
-Version `0.2.1` and earlier need one manual upgrade: quit from the tray, replace `try.exe` in its original folder and keep `data/`. Opening the new executable in a different folder uses a new data folder there. Move the executable and data together when moving the portable app. If launch at login was enabled, turn it off and on at the new location to update the startup entry.
+Compatibility starts with 1.0.0. Back up your entire data folder before upgrading from a 0.x preview. Try reuses data it can read, but migration from previews is not guaranteed. Move the executable and data together when moving the portable app. If launch at login was enabled, turn it off and on at the new location to update the startup entry.
 
 The lower-left ⓘ opens About for version, manual update checks, homepage and notices. Esc or clicking outside closes it. Complete license information is in [licensing](licensing.md).
 

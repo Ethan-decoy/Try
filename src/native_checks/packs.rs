@@ -658,7 +658,7 @@ fn question_focus_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 }
                 assert!(
                     reached_question,
-                    "Tab still focuses a question with a short underline"
+                    "Tab draws a visible outline around the focused question"
                 );
                 snapshot(main.window(), checks.output.join("keyboard_focus.png"));
                 key(main.window(), Key::Return.into());

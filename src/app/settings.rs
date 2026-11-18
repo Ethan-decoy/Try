@@ -88,30 +88,59 @@ impl App {
     }
 
     pub(super) fn set_interval(self: &Rc<Self>, value: i32) {
-        let result = self.commit(|library| {
-            library.settings.interval_minutes =
-                u32::try_from(value).map_err(|_| tr!("出题间隔不能为负数。"))?;
-            Ok(())
-        });
-        self.report(result, "");
+        let previous = self.library.borrow().settings.interval_minutes;
+        self.set_practice_time(
+            value,
+            tr!("出题间隔不能为负数。"),
+            |settings, minutes| {
+                settings.interval_minutes = minutes;
+            },
+        );
+        if self.library.borrow().settings.interval_minutes != previous {
+            self.arm_reminder();
+        }
     }
 
-    pub(super) fn set_feedback(self: &Rc<Self>, value: i32) {
-        let result = self.commit(|library| {
-            library.settings.feedback_seconds =
-                u32::try_from(value).map_err(|_| tr!("停留时间不能为负数。"))?;
-            Ok(())
-        });
-        self.report(result, "");
+    pub(super) fn set_feedback(&self, value: i32) {
+        self.set_practice_time(
+            value,
+            tr!("停留时间不能为负数。"),
+            |settings, seconds| {
+                settings.feedback_seconds = seconds;
+            },
+        );
     }
 
-    pub(super) fn set_knowledge_duration(self: &Rc<Self>, value: i32) {
-        let result = self.commit(|library| {
-            library.settings.knowledge_seconds =
-                u32::try_from(value).map_err(|_| tr!("停留时间不能为负数。"))?;
+    pub(super) fn set_knowledge_duration(&self, value: i32) {
+        self.set_practice_time(
+            value,
+            tr!("停留时间不能为负数。"),
+            |settings, seconds| {
+                settings.knowledge_seconds = seconds;
+            },
+        );
+    }
+
+    fn set_practice_time(
+        &self,
+        value: i32,
+        negative_error: &str,
+        update: impl FnOnce(&mut Settings, u32),
+    ) {
+        let result = self.save_library_edit(|library| {
+            update(
+                &mut library.settings,
+                u32::try_from(value).map_err(|_| negative_error)?,
+            );
             Ok(())
         });
-        self.report(result, "");
+        if let Some(window) = self.main_window.borrow().as_ref() {
+            Self::refresh_practice_times(window, &self.library.borrow().settings);
+        }
+        match result {
+            Ok(()) => self.report(Ok(()), ""),
+            Err(error) => self.notify(&error, true),
+        }
     }
 
     pub(super) fn set_knowledge_mode(self: &Rc<Self>, enabled: bool) {

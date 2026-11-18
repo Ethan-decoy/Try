@@ -286,6 +286,31 @@ mod tests {
     }
 
     #[test]
+    fn previous_field_distinguishes_a_log_argument_from_adjacent_brackets() {
+        use slint::platform::Key;
+        let left = char::from(Key::LeftArrow).to_string();
+        let tab = char::from(Key::Tab).to_string();
+        for (original, edited) in [
+            (r"\log^{2}\left(x\right)", r"\log^{2n}\left(x\right)"),
+            (r"\log_{2}\left[x\right]", r"\log_{2}n\left[x\right]"),
+        ] {
+            let mut session = Session::new(Seed::Latex(original.into())).unwrap();
+            assert!(session.key(&left, false, false, false));
+            assert!(session.key(&tab, false, true, false));
+            session.insert("n");
+            assert_eq!(session.complete().unwrap(), edited);
+            let answer = session.source();
+            assert!(r#try::math_answer::matches(&answer, "", Some(edited), &[]));
+            assert!(!r#try::math_answer::matches(
+                &answer,
+                "",
+                Some(original),
+                &[]
+            ));
+        }
+    }
+
+    #[test]
     fn practice_pointer_preserves_formula_boundaries() {
         use crate::{MathInputState, PracticeWindow};
         use slint::platform::{Key, WindowEvent};
@@ -764,6 +789,40 @@ mod tests {
             assert_eq!(
                 active.borrow().as_ref().unwrap().complete().unwrap(),
                 r"\log_{2}\left(x\right)"
+            );
+            let previous_field = || {
+                window.window().dispatch_event(WindowEvent::KeyPressed {
+                    text: Key::Shift.into(),
+                });
+                key(&window, &adapter, Key::Tab);
+                window.window().dispatch_event(WindowEvent::KeyReleased {
+                    text: Key::Shift.into(),
+                });
+            };
+            previous_field();
+            type_text("^n");
+            key(&window, &adapter, Key::Tab);
+            type_text("2");
+            previous_field();
+            type_text("+1");
+            let expected = r"\log_{2}^{n+1}\left(2x\right)";
+            assert_eq!(
+                active.borrow().as_ref().unwrap().complete().unwrap(),
+                expected
+            );
+            let answer = active.borrow().as_ref().unwrap().source();
+            assert!(r#try::math_answer::matches(
+                &answer,
+                "",
+                Some(expected),
+                &[]
+            ));
+            let before = submissions.get();
+            key(&window, &adapter, Key::Return);
+            assert_eq!(
+                submissions.get(),
+                before + 1,
+                "Enter after editing log fields"
             );
         }
         window.hide().unwrap();

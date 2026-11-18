@@ -4,37 +4,37 @@
 
 **A little practice, now and then.**
 
-Try 是一个轻量桌面闪卡与间隔复习工具，让公式、词汇与感兴趣的知识逐渐形成「看到提示就想到答案」的肌肉记忆。
+Try 是一款轻量、开源的桌面闪卡工具。它常驻系统托盘，按你设定的间隔在桌面角落弹出一道题。把总要查的公式、词义或代码写法放进自己的题库，在用电脑的间隙练出「看到提示就想到答案」的肌肉记忆。
 
-按设定间隔弹出一道小题，在工作或玩电脑的间隙随手练习。支持填空、选择、判断或直接看答案；答题先覆盖未作答题，再按对错与经过时间安排复习。
+你可以在卡片上填空、选择或判断，也可以切换到「知识展示」直接看答案。答题时先出未答过的题，再根据对错和距上次作答的时间安排间隔复习。练习可以离线进行，题库和练习记录保存在本机。
 
-*Lightweight desktop flashcards for active recall and spaced repetition.*
+*Open-source desktop flashcards for active recall and spaced repetition. Try runs in the system tray and shows one card at a time from your own decks.*
 
-![Try v0.6.0 的公式练习题板显示在桌面角落](docs/images/practice_desktop.png)
+![桌面角落的 Try 词汇卡显示 hesitate，作答框内已输入「犹豫」](docs/images/practice_desktop.png)
 
-*Windows v0.6.0 实机题板；桌面布局为示意，题板已放大展示。*
+[观看一次完整作答](docs/images/practice_demo.gif) · 词汇卡由 Windows 版界面渲染，桌面背景为示意。
 
 ## 下载
 
-从 [最新版本（v0.10.0 预发布版）](https://github.com/Ethan-decoy/Try/releases/tag/v0.10.0) 下载对应平台的文件。
+从 [GitHub 最新发布](https://github.com/Ethan-decoy/Try/releases/latest) 下载对应平台的附件。
 
 | 平台 | 下载文件 | 状态 |
 | --- | --- | --- |
-| Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v0.10.0/try.exe) | 便携版 |
-| macOS arm64 | [try_macos_arm64_0.10.0.zip](https://github.com/Ethan-decoy/Try/releases/download/v0.10.0/try_macos_arm64_0.10.0.zip) | 实验性 |
-| Linux x64 | [try_linux_x64_0.10.0.AppImage](https://github.com/Ethan-decoy/Try/releases/download/v0.10.0/try_linux_x64_0.10.0.AppImage) | 实验性 |
+| Windows x64 | `try.exe` | 单文件便携版 |
+| macOS arm64 | `try_macos_arm64_<版本>.zip` | 实验性，尚未公证 |
+| Linux x64 | `try_linux_x64_<版本>.AppImage` | 实验性 |
 
-Windows 将 `try.exe` 放在可写文件夹中双击运行，关闭主窗口后留在托盘。首次运行会在旁边创建 `data/`，请保留该文件夹。可在关于页下载更新，校验完成后自动安装并重启；`0.2.1` 及更早版本需先手动升级一次。
+Windows 将 `try.exe` 放在可写文件夹中双击运行。题库、设置和练习记录存放在旁边的 `data/` 中，移动程序时请一起保留。后续正式版可在「关于」中下载并重启更新。
 
-macOS 仅支持 arm64。macOS/Linux 为实验性版本，macOS 尚未完成公证。详细操作见 [使用说明](docs/user_guide.md)。
+正式版的兼容支持从 1.0.0 开始。从 0.x 预发布版升级前，请备份数据目录。Try 会沿用仍可读取的旧数据。
+
+首次运行已有示例题。关闭主窗口后开始计时，想马上试一题可左键点击托盘图标。macOS 从菜单栏的 Try 图标选择「练习」。希望卡片弹出后仍能在原窗口打字，可关闭「弹出时自动聚焦」。详见[使用说明](docs/user_guide.md)。
 
 ## 选择想练习的内容
 
-在主窗口管理知识包，选择参与练习的题目。点击题面即可编辑，支持公式与图片。
+自带的知识包里有 `hesitate` → 犹豫，也有「Rust 可变引用」→ `&mut T`。在主窗口勾选想练的题目，点击题面即可编辑。题面可以配图，作答时可以直接输入常用的 LaTeX 公式。
 
-![Try v0.6.0 主窗口中的公开知识包与微积分公式列表](docs/images/knowledge_library.png)
-
-*Windows v0.6.0，使用公开样本知识包。*
+![Try 主窗口列出五个自带知识包，当前选中「常用公式」，题目和答案并排显示](docs/images/knowledge_library.png)
 
 ## 让 AI 制作知识包
 

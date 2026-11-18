@@ -42,8 +42,20 @@ impl App {
         let Some(window) = window.as_ref() else {
             return;
         };
+        let practice_entry_hint = if count > 0 {
+            if cfg!(target_os = "macos") {
+                tr!("从 Try 菜单栏图标选择「练习」")
+            } else {
+                tr!("点击托盘中的 Try 图标开始练习")
+            }
+        } else if library.packs.iter().any(|pack| !pack.cards.is_empty()) {
+            tr!("先勾选要练习的题目")
+        } else {
+            ""
+        };
+        window.set_practice_entry_hint(practice_entry_hint.into());
         self.refresh_library_view(window, &library);
-        self.refresh_settings_view(window, &library, count, pause_minutes, &pause_end);
+        self.refresh_settings_view(window, &library, pause_minutes, &pause_end);
         self.refresh_pending_actions(window, &library);
     }
 
@@ -241,7 +253,6 @@ impl App {
         &self,
         window: &MainWindow,
         library: &Library,
-        count: usize,
         pause_minutes: i32,
         pause_end: &Option<String>,
     ) {
@@ -252,29 +263,7 @@ impl App {
         }
         window.set_appearance(library.settings.appearance.index());
         window.set_interface_language(library.settings.interface_language.index());
-        window.set_interval_minutes(library.settings.interval_minutes as i32);
-        let (options, index) = preset_options(
-            library.settings.interval_minutes as i32,
-            &[15, 25, 30, 45],
-            |n| tr!("{n} 分钟", n = n),
-        );
-        window.set_interval_options(options);
-        window.set_interval_selection(index);
-        window.set_feedback_seconds(library.settings.feedback_seconds as i32);
-        let (options, index) =
-            preset_options(library.settings.feedback_seconds as i32, &[1, 2, 3], |n| {
-                tr!("{n} 秒", n = n)
-            });
-        window.set_feedback_options(options);
-        window.set_feedback_selection(index);
-        window.set_knowledge_seconds(library.settings.knowledge_seconds as i32);
-        let (options, index) = preset_options(
-            library.settings.knowledge_seconds as i32,
-            &[5, 8, 15, 30],
-            |n| tr!("{n} 秒", n = n),
-        );
-        window.set_knowledge_options(options);
-        window.set_knowledge_selection(index);
+        Self::refresh_practice_times(window, &library.settings);
         let (options, index) = preset_options(pause_minutes, &[0, 60, 120, 180, -1], |n| match n {
             0 => tr!("不暂停").into(),
             -1 => tr!("直到恢复").into(),
@@ -316,18 +305,27 @@ impl App {
         window.set_focus_on_reminder(library.settings.focus_on_reminder);
         window.set_auto_check_updates(library.settings.auto_check_updates);
         window.set_has_saved_position(library.settings.popup_position.is_some());
-        window.set_practice_summary(if count == 0 {
-            tr!("0 题").into()
-        } else if pause_minutes == 0 {
-            tr!(
-                "{count} 题 · {p0} 分钟",
-                p0 = library.settings.interval_minutes,
-                count = count
-            )
-            .into()
-        } else {
-            tr!("{count} 题 · 暂停", count = count).into()
-        });
+    }
+
+    pub(in crate::app) fn refresh_practice_times(window: &MainWindow, settings: &Settings) {
+        let interval = settings.interval_minutes as i32;
+        window.set_interval_minutes(interval);
+        let (options, index) =
+            preset_options(interval, &[15, 25, 30, 45], |n| tr!("{n} 分钟", n = n));
+        window.set_interval_options(options);
+        window.set_interval_selection(index);
+
+        let feedback = settings.feedback_seconds as i32;
+        window.set_feedback_seconds(feedback);
+        let (options, index) = preset_options(feedback, &[1, 2, 3], |n| tr!("{n} 秒", n = n));
+        window.set_feedback_options(options);
+        window.set_feedback_selection(index);
+
+        let knowledge = settings.knowledge_seconds as i32;
+        window.set_knowledge_seconds(knowledge);
+        let (options, index) = preset_options(knowledge, &[5, 8, 15, 30], |n| tr!("{n} 秒", n = n));
+        window.set_knowledge_options(options);
+        window.set_knowledge_selection(index);
     }
 
     fn refresh_pending_actions(&self, window: &MainWindow, library: &Library) {

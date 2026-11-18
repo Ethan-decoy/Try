@@ -4021,8 +4021,8 @@ dependencies = [
 
 [[package]]
 name = "slint-math-input"
-version = "0.1.0-preview.5"
-source = "git+https://github.com/Ethan-decoy/slint_math_input.git?rev=51446458130f5922fc579cbd8a2fa1f25b360cc1#51446458130f5922fc579cbd8a2fa1f25b360cc1"
+version = "0.1.0-preview.6"
+source = "git+https://github.com/Ethan-decoy/slint_math_input.git?rev=7a55427c204582eeb65c214edd8b35198edbb006#7a55427c204582eeb65c214edd8b35198edbb006"
 dependencies = [
  "arboard",
  "serde",
@@ -4561,7 +4561,7 @@ dependencies = [
 
 [[package]]
 name = "try"
-version = "0.10.0"
+version = "1.0.0"
 dependencies = [
  "arboard",
  "base64",
@@ -4571,7 +4571,9 @@ dependencies = [
  "image",
  "latex-rust",
  "libc",
+ "litrs",
  "log",
+ "proc-macro2",
  "rand",
  "resvg",
  "rfd",

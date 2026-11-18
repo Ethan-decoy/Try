@@ -3,7 +3,7 @@ import { Theme } from "theme.slint";
 import { Button, LineEdit, ListView, Palette, ScrollView, TextEdit } from "std-widgets.slint";
 import { AnswerOption, ContentForm, FormulaLabel, MathRegion, QuestionPicture, FormulaNavigation, FormulaPosition } from "content.slint";
 import { MathInputState } from "structured_math.slint";
-import { Disclosure, IconButton, ParticipationSwitch } from "controls.slint";
+import { Disclosure, FocusOutline, IconButton, ParticipationSwitch } from "controls.slint";
 import { SettingsPage } from "settings.slint";
 import { QuickAnswer } from "quick_answer.slint";
 import { MathTool } from "math_palette.slint";
@@ -82,6 +82,7 @@ component QuestionButton inherits Rectangle {
     in property <string> label;
     in property <AnswerOption> preview;
     in property <bool> enabled: true;
+    in property <bool> participating: true;
     callback activated();
     forward-focus: question-focus;
     horizontal-stretch: 1;
@@ -95,12 +96,14 @@ component QuestionButton inherits Rectangle {
     accessible-action-default => { if root.enabled { root.activated(); } }
     VerticalLayout {
         padding: 8px; padding-left: 10px; padding-right: 10px; spacing: 6px;
-        prompt-label := FormulaLabel { fallback: root.label; formula: root.preview.formula; formula-width: root.preview.formula-width; formula-height: root.preview.formula-height; texts: root.preview.texts; font-size: 14px; align-left: true; }
+        prompt-label := FormulaLabel {
+            fallback: root.label; formula: root.preview.formula;
+            formula-width: root.preview.formula-width; formula-height: root.preview.formula-height;
+            texts: root.preview.texts; font-size: 14px; align-left: true;
+            opacity: root.participating ? 1 : 0.65;
+        }
     }
-    if question-focus.has-focus : Rectangle {
-        x: 10px; y: parent.height - 4px; width: 18px; height: 2px;
-        border-radius: 1px; background: Theme.focus;
-    }
+    if question-focus.has-focus : FocusOutline { }
     question-focus := FocusScope {
         enabled: root.enabled;
         width: 0px;
@@ -117,7 +120,8 @@ export component MainWindow inherits Window {
     in property <int> appearance: 2;
     private property <length> workspace-margin: 24px;
     private property <length> sidebar-width: 216px;
-    private property <bool> matrix-visible: root.current-tab == 0 && !root.editor-visible && root.has-selection;
+    private property <bool> library-visible: root.current-tab == 0 && !root.editor-visible;
+    private property <bool> matrix-visible: root.library-visible && root.has-selection && root.cards.length > 0;
     in property <image> app-icon;
     in property <string> app-version;
     in property <int> update-state;
@@ -164,6 +168,7 @@ export component MainWindow inherits Window {
 
     in property <[PackRow]> packs;
     in property <string> participation-summary;
+    in property <string> practice-entry-hint;
     in property <int> selected-index: 0;
     in property <string> selected-name;
     in property <bool> selected-enabled;
@@ -228,7 +233,6 @@ export component MainWindow inherits Window {
     in property <bool> auto-check-updates: true;
     in property <bool> has-saved-position;
     in property <int> interface-language;
-    in property <string> practice-summary;
     in property <string> message;
     in property <bool> message-is-error;
     in property <bool> import-pending;
@@ -477,14 +481,15 @@ export component MainWindow inherits Window {
                                         }
                                         Text { text: pack.name; color: Theme.ink; font-size: 13px; overflow: elide; min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; vertical-alignment: center; }
                                     }
-                                    Text { text: pack.detail; color: Theme.muted; font-size: 11px; overflow: elide; }
+                                    Text { text: pack.detail; color: Theme.muted; font-size: 12px; overflow: elide; }
                                 }
                                 accessible-role: button; accessible-label: pack.name;
+                                accessible-enabled: !root.editing && !root.action-pending;
                                 accessible-action-default => { if !root.editing && !root.action-pending { root.select-pack(index); } }
                                 forward-focus: pack-focus;
                                 pack-focus := FocusScope { width: 0px; enabled: !root.editing && !root.action-pending; key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.select-pack(index); return accept; } return reject; } }
-                                if pack-focus.has-focus : Rectangle { x: 10px; y: parent.height - 3px; width: 20px; height: 2px; background: Theme.focus; }
-                                pack-touch := TouchArea { enabled: !root.editing && !root.action-pending; mouse-cursor: pointer; clicked => { root.current-tab = 0; root.question-scroll-y = 0px; root.select-pack(index); } }
+                                if pack-focus.has-focus : FocusOutline { }
+                                pack-touch := TouchArea { enabled: !root.editing && !root.action-pending; mouse-cursor: pointer; clicked => { root.select-pack(index); } }
                                 Tooltip { text: @markdown("\{pack.name}"); }
                             }
                             ParticipationSwitch {
@@ -503,7 +508,12 @@ export component MainWindow inherits Window {
                 Rectangle { height: 1px; background: Theme.border; }
                 HorizontalLayout {
                     spacing: 2px;
-                    IconButton { glyph: @image-url("../assets/settings.svg"); label: @tr("设置"); borderless: true; ink: root.current-tab == 1 ? Theme.focus : Theme.muted; enabled: !root.editing && !root.action-pending; activated => { root.current-tab = 1; } }
+                    DesktopButton {
+                        text: @tr("设置"); glyph: @image-url("../assets/settings.svg");
+                        selected: root.current-tab == 1;
+                        enabled: !root.editing && !root.action-pending;
+                        activated => { root.current-tab = 1; }
+                    }
                     about-button := IconButton {
                         glyph: @image-url("../assets/info.svg");
                         label: root.update-download ? @tr("关于 Try，有可用更新") : @tr("关于 Try");
@@ -522,15 +532,21 @@ export component MainWindow inherits Window {
                 height: 44px; background: Theme.chrome;
                 HorizontalLayout {
                     padding-left: root.workspace-margin; padding-right: root.workspace-margin; spacing: 8px;
-                    Text { text: @tr("练习方式"); color: Theme.muted; font-size: 11px; vertical-alignment: center; }
+                    Text { text: @tr("练习方式"); color: Theme.muted; font-size: 12px; vertical-alignment: center; }
                     SelectionMenu {
-                        width: 108px; height: 28px; y: (parent.height - self.height) / 2;
-                        framed: false; options: [@tr("答题"), @tr("知识展示")];
+                        width: 108px; height: 32px; y: (parent.height - self.height) / 2;
+                        options: [@tr("答题"), @tr("知识展示")];
                         selection: root.knowledge-only ? 1 : 0; label: @tr("练习方式");
                         enabled: !root.editing && !root.action-pending;
                         choose(index) => { if (index == 1) != root.knowledge-only { root.toggle-knowledge-mode(); } }
                     }
-                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        visible: root.library-visible && !root.editing && !root.action-pending;
+                        text: root.practice-entry-hint;
+                        min-width: 0px; horizontal-stretch: 1;
+                        color: Theme.muted; font-size: 12px;
+                        horizontal-alignment: right; vertical-alignment: center; overflow: elide;
+                    }
                 }
                 Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
             }
@@ -539,14 +555,14 @@ export component MainWindow inherits Window {
             padding-bottom: 12px; spacing: 12px;
             overview := VerticalLayout {
                 vertical-stretch: 0;
-                spacing: 8px;
+                spacing: root.library-visible ? 4px : 8px;
                 HorizontalLayout {
                     height: 36px; spacing: 8px;
-                    if root.current-tab == 0 && !root.editor-visible && root.has-selection : HorizontalLayout {
+                    if root.library-visible && root.has-selection : HorizontalLayout {
                         spacing: 4px; horizontal-stretch: 1;
                         Rectangle {
                             min-width: 0px;
-                            preferred-width: max(title-measure.preferred-width, root.name-editing ? draft-measure.preferred-width : 0px) + 30px;
+                            preferred-width: root.name-editing ? max(160px, title-measure.preferred-width, draft-measure.preferred-width) : title-measure.preferred-width;
                             horizontal-stretch: 0; height: 36px;
                             background: transparent;
                             title-measure := Text {
@@ -560,13 +576,14 @@ export component MainWindow inherits Window {
                                 font-size: 20px; font-weight: 600;
                             }
                             if !root.name-editing : Text { width: parent.width; height: parent.height; text: root.selected-name; color: Theme.ink; font-size: 22px; font-weight: 600; vertical-alignment: center; overflow: elide; }
+                            if !root.name-editing && self.width < title-measure.preferred-width : Tooltip { text: @markdown("\{root.selected-name}"); }
                             if root.name-editing : FocusScope {
                                 width: parent.width; height: parent.height;
                                 forward-focus: rename-input;
                                 init => { rename-input.focus(); }
                                 capture-key-pressed(event) => { if event.text == Key.Escape { root.name-editing = false; return accept; } return reject; }
                                 rename-input := TextInput {
-                                    x: 0px; y: 0px; width: max(0px, parent.width - 30px); height: parent.height;
+                                    x: 0px; y: 0px; width: parent.width; height: parent.height;
                                     text <=> root.name-draft;
                                     single-line: true;
                                     font-size: 20px; font-weight: 600;
@@ -588,9 +605,9 @@ export component MainWindow inherits Window {
                         Rectangle { horizontal-stretch: 1; background: transparent; }
                     }
                     if root.current-tab == 1 || root.editor-visible : Text { text: root.current-tab == 1 ? @tr("设置") : root.editor-title; font-size: 20px; font-weight: 600; color: Theme.ink; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
-                    if root.current-tab == 0 && !root.editor-visible && !root.has-selection : Text { text: @tr("知识包"); font-size: 20px; font-weight: 600; color: Theme.ink; vertical-alignment: center; horizontal-stretch: 1; }
+                    if root.library-visible && !root.has-selection : Text { text: @tr("知识包"); font-size: 20px; font-weight: 600; color: Theme.ink; vertical-alignment: center; horizontal-stretch: 1; }
                     pack-actions := ActionMenu {
-                        visible: root.current-tab == 0 && !root.editor-visible && root.has-selection;
+                        visible: root.library-visible && root.has-selection;
                         width: self.visible ? 32px : 0px; height: self.visible ? 32px : 0px;
                         label: @tr("知识包操作"); destructive-last: true;
                         options: [@tr("重命名"), @tr("编辑标签"), @tr("编辑介绍"), @tr("导出"), @tr("删除")];
@@ -602,10 +619,10 @@ export component MainWindow inherits Window {
                     if root.editor-visible : DesktopButton { text: @tr("保存"); primary: true; enabled: !root.editor-image-loading && !root.action-pending; activated => { root.save-editor(); } }
                 }
                 HorizontalLayout {
-                    visible: root.current-tab == 0 && !root.editor-visible && root.has-selection;
-                    height: self.visible ? 28px : 0px; spacing: 8px;
+                    visible: root.library-visible && root.has-selection;
+                    height: self.visible ? 22px : 0px; spacing: 8px;
                     if root.show-pack-tags && root.selected-tag != "" : Rectangle {
-                        width: min(100px, title-tag.preferred-width + 14px); height: 20px; y: 4px;
+                        width: min(100px, title-tag.preferred-width + 14px); height: 20px; y: 1px;
                         border-radius: 4px; background: Theme.soft;
                         title-tag := Text { x: 7px; width: parent.width - 14px; height: parent.height; text: root.selected-tag; font-size: 11px; color: Theme.muted; vertical-alignment: center; overflow: elide; }
                     }
@@ -616,7 +633,7 @@ export component MainWindow inherits Window {
                     height: 36px; spacing: 4px;
                     for label[index] in root.answer-mode-labels : ModeTab { label: label; selected: root.editor-answer-mode == index; enabled: !root.card-delete-pending; activated => { root.set-editor-answer-mode(index); } }
                 }
-                if root.current-tab == 0 && !root.editor-visible && root.has-selection : VerticalLayout {
+                if root.library-visible && root.has-selection : VerticalLayout {
                     spacing: 6px;
                     if root.tag-editing : HorizontalLayout {
                         height: 36px; spacing: 8px;
@@ -720,23 +737,27 @@ export component MainWindow inherits Window {
                         padding-bottom: 0px;
                         spacing: 0px;
                         matrix-area := Rectangle {
-                            visible: root.matrix-visible; height: self.visible ? 86px : 0px;
+                            visible: root.matrix-visible; height: self.visible ? 72px : 0px;
                             VerticalLayout {
                                 width: question-list.visible-width;
-                                spacing: 6px;
+                                spacing: 2px;
                                 HorizontalLayout {
                                     height: 36px; spacing: 0px;
-                                    ParticipationCheck { width: root.participation-column; checked: root.selected-enabled; partial: root.selection-partial; label: @tr("全部参与"); enabled: root.cards.length > 0 && !root.editing && !root.action-pending; toggled(value) => { root.toggle-all-cards(value); } }
-                                    Text { text: @tr("全部参与"); font-size: 12px; color: Theme.muted; vertical-alignment: center; }
+                                    ParticipationCheck { show-label: true; checked: root.selected-enabled; partial: root.selection-partial; label: @tr("全部参与"); enabled: !root.editing && !root.action-pending; toggled(value) => { root.toggle-all-cards(value); } }
                                     Rectangle { horizontal-stretch: 1; }
-                                    DesktopButton { text: @tr("新增题目"); glyph: @image-url("../assets/add.svg"); enabled: !root.editing && !root.action-pending; activated => { root.add-card(); } }
+                                    DesktopButton {
+                                        y: (parent.height - self.height) / 2;
+                                        text: @tr("新增题目"); glyph: @image-url("../assets/add.svg"); primary: true;
+                                        enabled: !root.editing && !root.action-pending;
+                                        activated => { root.add-card(); }
+                                    }
                                 }
                                 HorizontalLayout {
-                                    height: 36px; spacing: 0px;
+                                    height: 31px; spacing: 0px;
                                     Rectangle { width: root.participation-column; }
-                                    Rectangle { horizontal-stretch: 1; Text { x: 10px; width: parent.width - 10px; height: parent.height; text: @tr("提示"); font-size: 11px; color: Theme.muted; vertical-alignment: center; } }
-                                    Rectangle { width: root.answer-column; Text { x: 17px; width: parent.width - 17px; height: parent.height; text: @tr("答案"); font-size: 11px; color: Theme.muted; vertical-alignment: center; } }
-                                    AnswerModeMenu { width: root.mode-column; selection: root.uniform-answer-mode; options: root.answer-mode-labels; bulk: true; label: @tr("统一题型"); choice-available: root.all-choice-available; judgment-available: root.all-judgment-available; enabled: !root.knowledge-only && root.cards.length > 0 && !root.editing && !root.action-pending; choose(index) => { root.set-all-answer-modes(index); } }
+                                    Rectangle { horizontal-stretch: 1; Text { x: 10px; width: parent.width - 10px; height: parent.height; text: @tr("提示"); font-size: 12px; color: Theme.muted; vertical-alignment: center; } }
+                                    Rectangle { width: root.answer-column; Text { x: 17px; width: parent.width - 17px; height: parent.height; text: @tr("答案"); font-size: 12px; color: Theme.muted; vertical-alignment: center; } }
+                                    AnswerModeMenu { width: root.mode-column; height: parent.height; selection: root.uniform-answer-mode; options: root.answer-mode-labels; bulk: true; label: @tr("统一题型"); choice-available: root.all-choice-available; judgment-available: root.all-judgment-available; enabled: !root.knowledge-only && !root.editing && !root.action-pending; choose(index) => { root.set-all-answer-modes(index); } }
                                     Rectangle { width: 32px; }
                                 }
                                 Rectangle { height: 1px; background: Theme.soft-border; }
@@ -768,13 +789,17 @@ export component MainWindow inherits Window {
                                     changed scale => { if self.in-view { root.request-row-formula(index); } }
                                     changed in-view => { if self.in-view { root.request-row-formula(index); } }
 
+                                    if index > 0 : Rectangle {
+                                        x: 0px; y: 0px; width: parent.width; height: 1px;
+                                        background: Theme.soft-border;
+                                    }
                                     HorizontalLayout {
                                         height: parent.height; spacing: 0px;
                                         Rectangle {
                                             width: root.participation-column;
                                             ParticipationCheck { y: (parent.height - self.height) / 2; width: parent.width; checked: card.enabled; label: (card.enabled ? @tr("停止参与：") : @tr("参与练习：")) + card.prompt; enabled: !root.editing && !root.action-pending; toggled(value) => { root.toggle-card(index, value); } }
                                         }
-                                        question-button := QuestionButton { height: parent.height; label: card.prompt; preview: card.preview; opacity: card.enabled ? 1 : 0.65; enabled: !root.editing && !root.action-pending; activated => { root.edit-card(index); } }
+                                        question-button := QuestionButton { height: parent.height; label: card.prompt; preview: card.preview; participating: card.enabled; enabled: !root.editing && !root.action-pending; activated => { root.edit-card(index); } }
                                         Rectangle {
                                             width: root.answer-column;
                                             quick-answer := QuickAnswer {
@@ -794,15 +819,27 @@ export component MainWindow inherits Window {
                                     }
                                 }
                             }
-                            if root.current-tab == 0 && !root.editor-visible && !root.has-selection : Text {
-                                x: 24px; y: (parent.height - self.height) / 2;
-                                width: max(0px, parent.width - 48px);
-                                text: @tr("还没有知识包，从左上角新建或导入。");
-                                color: Theme.muted; wrap: word-wrap; horizontal-alignment: center;
-                            }
-                            if root.current-tab == 0 && !root.editor-visible && root.has-selection && root.cards.length == 0 : Text {
-                                text: @tr("这个知识包还没有题目，点击上方加号添加。");
-                                color: Theme.muted; font-size: 14px; wrap: word-wrap;
+                            if root.library-visible && !root.editing && !root.matrix-visible : VerticalLayout {
+                                y: 6px; width: parent.width; height: self.preferred-height; spacing: 12px;
+                                Text {
+                                    text: root.has-selection ? @tr("这个知识包还没有题目。") : @tr("还没有知识包。");
+                                    color: Theme.muted; font-size: 14px; wrap: word-wrap;
+                                }
+                                HorizontalLayout {
+                                    height: 32px; spacing: 8px;
+                                    DesktopButton {
+                                        text: root.has-selection ? @tr("新增题目") : @tr("新建知识包");
+                                        glyph: @image-url("../assets/add.svg"); primary: true;
+                                        enabled: !root.action-pending;
+                                        activated => { if root.has-selection { root.add-card(); } else { root.create-pack(); } }
+                                    }
+                                    if !root.has-selection : DesktopButton {
+                                        text: @tr("导入知识包"); glyph: @image-url("../assets/import_pack.svg");
+                                        enabled: !root.action-pending;
+                                        activated => { root.import-pack(); }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                }
                             }
                             if root.current-tab == 0 && root.editor-visible : ScrollView {
                                 private property <float> viewport-top: self.absolute-position.y / 1px;

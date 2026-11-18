@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { AnswerOption, FormulaLabel } from "content.slint";
-import { AnswerPick } from "controls.slint";
+import { AnswerPick, FocusOutline } from "controls.slint";
 
 // The same column uses the answer control appropriate to each question type.
 export component QuickAnswer inherits Rectangle {
@@ -45,10 +45,10 @@ export component QuickAnswer inherits Rectangle {
         x: 8px; y: 2px; width: parent.width - 16px; height: root.field-height;
         visible: root.mode != 2;
         border-radius: 8px;
-        background: answer-input.has-focus || choice-touch.has-hover ? Theme.soft : transparent;
+        background: answer-input.has-focus || choice-focus.has-focus || choice-touch.has-hover ? Theme.soft : transparent;
         Rectangle {
             x: 8px; y: parent.height - 1px; width: parent.width - 16px; height: 1px;
-            background: root.error != "" ? Theme.wrong-ink : answer-input.has-focus ? Theme.focus : transparent;
+            background: root.error != "" ? Theme.wrong-ink : transparent;
         }
         answer-input := TextInput {
             x: 9px; y: (parent.height - self.height) / 2; width: parent.width - 18px; height: 28px;
@@ -76,7 +76,7 @@ export component QuickAnswer inherits Rectangle {
             texts: root.preview.texts; align-left: true; font-size: 13px;
         }
         if root.mode == 1 : Image { x: parent.width - 21px; y: (parent.height - self.height) / 2; width: 12px; height: 12px; source: @image-url("../assets/chevron.svg"); colorize: Theme.muted; }
-        if root.mode == 1 && choice-focus.has-focus : Rectangle { x: 9px; y: parent.height - 3px; width: 18px; height: 2px; background: Theme.focus; }
+        if answer-input.has-focus || choice-focus.has-focus : FocusOutline { }
         choice-focus := FocusScope {
             width: 0px; enabled: root.enabled && root.mode == 1;
             key-pressed(event) => {
@@ -92,8 +92,8 @@ export component QuickAnswer inherits Rectangle {
     }
     if root.mode == 2 : HorizontalLayout {
         x: 8px; y: 2px; width: parent.width - 16px; height: 36px; spacing: 6px;
-        AnswerPick { glyph: @image-url("../assets/check_mark.svg"); symbol-only: true; compact: true; selected: root.truth; label: @tr("正确：") + root.label; activated => { if root.enabled { root.error = root.choose(0); } } }
-        AnswerPick { glyph: @image-url("../assets/cross_mark.svg"); symbol-only: true; compact: true; selected: !root.truth; label: @tr("不正确：") + root.label; activated => { if root.enabled { root.error = root.choose(1); } } }
+        AnswerPick { glyph: @image-url("../assets/check_mark.svg"); symbol-only: true; compact: true; selected: root.truth; enabled: root.enabled; label: @tr("正确：") + root.label; activated => { root.error = root.choose(0); } }
+        AnswerPick { glyph: @image-url("../assets/cross_mark.svg"); symbol-only: true; compact: true; selected: !root.truth; enabled: root.enabled; label: @tr("不正确：") + root.label; activated => { root.error = root.choose(1); } }
         Rectangle { horizontal-stretch: 1; }
     }
     if root.error != "" : Text {

@@ -1,7 +1,7 @@
 //! Exercise the actual popup/repeater/button chain without a desktop session.
 mod support;
-use slint::platform::Key;
-use slint::{ComponentHandle, PhysicalSize};
+use slint::platform::{Key, WindowEvent};
+use slint::{ComponentHandle, PhysicalSize, Rgb8Pixel};
 use support::{click, key, paint, software_window};
 
 slint::slint! {
@@ -24,6 +24,57 @@ slint::slint! {
             choose(action) => { root.last-action = action; root.action-count += 1; }
         }
     }
+}
+
+#[test]
+fn keyboard_menu_highlights_its_first_action_and_restores_focus_at_double_scale() {
+    let adapter = software_window();
+    let probe = MenuActionsProbe::new().unwrap();
+    probe
+        .window()
+        .dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 2.0 });
+    adapter.set_size(PhysicalSize::new(720, 600));
+    probe.show().unwrap();
+    paint(&adapter);
+
+    let pixel_at = |x: usize, y: usize| {
+        let pixels = paint(&adapter);
+        pixels.as_slice()[2 * (y * pixels.width() as usize + x)]
+    };
+    let focus_color = Rgb8Pixel {
+        r: 169,
+        g: 197,
+        b: 238,
+    };
+    let hover_color = Rgb8Pixel {
+        r: 50,
+        g: 52,
+        b: 58,
+    };
+    let panel_color = Rgb8Pixel {
+        r: 32,
+        g: 33,
+        b: 36,
+    };
+
+    key(&probe, &adapter, Key::Tab);
+    key(&probe, &adapter, Key::Tab);
+    assert_eq!(pixel_at(312, 26), focus_color);
+    key(&probe, &adapter, Key::Return);
+    assert_eq!(pixel_at(312, 80), hover_color);
+    assert_eq!(
+        pixel_at(326, 80),
+        panel_color,
+        "Highlight respects menu padding"
+    );
+    key(&probe, &adapter, Key::Escape);
+    assert_eq!(probe.get_action_count(), 0);
+    assert_eq!(pixel_at(312, 26), focus_color);
+
+    key(&probe, &adapter, Key::Return);
+    key(&probe, &adapter, Key::Return);
+    assert_eq!(probe.get_action_count(), 1);
+    assert_eq!(probe.get_last_action(), 0);
 }
 
 #[test]

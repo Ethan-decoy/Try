@@ -24,16 +24,7 @@ pub fn with_answer(card: &Card, input: &str) -> AppResult<Card> {
     let mut updated = card.clone();
     updated.answer = node.plain();
     updated.answer_latex = (!node.is_text()).then(|| node.tex());
-    if updated.answer.trim() != card.answer.trim()
-        && !crate::math_answer::matches(
-            &updated.answer,
-            &card.answer,
-            card.answer_latex.as_deref(),
-            &[],
-        )
-    {
-        updated.aliases.clear();
-    }
+    updated.discard_stale_aliases(card);
     Ok(updated)
 }
 

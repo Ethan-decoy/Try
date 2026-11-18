@@ -113,6 +113,7 @@ fn connect_library(app: &Rc<App>, window: &MainWindow) {
             app.selected_pack.set(index as usize);
             if let Some(window) = app.main_window.borrow().as_ref() {
                 window.set_current_tab(0);
+                window.set_question_scroll_y(0.0);
                 window.invoke_reset_overview();
             }
             app.refresh();

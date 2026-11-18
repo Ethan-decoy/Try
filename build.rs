@@ -5,24 +5,9 @@ fn main() {
     record_build_identity();
     let translations = compile_translations();
     compile_notices();
-    println!("cargo:rerun-if-changed=ui/app.slint");
-    println!("cargo:rerun-if-changed=ui/main_window.slint");
-    println!("cargo:rerun-if-changed=ui/practice_window.slint");
-    println!("cargo:rerun-if-changed=ui/practice_menu.slint");
-    println!("cargo:rerun-if-changed=ui/app_shell.slint");
-    println!("cargo:rerun-if-changed=ui/about.slint");
-    println!("cargo:rerun-if-changed=ui/theme.slint");
-    println!("cargo:rerun-if-changed=ui/content.slint");
-    println!("cargo:rerun-if-changed=ui/formula_input.slint");
-    println!("cargo:rerun-if-changed=ui/structured_math.slint");
-    println!("cargo:rerun-if-changed=ui/licenses.slint");
-    println!("cargo:rerun-if-changed=ui/math_palette.slint");
-    println!("cargo:rerun-if-changed=ui/controls.slint");
-    println!("cargo:rerun-if-changed=ui/desktop_controls.slint");
-    println!("cargo:rerun-if-changed=ui/settings.slint");
-    println!("cargo:rerun-if-changed=ui/quick_answer.slint");
+    println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-changed=ui");
     println!("cargo:rerun-if-changed=assets/logo.svg");
-    println!("cargo:rerun-if-changed=src/math_palette.rs");
     compile_logo();
     compile_math_palette();
     slint_build::compile_with_config(
@@ -75,101 +60,38 @@ fn compile_translations() -> std::path::PathBuf {
             "Translation placeholders must match: {source}"
         );
     }
-    let mut sources: Vec<String> = [
-        "ui/app.slint",
-        "ui/main_window.slint",
-        "ui/practice_window.slint",
-        "ui/practice_menu.slint",
-        "ui/app_shell.slint",
-        "ui/about.slint",
-        "ui/image_preview.slint",
-        "ui/settings.slint",
-        "ui/content.slint",
-        "ui/controls.slint",
-        "ui/desktop_controls.slint",
-        "ui/quick_answer.slint",
-        "ui/formula_input.slint",
-        "ui/structured_math.slint",
-        "ui/licenses.slint",
-        "ui/math_palette.slint",
-        "src/app.rs",
-        "src/main.rs",
-        "src/single_instance.rs",
-        "src/knowledge.rs",
-        "src/storage.rs",
-        "src/media.rs",
-        "src/card_editor.rs",
-        "src/formula.rs",
-        "src/math_answer.rs",
-        "src/math_editor.rs",
-        "src/math_latex.rs",
-        "src/text_history.rs",
-        "src/structured_math.rs",
-        "src/autostart.rs",
-        "src/reminder_schedule.rs",
-        "src/practice.rs",
-        "src/problem_report.rs",
-        "src/learning.rs",
-        "src/learning_store.rs",
-        "src/updater.rs",
-        "src/update_install.rs",
-    ]
-    .into_iter()
-    .map(str::to_owned)
-    .collect();
-    for directory in [
-        "src/app",
-        "src/app/main_window",
-        "src/app/practice_window",
-        "src/structured_math",
-        "src/math_editor",
-        "src/formula",
-    ] {
-        println!("cargo:rerun-if-changed={directory}");
-        sources.extend(
-            std::fs::read_dir(directory)
-                .expect("Source directory must be readable")
-                .map(|entry| entry.expect("Source entry must be readable").path())
-                .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
-                .filter(|path| path.file_name().is_some_and(|name| name != "tests.rs"))
-                .map(|path| path.to_string_lossy().replace('\\', "/")),
-        );
-    }
+    let mut sources = Vec::new();
+    translation_sources(std::path::Path::new("src"), "rs", &mut sources);
+    translation_sources(std::path::Path::new("ui"), "slint", &mut sources);
     sources.sort();
     for path in sources {
-        println!("cargo:rerun-if-changed={path}");
         let source = std::fs::read_to_string(&path).expect("Translation source must be readable");
-        let production = source.split("#[cfg(test)]").next().unwrap();
-        for marker in ["@tr(", "tr!("] {
-            for rest in production.split(marker).skip(1) {
-                let rest = rest.trim_start();
-                if !rest.starts_with('"') {
+        let check = |key: &str| {
+            assert!(
+                catalog.contains_key(key),
+                "Missing English translation in {}: {key}",
+                path.display()
+            );
+        };
+        if path.extension().is_some_and(|ext| ext == "rs") {
+            let tokens = source.parse().unwrap_or_else(|error| {
+                panic!("Cannot read Rust tokens in {}: {error}", path.display())
+            });
+            check_rust_translations(tokens, &check);
+        } else {
+            for call in source.split("@tr").skip(1) {
+                let Some(literal) = call.trim_start().strip_prefix('(') else {
                     continue;
+                };
+                let literal = literal.trim_start();
+                if literal.starts_with('"') {
+                    let key = serde_json::Deserializer::from_str(literal)
+                        .into_iter::<String>()
+                        .next()
+                        .unwrap()
+                        .expect("Invalid Slint translation literal");
+                    check(&key);
                 }
-                let mut escaped = false;
-                let end = rest
-                    .char_indices()
-                    .skip(1)
-                    .find_map(|(index, character)| {
-                        if escaped {
-                            escaped = false;
-                            None
-                        } else if character == '\\' {
-                            escaped = true;
-                            None
-                        } else if character == '"' {
-                            Some(index)
-                        } else {
-                            None
-                        }
-                    })
-                    .expect("Translation literal must end");
-                let key: String =
-                    serde_json::from_str(&rest[..=end]).expect("Translation literal must be valid");
-                assert!(
-                    catalog.contains_key(&key),
-                    "Missing English translation in {path}: {key}"
-                );
             }
         }
     }
@@ -198,6 +120,82 @@ fn compile_translations() -> std::path::PathBuf {
     std::fs::write(directory.join("try.po"), po).expect("Bundled translations must be saved");
     std::fs::write(output.join("i18n_catalog.rs"), rust).expect("Rust translations must be saved");
     bundled
+}
+
+fn translation_sources(
+    directory: &std::path::Path,
+    extension: &str,
+    paths: &mut Vec<std::path::PathBuf>,
+) {
+    for entry in std::fs::read_dir(directory).expect("Source directory must be readable") {
+        let entry = entry.expect("Source entry must be readable");
+        let path = entry.path();
+        if matches!(
+            entry.file_name().to_str(),
+            Some(
+                "tests"
+                    | "tests.rs"
+                    | "native_checks"
+                    | "native_picture_checks.rs"
+                    | "tray_checks.rs"
+                    | "test_fixtures.rs"
+            )
+        ) {
+            continue;
+        }
+        let kind = entry
+            .file_type()
+            .expect("Source file type must be readable");
+        if kind.is_dir() {
+            translation_sources(&path, extension, paths);
+        } else if kind.is_file() && path.extension().is_some_and(|ext| ext == extension) {
+            paths.push(path);
+        }
+    }
+}
+
+fn check_rust_translations(tokens: proc_macro2::TokenStream, check: &impl Fn(&str)) {
+    use proc_macro2::{Delimiter, TokenTree};
+    let mut tokens = tokens.into_iter().peekable();
+    while let Some(token) = tokens.next() {
+        match token {
+            TokenTree::Punct(hash) if hash.as_char() == '#' => {
+                let Some(TokenTree::Group(attr)) = tokens.peek() else {
+                    continue;
+                };
+                if attr.delimiter() != Delimiter::Bracket {
+                    continue;
+                }
+                let attr = attr.stream().to_string().replace(' ', "");
+                if attr == "cfg(test)" || attr.starts_with("cfg(all(test,") || attr == "test" {
+                    // Skip this item, then resume at its sibling, including inside platform modules.
+                    tokens.next();
+                    for part in tokens.by_ref() {
+                        if matches!(part, TokenTree::Group(ref g) if g.delimiter() == Delimiter::Brace)
+                            || matches!(part, TokenTree::Punct(ref p) if p.as_char() == ';')
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+            TokenTree::Ident(name) if name == "tr" => {
+                if !matches!(tokens.peek(), Some(TokenTree::Punct(bang)) if bang.as_char() == '!') {
+                    continue;
+                }
+                tokens.next();
+                if let Some(TokenTree::Group(args)) = tokens.peek()
+                    && let Some(TokenTree::Literal(key)) = args.stream().into_iter().next()
+                {
+                    let key = litrs::StringLit::parse(key.to_string())
+                        .expect("Expected a Rust translation string");
+                    check(key.value());
+                }
+            }
+            TokenTree::Group(group) => check_rust_translations(group.stream(), check),
+            _ => {}
+        }
+    }
 }
 
 fn compile_notices() {

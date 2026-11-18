@@ -147,6 +147,7 @@ impl App {
         window.set_app_icon(self.icon.clone());
         window.set_answer_mode(prepared.mode.index());
         window.set_knowledge_only(prepared.knowledge_only);
+        window.set_awaiting_interaction(awaiting_interaction);
         window.set_has_prompt(prepared.has_prompt());
         window.set_prompt(prepared.prompt.text.clone().into());
         window.set_standard_answer(prepared.answer.text.clone().into());
