@@ -129,7 +129,8 @@ function Wait-TryState([Diagnostics.Process]$TaskProcess, [string]$TaskState) {
         }
         $taskReady = [TryStartupProbe]::TrayReady($TaskProcess.Id)
         if ($TaskState -eq 'tray' -and $taskReady -and $taskWindow -eq [IntPtr]::Zero) { return }
-        if ($TaskState -eq 'main' -and $taskReady -and [TryStartupProbe]::Caption($taskWindow) -eq 'Try' -and [TryStartupProbe]::HasFrame($taskWindow)) { return }
+        # The main title bar is drawn inside the client area.
+        if ($TaskState -eq 'main' -and $taskReady -and [TryStartupProbe]::Caption($taskWindow) -eq 'Try' -and -not [TryStartupProbe]::HasFrame($taskWindow)) { return }
         if ($TaskState -eq 'practice' -and $taskReady -and $taskWindow -ne [IntPtr]::Zero -and -not [TryStartupProbe]::HasFrame($taskWindow)) { return }
         Start-Sleep -Milliseconds 50
     } while ($taskClock.Elapsed.TotalSeconds -lt 3)
