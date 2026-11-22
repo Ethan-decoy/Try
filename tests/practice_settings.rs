@@ -832,17 +832,33 @@ fn resized_practice_card_centers_short_answers_and_keeps_long_content_reachable(
     };
     let check_caret = |frame: &SharedPixelBuffer<Rgb8Pixel>| {
         let width = frame.width() as usize;
-        let y = (card.get_answer_footer_top() - card.get_answer_row_height() / 2.0) as usize;
-        let left = card.get_answer_footer_left() as usize;
-        let right = left + card.get_answer_footer_width() as usize;
-        let caret = (left + 3..right - 3)
-            .find(|x| {
-                let p = frame.as_slice()[y * width + x];
-                p.r > 160 && p.g > 160 && p.b > 160
+        let left = card.get_answer_footer_left().ceil() as usize + 3;
+        let right = (card.get_answer_footer_left() + card.get_answer_footer_width()) as usize - 3;
+        let top = (card.get_answer_footer_top() - card.get_answer_row_height()).ceil() as usize + 3;
+        let bottom = card.get_answer_footer_top() as usize - 3;
+
+        // Compare the input interior so the outline and platform caret color
+        // cannot be mistaken for a missing or off-center caret.
+        card.window()
+            .dispatch_event(WindowEvent::WindowActiveChanged(false));
+        let unfocused = paint(&adapter);
+        card.window()
+            .dispatch_event(WindowEvent::WindowActiveChanged(true));
+        let mut painted_columns = (left..right).filter(|&x| {
+            (top..bottom).any(|y| {
+                let index = y * width + x;
+                let shown = frame.as_slice()[index];
+                let hidden = unfocused.as_slice()[index];
+                shown.r.abs_diff(hidden.r) > 40
+                    || shown.g.abs_diff(hidden.g) > 40
+                    || shown.b.abs_diff(hidden.b) > 40
             })
-            .expect("the empty answer field renders a bright caret");
+        });
+        let caret = painted_columns
+            .next()
+            .expect("the empty answer field renders a visible caret");
         assert!(
-            caret.abs_diff(width / 2) <= 2,
+            caret.abs_diff(width / 2) <= 2 && painted_columns.all(|x| x.abs_diff(width / 2) <= 2),
             "caret at {caret} in a {width}-pixel card"
         );
     };
