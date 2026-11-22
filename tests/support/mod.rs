@@ -3,7 +3,8 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{
     Key, Platform, PlatformError, PointerEventButton, WindowAdapter, WindowEvent,
 };
-use slint::{ComponentHandle, LogicalPosition, Rgb8Pixel, SharedPixelBuffer};
+use slint::private_unstable_api::re_exports::WindowInner;
+use slint::{ComponentHandle, LogicalPosition, LogicalSize, Rgb8Pixel, SharedPixelBuffer};
 use std::rc::Rc;
 
 struct SoftwarePlatform(Rc<MinimalSoftwareWindow>);
@@ -23,7 +24,16 @@ pub fn software_window() -> Rc<MinimalSoftwareWindow> {
 pub fn paint(adapter: &MinimalSoftwareWindow) -> SharedPixelBuffer<Rgb8Pixel> {
     slint::platform::update_timers_and_animations();
     adapter.request_redraw();
-    let size = adapter.size();
+    let mut size = adapter.size();
+    // A content-height change can reach the renderer before the software
+    // adapter receives a new window size.
+    if let Some(item) = WindowInner::from_pub(adapter.window()).window_item() {
+        let item = item.as_pin_ref();
+        let rendered = LogicalSize::new(item.width().get(), item.height().get())
+            .to_physical(adapter.window().scale_factor());
+        size.width = size.width.max(rendered.width);
+        size.height = size.height.max(rendered.height);
+    }
     let mut pixels = SharedPixelBuffer::new(size.width, size.height);
     adapter.draw_if_needed(|renderer| {
         renderer.render(pixels.make_mut_slice(), size.width as usize);

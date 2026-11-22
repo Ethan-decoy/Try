@@ -50,6 +50,35 @@ impl SavedPopupPosition {
     }
 }
 
+/// User-selected dimensions in logical pixels, independent of monitor DPI.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PracticeCardSize {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl PracticeCardSize {
+    pub const MIN: Self = Self {
+        width: 320,
+        height: 288,
+    };
+    pub const MAX: Self = Self {
+        width: 1280,
+        height: 900,
+    };
+    const LEGACY_MIN: Self = Self {
+        width: 280,
+        height: 190,
+    };
+
+    /// Accept dimensions saved by older releases. The window applies its current limits on open.
+    pub fn is_valid(self) -> bool {
+        (Self::LEGACY_MIN.width..=Self::MAX.width).contains(&self.width)
+            && (Self::LEGACY_MIN.height..=Self::MAX.height).contains(&self.height)
+    }
+}
+
 /// Coordinates and dimensions are physical pixels; offsets and margins are logical.
 #[derive(Clone, Debug)]
 pub struct WorkArea {

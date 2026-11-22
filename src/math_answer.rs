@@ -64,6 +64,9 @@ pub fn recognize_inline(input: &str, math_hint: bool) -> Option<Node> {
 /// Start structural editing as soon as notation needs it. Plain words and
 /// source-code answers retain native text/IME editing rather than a math overlay.
 pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
+    if !math_hint && math_editor::is_code_identifier(input) {
+        return false;
+    }
     // Importing a completed script places the caret outside it. Enter the
     // empty slot while its base and ^ / _ are still being typed.
     let entering_script = input
@@ -132,17 +135,16 @@ pub fn incomplete_error(input: &str, math_hint: bool) -> Option<String> {
     }
 }
 
-pub fn matches(input: &str, answer: &str, latex: Option<&str>, aliases: &[String]) -> bool {
-    let expected = latex
-        .and_then(|tex| recognize(tex, true))
-        .or_else(|| recognize(answer, false));
+pub fn matches_formula(input: &str, latex: &str, aliases: &[String]) -> bool {
+    let Some(expected) = recognize(latex, true) else {
+        return false;
+    };
     let alternatives = aliases.iter().filter_map(|alias| recognize(alias, false));
-    let Some(supplied) = recognize(input, expected.is_some()) else {
+    let Some(supplied) = recognize(input, true) else {
         return false;
     };
     let supplied = notation(&supplied);
-    expected
-        .into_iter()
+    std::iter::once(expected)
         .chain(alternatives)
         .any(|node| notation(&node) == supplied)
 }
@@ -487,7 +489,7 @@ mod tests {
             ("sin^2x", r"\sin^{2}(x)"),
             ("abcln(x)", r"abc\ln(x)"),
         ] {
-            assert!(matches(input, "", Some(latex), &[]), "{input}: {latex}");
+            assert!(matches_formula(input, latex, &[]), "{input}: {latex}");
             assert!(recognize_inline(input, true).is_some(), "inline: {input}");
             assert!(starts_structured_edit(input, true), "entry: {input}");
         }
@@ -539,7 +541,7 @@ mod tests {
             ("(23)(45)", r"23\cdot45"),
             ("2*(ln(x))", r"2\ln(x)"),
         ] {
-            assert!(matches(input, "", Some(latex), &[]), "{input}: {latex}");
+            assert!(matches_formula(input, latex, &[]), "{input}: {latex}");
         }
         for (input, wrong) in [
             ("2(3)", "23"),
@@ -554,14 +556,14 @@ mod tests {
             ("2*(ln(xy))", r"2\ln(x)y"),
         ] {
             assert!(
-                !matches(input, "", Some(wrong), &[]),
+                !matches_formula(input, wrong, &[]),
                 "scope: {input} == {wrong}"
             );
         }
     }
 
     #[test]
-    fn notation_plain_answers_infer_a_numeric_coefficient_without_latex() {
+    fn coefficient_notation_is_equivalent_only_for_formula_answers() {
         for (answer, input) in [
             ("2x", "2*x"),
             ("2x", "2·x"),
@@ -574,8 +576,10 @@ mod tests {
                     "prompt":"Derivative formula", "answer":answer, "answer_latex":latex
                 }))
                 .unwrap();
-                assert!(
+                assert!(card.accepts(answer), "stored spelling: {answer}");
+                assert_eq!(
                     card.accepts(input),
+                    latex.is_some(),
                     "{input}, answer={answer}, latex={latex:?}"
                 );
                 for wrong in ["3*x", "2+x", "2*x^2"] {
@@ -615,10 +619,7 @@ mod tests {
             ("xasin(t)", r"x\arcsin(t)"),
             ("yLog_2(x)", r"y\log_{2}(x)"),
         ] {
-            assert!(
-                matches(input, "", Some(expected), &[]),
-                "{input}: {expected}"
-            );
+            assert!(matches_formula(input, expected, &[]), "{input}: {expected}");
         }
     }
 
@@ -637,10 +638,10 @@ mod tests {
             );
             assert!(!starts_structured_edit(word, false), "plain/code: {word}");
         }
-        assert!(matches("asin(x)", "", Some(r"\arcsin(x)"), &[]));
-        assert!(!matches("asin(x)", "", Some(r"a\sin(x)"), &[]));
-        assert!(!matches("asinh(x)", "", Some(r"a\sinh(x)"), &[]));
-        assert!(!matches(r#""yln(x)""#, "", Some(r"y\ln(x)"), &[]));
+        assert!(matches_formula("asin(x)", r"\arcsin(x)", &[]));
+        assert!(!matches_formula("asin(x)", r"a\sin(x)", &[]));
+        assert!(!matches_formula("asinh(x)", r"a\sinh(x)", &[]));
+        assert!(!matches_formula(r#""yln(x)""#, r"y\ln(x)", &[]));
     }
 
     #[test]
@@ -652,10 +653,7 @@ mod tests {
             ("ln(x)*y", r"\ln(x)y"),
             ("x/(y*z)", r"\frac{x}{yz}"),
         ] {
-            assert!(
-                matches(input, "", Some(expected), &[]),
-                "{input}: {expected}"
-            );
+            assert!(matches_formula(input, expected, &[]), "{input}: {expected}");
         }
         for (input, wrong) in [
             ("2*3", "23"),
@@ -670,7 +668,7 @@ mod tests {
             ("x/(y*z)", r"\frac{x}{y}z"),
         ] {
             assert!(
-                !matches(input, "", Some(wrong), &[]),
+                !matches_formula(input, wrong, &[]),
                 "different product/argument: {input} == {wrong}"
             );
         }
@@ -689,12 +687,9 @@ mod tests {
                 r"\begin{bmatrix}a&b\\c&d\end{bmatrix}",
             ),
         ] {
+            assert!(matches_formula(expected, expected, &[]), "self: {expected}");
             assert!(
-                matches(expected, "", Some(expected), &[]),
-                "self: {expected}"
-            );
-            assert!(
-                !matches(wrong, "", Some(expected), &[]),
+                !matches_formula(wrong, expected, &[]),
                 "{expected} != {wrong}"
             );
         }
@@ -720,6 +715,34 @@ mod tests {
         assert!(!starts_structured_edit("sqrt(3", true));
         for text in ["1/", "x^", r"\frac{1}{"] {
             assert!(starts_structured_edit(text, true), "{text}");
+        }
+    }
+
+    #[test]
+    fn code_identifiers_stay_literal_during_typing_and_authoring() {
+        for input in [
+            "std::unique_ptr",
+            "unique_ptr",
+            "std::make_unique<int>",
+            ".as_ref()",
+            "map_err",
+        ] {
+            for end in 1..=input.len() {
+                let prefix = &input[..end];
+                assert!(!starts_structured_edit(prefix, false), "{prefix}: {input}");
+            }
+            assert!(recognize_inline(input, false).is_none(), "{input}");
+            let mut field = math_editor::Field::new("", "");
+            field.update(input).unwrap();
+            assert_eq!(field.content().unwrap(), (input.into(), String::new()));
+        }
+        for (input, latex) in [
+            ("x_i", r"x_{i}"),
+            ("theta_i", r"\theta_{i}"),
+            ("log_2(x)", r"\log_{2}(x)"),
+        ] {
+            assert!(recognize_inline(input, false).is_some(), "{input}");
+            assert!(matches_formula(input, latex, &[]), "{input}");
         }
     }
 
@@ -812,15 +835,12 @@ mod tests {
             );
             for expected in forms {
                 assert!(
-                    matches(&plain, "", Some(expected), &[]),
+                    matches_formula(&plain, expected, &[]),
                     "{plain}: {expected}"
                 );
-                assert!(
-                    matches(latex, "", Some(expected), &[]),
-                    "{latex}: {expected}"
-                );
+                assert!(matches_formula(latex, expected, &[]), "{latex}: {expected}");
             }
-            assert!(!matches("p^m*q^n", "", Some(latex), &[]));
+            assert!(!matches_formula("p^m*q^n", latex, &[]));
         }
     }
 
@@ -841,17 +861,14 @@ mod tests {
             );
             for expected in forms {
                 assert!(
-                    matches(&plain, "", Some(expected), &[]),
+                    matches_formula(&plain, expected, &[]),
                     "{plain}: {expected}"
                 );
-                assert!(
-                    matches(latex, "", Some(expected), &[]),
-                    "{latex}: {expected}"
-                );
+                assert!(matches_formula(latex, expected, &[]), "{latex}: {expected}");
             }
-            assert!(!matches("u*f'(u)", "", Some(latex), &[]));
-            assert!(!matches("u'*f(u)", "", Some(latex), &[]));
-            assert!(!matches("u'*f''(u)", "", Some(latex), &[]));
+            assert!(!matches_formula("u*f'(u)", latex, &[]));
+            assert!(!matches_formula("u'*f(u)", latex, &[]));
+            assert!(!matches_formula("u'*f''(u)", latex, &[]));
         }
     }
 
@@ -866,13 +883,13 @@ mod tests {
         ] {
             let supplied = math_editor::from_latex(correct).unwrap().plain();
             assert!(incomplete_error(&supplied, true).is_none(), "{supplied}");
-            assert!(matches(&supplied, "", Some(correct), &[]), "{correct}");
+            assert!(matches_formula(&supplied, correct, &[]), "{correct}");
             assert!(
-                !matches(&supplied, "", Some(wrong), &[]),
+                !matches_formula(&supplied, wrong, &[]),
                 "{correct} != {wrong}"
             );
             assert!(
-                !matches(wrong, "", Some(correct), &[]),
+                !matches_formula(wrong, correct, &[]),
                 "{wrong} != {correct}"
             );
         }
@@ -891,17 +908,12 @@ mod tests {
             ("|x|", r"\left|x\right|"),
             ("ε", r"\varepsilon"),
         ] {
-            assert!(matches(input, input, Some(latex), &[]), "{input}: {latex}");
+            assert!(matches_formula(input, latex, &[]), "{input}: {latex}");
         }
-        assert!(!matches("sin^2(x)", "cos^2(x)", Some(r"\cos^2(x)"), &[]));
-        assert!(!matches("sin^-1(x)", "arcsin(x)", Some(r"\arcsin(x)"), &[]));
-        assert!(!matches("sin(x)+y", "sin(x+y)", Some(r"\sin(x+y)"), &[]));
-        assert!(!matches(
-            "sin^2(x+y)",
-            "(sin(x)+y)^2",
-            Some(r"(\sin(x)+y)^2"),
-            &[]
-        ));
+        assert!(!matches_formula("sin^2(x)", r"\cos^2(x)", &[]));
+        assert!(!matches_formula("sin^-1(x)", r"\arcsin(x)", &[]));
+        assert!(!matches_formula("sin(x)+y", r"\sin(x+y)", &[]));
+        assert!(!matches_formula("sin^2(x+y)", r"(\sin(x)+y)^2", &[]));
     }
 
     #[test]
@@ -914,11 +926,11 @@ mod tests {
             ("a^abs(x)", r"a^{\left|x\right|}", "a^x"),
             ("a_abs(x)", r"a_{\left|x\right|}", "a_x"),
         ] {
-            assert!(matches(input, input, Some(latex), &[]), "{input}");
-            assert!(!matches(wrong, input, Some(latex), &[]), "{wrong}: {latex}");
+            assert!(matches_formula(input, latex, &[]), "{input}");
+            assert!(!matches_formula(wrong, latex, &[]), "{wrong}: {latex}");
         }
-        assert!(matches("1/(x+y)", "1/(x+y)", Some(r"\frac{1}{x+y}"), &[]));
-        assert!(matches("x^(n+1)", "x^(n+1)", Some("x^{n+1}"), &[]));
+        assert!(matches_formula("1/(x+y)", r"\frac{1}{x+y}", &[]));
+        assert!(matches_formula("x^(n+1)", "x^{n+1}", &[]));
     }
 
     #[test]
@@ -931,25 +943,20 @@ mod tests {
             r"\frac{\sqrt{3}}{2}",
         ] {
             assert!(
-                matches(input, "√3/2", Some(r"\frac{\sqrt{3}}{2}"), &[]),
+                matches_formula(input, r"\frac{\sqrt{3}}{2}", &[]),
                 "{input}"
             );
         }
-        assert!(matches("pi / 3", "π/3", Some(r"\frac{\pi}{3}"), &[]));
-        assert!(matches("x^2", "x²", Some("x^{2}"), &[]));
+        assert!(matches_formula("pi / 3", r"\frac{\pi}{3}", &[]));
+        assert!(matches_formula("x^2", "x^{2}", &[]));
     }
 
     #[test]
     fn grouping_wrong_values_and_approximation_are_not_silently_changed() {
-        assert!(!matches("(a+b)*c", "a+b*c", Some("a+b*c"), &[]));
-        assert!(!matches(
-            "sqrt(2)/2",
-            "√3/2",
-            Some(r"\frac{\sqrt{3}}{2}"),
-            &[]
-        ));
-        assert!(!matches("0.5", "1/2", Some(r"\frac{1}{2}"), &[]));
-        assert!(!matches("sqrt(", "√3/2", None, &[]));
+        assert!(!matches_formula("(a+b)*c", "a+b*c", &[]));
+        assert!(!matches_formula("sqrt(2)/2", r"\frac{\sqrt{3}}{2}", &[]));
+        assert!(!matches_formula("0.5", r"\frac{1}{2}", &[]));
+        assert!(!matches_formula("sqrt(", r"\frac{\sqrt{3}}{2}", &[]));
         assert!(recognize("hesitate", false).is_none());
         assert!(recognize(&"1".repeat(1001), true).is_none());
     }
@@ -967,8 +974,8 @@ mod tests {
                 r"\operatorname{hom}(y)",
             ),
         ] {
-            assert!(matches(input, input, Some(latex), &[]), "{input}: {latex}");
-            assert!(!matches(wrong, input, Some(latex), &[]), "{wrong}: {latex}");
+            assert!(matches_formula(input, latex, &[]), "{input}: {latex}");
+            assert!(!matches_formula(wrong, latex, &[]), "{wrong}: {latex}");
             assert!(incomplete_error(input, true).is_none(), "{input}");
         }
     }

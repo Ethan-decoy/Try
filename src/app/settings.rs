@@ -1,6 +1,38 @@
 //! Saved preferences, appearance, pause scheduling and autostart.
 use super::*;
 
+pub(super) const INTERVAL_MINUTE_PRESETS: &[i32] = &[15, 25, 30, 45];
+pub(super) const FEEDBACK_SECOND_PRESETS: &[i32] = &[1, 2, 3];
+pub(super) const KNOWLEDGE_SECOND_PRESETS: &[i32] = &[5, 8, 15, 30];
+pub(super) const PAUSE_MINUTE_PRESETS: &[i32] = &[0, 60, 120, 180, -1];
+
+pub(super) fn preset_value(index: i32, presets: &[i32], current: i32) -> Option<i32> {
+    let index = usize::try_from(index).ok()?;
+    presets
+        .get(index)
+        .copied()
+        .or_else(|| (index == presets.len() && !presets.contains(&current)).then_some(current))
+}
+
+pub(super) fn preset_options(
+    current: i32,
+    presets: &[i32],
+    label: impl Fn(i32) -> String,
+) -> (ModelRc<slint::SharedString>, i32) {
+    let mut options = presets
+        .iter()
+        .map(|n| label(*n).into())
+        .collect::<Vec<slint::SharedString>>();
+    let index = presets
+        .iter()
+        .position(|n| *n == current)
+        .unwrap_or_else(|| {
+            options.push(tr!("{p0}（自定）", p0 = label(current)).into());
+            presets.len()
+        });
+    (ModelRc::new(VecModel::from(options)), index as i32)
+}
+
 impl App {
     pub(super) fn resolved_dark_theme(&self, appearance: Appearance) -> bool {
         match appearance {
@@ -19,14 +51,38 @@ impl App {
         }
     }
 
+    pub(super) fn interface_motion(&self) -> crate::MotionPreference {
+        if !self.library.borrow().settings.interface_animations {
+            return crate::MotionPreference::Reduced;
+        }
+        #[cfg(target_os = "windows")]
+        if FloatingWindow::client_animations_enabled() {
+            crate::MotionPreference::Full
+        } else {
+            crate::MotionPreference::Reduced
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            crate::MotionPreference::ColorOnly
+        }
+    }
+
     pub(super) fn sync_appearance(&self) {
-        let appearance = self.library.borrow().settings.appearance;
-        let dark = self.resolved_dark_theme(appearance);
+        let dark = self.resolved_dark_theme(self.library.borrow().settings.appearance);
+        let motion = self.interface_motion();
+        if motion == crate::MotionPreference::Reduced {
+            self.hide_outgoing_practice();
+        }
         if let Some(window) = self.main_window.borrow().as_ref() {
+            window.global::<crate::Theme>().set_motion(motion);
             window.set_dark_theme(dark);
             self.floating.apply_theme(window.window(), dark);
         }
         if let Some(session) = self.practice.borrow().as_ref() {
+            if session.window.get_dark_theme() != dark {
+                session.window.invoke_interrupt_entrance();
+            }
+            session.window.global::<crate::Theme>().set_motion(motion);
             session.window.set_dark_theme(dark);
             self.floating.apply_theme(session.window.window(), dark);
         }
@@ -70,6 +126,33 @@ impl App {
     pub(super) fn refresh_system_appearance(&self) {
         self.system_dark.set((self.system_theme_probe.get())());
         self.sync_appearance();
+    }
+
+    pub(super) fn set_practice_card_locked(self: &Rc<Self>, locked: bool) {
+        let card = self
+            .practice
+            .borrow()
+            .as_ref()
+            .map(|session| session.window.clone_strong());
+        // A move made before locking is part of the saved placement, even
+        // when this card is still open.
+        let position = card
+            .as_ref()
+            .filter(|card| locked && !card.get_card_locked())
+            .and_then(|card| self.floating.moved_position(card.window()));
+        let result = self.commit(|library| {
+            library.settings.practice_card_locked = locked;
+            if let Some(position) = position {
+                library.settings.set_custom_popup_position(position);
+            }
+            Ok(())
+        });
+        if result.is_ok()
+            && let Some(card) = card
+        {
+            card.set_card_locked(locked);
+        }
+        self.report(result, "");
     }
 
     pub(super) fn set_pause(self: &Rc<Self>, minutes: i32) {
@@ -229,52 +312,52 @@ impl App {
     }
 
     pub(super) fn set_quiet_enabled(self: &Rc<Self>, enabled: bool) {
-        if enabled {
-            let draft = self
-                .main_window
-                .borrow()
-                .as_ref()
-                .map(|window| (window.get_quiet_start(), window.get_quiet_end()));
-            if let Some((start, end)) = draft {
-                match QuietHours::from_text(true, start.as_str(), end.as_str()) {
-                    Ok(hours) => {
-                        let result = self.commit(|library| {
-                            library.settings.quiet_hours = hours;
-                            Ok(())
-                        });
-                        self.report(result, "");
-                    }
-                    Err(error) => {
-                        if let Some(window) = self.main_window.borrow().as_ref() {
-                            window.set_quiet_time_error(error.into());
-                        }
-                    }
-                }
-                return;
-            }
-        }
-        let result = self.commit(|library| {
-            library.settings.quiet_hours.enabled = enabled;
-            Ok(())
-        });
-        self.report(result, "");
+        let mut hours = self.library.borrow().settings.quiet_hours.clone();
+        hours.enabled = enabled;
+        self.save_quiet_hours(hours);
     }
 
     pub(super) fn set_quiet_range(self: &Rc<Self>, start: &str, end: &str) {
+        self.update_quiet_range(start, end, true);
+    }
+
+    pub(super) fn update_quiet_range(self: &Rc<Self>, start: &str, end: &str, validate: bool) {
         let enabled = self.library.borrow().settings.quiet_hours.enabled;
         match QuietHours::from_text(enabled, start, end) {
-            Ok(hours) => {
-                let result = self.commit(|library| {
-                    library.settings.quiet_hours = hours;
-                    Ok(())
-                });
-                self.report(result, "");
-            }
+            Ok(hours) => self.save_quiet_hours(hours),
             Err(error) => {
                 if let Some(window) = self.main_window.borrow().as_ref() {
-                    window.set_quiet_time_error(error.into());
+                    window.set_quiet_time_dirty(true);
+                    window.set_quiet_time_error(if validate { error.into() } else { "".into() });
                 }
             }
         }
+    }
+
+    fn save_quiet_hours(self: &Rc<Self>, hours: QuietHours) {
+        let window = self
+            .main_window
+            .borrow()
+            .as_ref()
+            .map(ComponentHandle::clone_strong);
+        let same = hours == self.library.borrow().settings.quiet_hours;
+        if let Some(window) = &window {
+            window.set_quiet_time_dirty(false);
+            window.set_quiet_time_error("".into());
+        }
+        if same {
+            return;
+        }
+        let result = self.commit(|library| {
+            library.settings.quiet_hours = hours;
+            Ok(())
+        });
+        if let Err(error) = &result
+            && let Some(window) = window
+        {
+            window.set_quiet_time_dirty(true);
+            window.set_quiet_time_error(error.as_str().into());
+        }
+        self.report(result, "");
     }
 }

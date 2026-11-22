@@ -3,6 +3,11 @@ use super::*;
 
 impl App {
     pub(super) fn collect_media(&self) {
+        let transfer = self.pack_transfer.borrow();
+        // Import may be publishing media and export may be reading a previous pack snapshot.
+        if transfer.is_running() {
+            return;
+        }
         let mut keep: std::collections::BTreeSet<String> = self
             .library
             .borrow()
@@ -16,6 +21,13 @@ impl App {
             .collect();
         keep.extend(self.editor_image.borrow().clone());
         if let Some(pack) = self.pending_import.borrow().as_ref() {
+            keep.extend(
+                pack.cards
+                    .iter()
+                    .filter_map(|card| card.prompt_image.clone()),
+            );
+        }
+        if let Some(pack) = transfer.retry_pack() {
             keep.extend(
                 pack.cards
                     .iter()
@@ -57,7 +69,11 @@ impl App {
     }
 
     pub(super) fn import_question_image(self: &Rc<Self>, path: std::path::PathBuf) {
-        if self.editor.borrow().is_none() || self.image_task.borrow().is_some() {
+        if self.editor.borrow().is_none()
+            || self.image_task.borrow().is_some()
+            || self.pending_leave.get().is_some()
+            || self.pending_card_delete.borrow().is_some()
+        {
             return;
         }
         let revision = self.image_revision.get();
@@ -123,6 +139,11 @@ impl App {
         self.close_image_preview();
         let result = (|| -> AppResult<()> {
             let window = crate::ImagePreviewWindow::new().map_err(|e| e.to_string())?;
+            #[cfg(target_os = "windows")]
+            crate::floating_window::desktop_frame::configure(
+                &window,
+                crate::ImagePreviewWindow::get_window_controls,
+            );
             window.set_picture(image);
             window.set_app_icon(self.icon.clone());
             window.set_dark_theme(

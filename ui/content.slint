@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { Button, LineEdit, SpinBox, TextEdit } from "std-widgets.slint";
-import { AnswerPick, Disclosure, IconButton, ToolButton } from "controls.slint";
+import { AnswerPick, Disclosure, EntranceMotion, IconButton, ToolButton } from "controls.slint";
 import { MathPalette, MathTool } from "math_palette.slint";
 import { FormulaInput, FormulaNavigation, FormulaPosition } from "formula_input.slint";
 export { ToolButton } from "controls.slint";
@@ -36,14 +36,21 @@ export component QuestionPicture inherits Rectangle {
     in property <float> picture-width;
     in property <float> picture-height;
     in property <length> picture-height-limit: 220px;
+    in property <bool> fit-frame;
     callback activated();
     preferred-height: root.picture-width > 0 ? min(root.picture-height-limit, root.width * root.picture-height / root.picture-width) : 0px;
     min-height: self.preferred-height;
-    background: white;
-    border-radius: 6px;
-    clip: true;
-    Image { source: root.picture; width: parent.width; height: parent.height; image-fit: contain; }
-    TouchArea { mouse-cursor: pointer; clicked => { root.activated(); } }
+    Rectangle {
+        width: root.fit-frame && root.picture-height > 0
+            ? min(root.width, root.height * root.picture-width / root.picture-height) : root.width;
+        x: (root.width - self.width) / 2;
+        height: root.height;
+        background: white;
+        border-radius: 6px;
+        clip: true;
+        Image { source: root.picture; width: parent.width; height: parent.height; image-fit: contain; }
+        TouchArea { mouse-cursor: pointer; clicked => { root.activated(); } }
+    }
 }
 
 export component FormulaLabel inherits Rectangle {
@@ -143,6 +150,7 @@ component MathComposer inherits Rectangle {
     in property <FormulaPosition> position;
     in property <FormulaNavigation> navigation;
     in property <bool> text-mode;
+    in property <bool> formula-field;
     in property <bool> has-formula;
     in-out property <string> input;
     in property <string> error;
@@ -162,7 +170,11 @@ component MathComposer inherits Rectangle {
     callback resize-grid(int, int);
     callback canvas-layout(float, float, float);
     callback measured-height(length);
+    in property <int> focus-request;
+    in property <bool> animate-opening;
     out property <length> natural-height: editor.preferred-height;
+    height: root.natural-height;
+    opacity: opening.alpha;
     out property <length> canvas-left: picture.absolute-position.x + picture.formula-x;
     out property <length> canvas-top: picture.absolute-position.y + picture.formula-y;
     out property <float> canvas-scale: picture.formula-scale;
@@ -176,15 +188,18 @@ component MathComposer inherits Rectangle {
     changed canvas-top => { root.canvas-layout(root.canvas-left / 1px, root.canvas-top / 1px, root.canvas-scale); }
     changed canvas-scale => { root.canvas-layout(root.canvas-left / 1px, root.canvas-top / 1px, root.canvas-scale); }
     changed input => { editor-input.focus(); }
+    changed formula-field => { editor-input.focus(); }
+    changed focus-request => { editor-input.focus(); }
     init => {
         editor-input.focus();
         root.measured-height(root.natural-height);
         root.canvas-layout(root.canvas-left / 1px, root.canvas-top / 1px, root.canvas-scale);
     }
+    opening := EntranceMotion { play-on-init: root.animate-opening; duration: 170ms; }
     editor := VerticalLayout {
         padding: 12px;
-        spacing: 10px;
-        HorizontalLayout {
+        spacing: root.formula-field || root.has-formula ? 10px : 0px;
+        if root.formula-field : HorizontalLayout {
             spacing: 4px;
             if root.has-formula : ToolButton { width: 32px; horizontal-stretch: 0; label: @tr("文"); name: @tr("加入文字"); activated => { root.apply-tool("text"); } }
             ToolButton { width: 32px; horizontal-stretch: 0; label: "ƒ"; name: @tr("公式生成器"); activated => { root.open-structured-math(); } }
@@ -292,7 +307,10 @@ component MathComposer inherits Rectangle {
                 command(value) => { root.apply-tool(value); }
             }
         }
-        if root.error != "" : Text { text: root.error; color: Theme.wrong-ink; wrap: word-wrap; font-size: 12px; }
+        if root.error != "" : VerticalLayout {
+            padding-top: root.formula-field || root.has-formula ? 0px : 8px;
+            Text { text: root.error; color: Theme.wrong-ink; wrap: word-wrap; font-size: 12px; }
+        }
     }
 }
 
@@ -301,12 +319,16 @@ export component ContentField inherits Rectangle {
     in property <[MathTool]> symbols;
     in property <AnswerOption> preview;
     in property <bool> active;
+    in property <int> focus-request;
+    in property <bool> default-focus;
+    in property <bool> resize-with-motion;
     in property <AnswerOption> active-preview;
     in property <[MathRegion]> regions;
     in property <MathRegion> selection;
     in property <FormulaPosition> position;
     in property <FormulaNavigation> navigation;
     in property <bool> text-mode;
+    in property <bool> formula-field;
     in property <bool> has-formula;
     in-out property <string> input;
     in property <string> error;
@@ -316,7 +338,7 @@ export component ContentField inherits Rectangle {
     in property <bool> can-unwrap;
     in property <int> grid-rows;
     in property <int> grid-columns;
-    callback activated();
+    callback activated(bool);
     callback select-region(int);
     callback edited(string);
     callback position-changed(string, int, int);
@@ -326,20 +348,34 @@ export component ContentField inherits Rectangle {
     callback undo(bool);
     callback resize-grid(int, int);
     callback canvas-layout(float, float, float);
-    private property <length> composer-height: 200px;
+    private property <length> composer-height: 86px;
+    private property <length> structured-pane-height: 404px;
+    private property <length> natural-height: root.active
+        ? (MathInputState.open ? root.structured-pane-height : root.composer-height)
+        : max(64px, root.preview.formula-height * 1px + 24px);
+    private property <length> eased-height: root.natural-height;
+    animate eased-height {
+        duration: root.resize-with-motion ? 170ms : 0ms;
+        easing: cubic-bezier(0.215, 0.61, 0.355, 1);
+    }
     forward-focus: field-focus;
+    changed focus-request => { if root.default-focus && !root.active { field-focus.focus(); } }
     horizontal-stretch: 1;
     vertical-stretch: 0;
     border-radius: 7px;
     border-width: 1px;
     border-color: root.active ? Theme.focus : Theme.border;
     background: Theme.soft;
-    height: root.active ? (MathInputState.open ? structured-pane-height : root.composer-height) : max(64px, root.preview.formula-height * 1px + 24px);
-    private property <length> structured-pane-height: 404px;
+    height: {
+        let eased = root.eased-height;
+        return root.resize-with-motion ? eased : root.natural-height;
+    }
+    clip: true;
     accessible-role: button;
     accessible-label: @tr("编辑内容：") + root.preview.label;
+    accessible-action-default => { if !root.active { root.activated(false); } }
     field-focus := FocusScope {
-        key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; } return reject; }
+        key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.activated(false); return accept; } return reject; }
     }
     if !root.active : Rectangle {
         FormulaLabel {
@@ -352,7 +388,7 @@ export component ContentField inherits Rectangle {
             font-size: 16px;
             align-left: true;
         }
-        TouchArea { mouse-cursor: text; clicked => { root.activated(); } }
+        TouchArea { mouse-cursor: text; clicked => { root.activated(true); } }
     }
     if root.active && MathInputState.open : StructuredMathPane {
         x: 12px; y: 12px; width: parent.width - 24px;
@@ -360,6 +396,8 @@ export component ContentField inherits Rectangle {
         init => { root.structured-pane-height = self.height + 24px; }
     }
     if root.active && !MathInputState.open : MathComposer {
+        focus-request: root.focus-request;
+        animate-opening: root.resize-with-motion;
         functions: root.functions;
         symbols: root.symbols;
         active-preview: root.active-preview;
@@ -368,6 +406,7 @@ export component ContentField inherits Rectangle {
         position: root.position;
         navigation: root.navigation;
         text-mode: root.text-mode;
+        formula-field: root.formula-field;
         has-formula: root.has-formula;
         input <=> root.input;
         error: root.error;
@@ -400,12 +439,14 @@ export component ContentForm inherits VerticalLayout {
     callback choice-changed(int);
     callback truth-changed(bool);
     in property <int> active-field: -1;
+    in property <int> focus-request;
     in property <AnswerOption> active-preview;
     in property <[MathRegion]> regions;
     in property <MathRegion> selection;
     in property <FormulaPosition> position;
     in property <FormulaNavigation> navigation;
     in property <bool> text-mode;
+    in property <bool> formula-field;
     in property <bool> has-formula;
     in-out property <string> input;
     in property <string> error;
@@ -416,6 +457,7 @@ export component ContentForm inherits VerticalLayout {
     in property <int> grid-rows;
     in property <int> grid-columns;
     callback activate-field(int);
+    callback format-changed(bool);
     callback select-region(int);
     callback edited(string);
     callback position-changed(string, int, int);
@@ -427,26 +469,64 @@ export component ContentForm inherits VerticalLayout {
     callback canvas-layout(float, float, float);
     private property <[int]> visible-fields: root.answer-mode == 2 ? [4] : root.answer-mode == 1 ? [0,1,2,3] : [0,1];
     private property <[string]> labels: root.answer-mode == 1 ? [@tr("题目"), @tr("选项 A"), @tr("选项 B"), @tr("选项 C"), @tr("题目")] : [@tr("题目"), @tr("答案"), "", "", @tr("题目")];
+    private property <bool> pointer-resize;
+    private property <bool> motion-enabled: Theme.spatial-motion;
+    private property <bool> resize-with-motion: root.motion-enabled && root.pointer-resize && !MathInputState.open;
+    changed motion-enabled => { if !root.motion-enabled { root.pointer-resize = false; } }
     spacing: 14px;
     for field in root.visible-fields : VerticalLayout {
         spacing: 7px;
         HorizontalLayout {
-            height: root.answer-mode == 1 && field > 0 ? 36px : 16px;
+            private property <length> natural-height: root.answer-mode == 1 && field > 0 ? 36px : root.active-field == field ? 28px : 16px;
+            private property <length> eased-height: self.natural-height;
+            height: {
+                let eased = self.eased-height;
+                return root.resize-with-motion ? eased : self.natural-height;
+            }
+            animate eased-height {
+                duration: root.resize-with-motion ? 170ms : 0ms;
+                easing: cubic-bezier(0.215, 0.61, 0.355, 1);
+            }
             spacing: 4px;
             Text { text: root.labels[field]; color: Theme.muted; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
             if root.answer-mode == 1 && field > 0 : AnswerPick { selected: root.correct-choice == field - 1; label: root.labels[field] + @tr(" · 设为正确答案"); activated => { root.choice-changed(field - 1); } }
+            if root.active-field == field : HorizontalLayout {
+                width: 134px;
+                height: parent.height;
+                horizontal-stretch: 0;
+                spacing: 2px;
+                for option[index] in [@tr("文本"), @tr("公式")] : ToolButton {
+                    min-width: 66px;
+                    height: min(26px, parent.height);
+                    font-size: 12px;
+                    label: option;
+                    name: option;
+                    checkable: true;
+                    checked: (index == 1) == root.formula-field;
+                    activated => {
+                        if !self.checked {
+                            root.pointer-resize = self.pointer-activation;
+                            root.format-changed(index == 1);
+                        }
+                    }
+                }
+            }
         }
         ContentField {
             functions: root.functions;
             symbols: root.symbols;
             preview: root.fields[field];
             active: root.active-field == field;
+            focus-request: root.focus-request;
+            default-focus: root.active-field < 0 && field == root.visible-fields[0];
+            resize-with-motion: root.resize-with-motion;
             active-preview: root.active-preview;
             regions: root.regions;
             selection: root.selection;
             position: root.position;
             navigation: root.navigation;
             text-mode: root.text-mode;
+            formula-field: root.formula-field;
             has-formula: root.has-formula;
             input <=> root.input;
             error: root.error;
@@ -456,15 +536,15 @@ export component ContentForm inherits VerticalLayout {
             can-unwrap: root.can-unwrap;
             grid-rows: root.grid-rows;
             grid-columns: root.grid-columns;
-            activated => { root.activate-field(field); }
-            select-region(index) => { root.select-region(index); }
-            edited(input) => { root.edited(input); }
+            activated(pointer) => { root.pointer-resize = pointer; root.activate-field(field); }
+            select-region(index) => { root.pointer-resize = false; root.select-region(index); }
+            edited(input) => { root.pointer-resize = false; root.edited(input); }
             position-changed(value, anchor, caret) => { root.position-changed(value, anchor, caret); }
-            tool(name) => { root.tool(name); }
-            open-structured-math => { root.open-structured-math(); }
-            parent => { root.parent(); }
-            undo(redo) => { root.undo(redo); }
-            resize-grid(rows, columns) => { root.resize-grid(rows, columns); }
+            tool(name) => { root.pointer-resize = false; root.tool(name); }
+            open-structured-math => { root.pointer-resize = false; root.open-structured-math(); }
+            parent => { root.pointer-resize = false; root.parent(); }
+            undo(redo) => { root.pointer-resize = false; root.undo(redo); }
+            resize-grid(rows, columns) => { root.pointer-resize = false; root.resize-grid(rows, columns); }
             canvas-layout(x,y,scale) => { root.canvas-layout(x,y,scale); }
         }
     }

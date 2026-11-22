@@ -209,7 +209,7 @@ fn practice_text_phase(checks: Rc<AnswerChecks>, case: u8, stage: u8) {
                     window.get_prompt_area_height() + 0.5 >= window.get_prompt_natural_height(),
                     "Cue lines must fit without clipping their first or last row"
                 );
-                assert!(size.height >= 230.0 && size.height <= 561.0);
+                assert!(size.height >= 200.0 && size.height <= 561.0);
                 if case == 0 {
                     assert!(
                         (window.get_formula_button_center_x() - 274.0).abs() <= 0.5,
@@ -218,9 +218,9 @@ fn practice_text_phase(checks: Rc<AnswerChecks>, case: u8, stage: u8) {
                     assert!(
                         (size.height
                             - if window.get_pack_tag_visible() {
-                                256.0
+                                226.0
                             } else {
-                                230.0
+                                200.0
                             })
                         .abs()
                             <= 1.0,
@@ -358,7 +358,7 @@ fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 }
                 2 => {
                     let window = practice_window(app);
-                    check_floating_window(window.window());
+                    check_floating_window(&window);
                     check_no_caption_paint(window.window());
                     assert_eq!(window.get_answer_mode(), 1);
                     assert_eq!(window.get_options().row_count(), 3);
@@ -442,7 +442,7 @@ fn answer_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 }
                 5 => {
                     let window = practice_window(app);
-                    check_floating_window(window.window());
+                    check_floating_window(&window);
                     check_no_caption_paint(window.window());
                     assert_eq!(window.get_options().row_count(), 2);
                     assert_eq!(window.get_answer_mode(), 2);

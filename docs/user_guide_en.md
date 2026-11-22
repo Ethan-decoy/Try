@@ -6,13 +6,21 @@ This guide covers Try 1.0.0 for Windows x64, macOS arm64 and Linux x64. Publishe
 
 ## Practice
 
-Place the Windows executable in a writable folder and open `try.exe`. Closing the main window returns to the tray. Quit from the tray menu or the power icon in the main window to exit completely.
+Place the Windows executable in a writable folder and open `try.exe`. The main window’s bottom-right controls are **Back to tray**, **Maximize** or **Restore window**, and **Quit Try**, from left to right. Choose **Back to tray** to keep reminders running. The power button or **Quit** in the tray menu exits the app. When a card or pack has unsaved edits, you can keep editing, save and continue, or discard changes before going to the tray, quitting, or starting practice.
+
+On Windows, the main window and image preview have a thin frame that follows Try’s appearance. Drag the title bar to move the window, double-click it to maximize or restore, or drag an edge or corner to resize. Esc also closes the image preview.
 
 Click the tray icon on Windows/Linux to start a card. On macOS, choose Practice from the menu-bar icon. The menu also opens Settings or About, pauses automatic practice, resumes it, or quits. Mac/Linux remain experimental; complete tray, focus and file-dialog behavior needs desktop testing.
 
-Enter submits a typed answer. Click a multiple-choice option or use 1, 2, 3; click ✓ / ✕ for true/false. Green means correct; red reveals the expected answer and stays open until you press Enter to acknowledge it. Esc does not dismiss an incorrect answer. Esc closes unanswered or correct cards, and Enter can also dismiss correct feedback early. Closing without submitting does not record a result.
+Press Enter to submit a typed answer. For multiple choice, click an option or press 1, 2, or 3. For true/false, click ✓ or ✕ or press 1 or 2. The card turns green for a correct answer. After a mistake, it turns red. A fill-in shows the expected answer where you typed, with your attempt underneath. Choice and true/false cards outline the correct option in place. Press Enter or click the close icon in the lower-right corner to close a missed card. Esc closes unanswered or correct cards, and Enter can also dismiss correct feedback early. Closing without submitting leaves the question ungraded.
 
 Right-click a practice card to open its menu, or press the Menu key or Shift+F10 while the card has focus. **Stop practicing this question** unchecks the current question and closes the card, keeping its content and learning records; re-enable it in the knowledge pack. **Pause for** offers 1, 2 or 3 hours, or a custom duration. **Record this problem** saves the question, expected answer, current input and formula, result and build information as JSON in `bug_reports/` within the current data folder. The menu confirms **Recorded locally**. No network connection or written explanation is needed. The same version and reproduction case reuse one file; a failed save can be retried. Recording does not change the question or grade, and also supports incomplete or unsubmitted formulas. The menu works for answering and fact viewing. It suspends automatic closing and resumes the remaining time when closed; Esc closes only the menu.
+
+Choose a corner of the screen work area under Settings > Card > Card position. Drag the prompt or an empty area of the card to save a **Custom position**. Choose any corner in the same menu to return to a preset. Turn on **Lock card** to disable moving and resizing gestures. You can also lock or unlock the current card just below **Pause for** in its context menu. Try saves the same preference from either entry point.
+
+On Windows, drag an edge or corner of an unlocked card to resize it. The minimum size is 320 × 288 logical pixels. Try saves the size for both answering and fact viewing, including after restarting. **Restore automatic size** returns to a height that follows the question content.
+
+When content overflows the card, use Page Up or Page Down to scroll a page. In View, choice, true/false, and feedback states, you can also scroll with the up and down arrows or jump to either end with Home or End.
 
 Scheduled answer cards request keyboard focus by default, so you can type or use the number keys immediately. When gaming or avoiding interruptions, turn off **Automatically focus new cards** under Settings > Card. The complete card stays visible without activating on appearance or hover. Release the mouse and click the card to answer, or start practice from the system tray. On Windows, the card lets mouse input pass through while another window hides the cursor or captures the mouse; releasing it restores click interaction. Returning to the game keeps the card visible. Presentation recording begins when you activate the card. The preference persists through restarting; fact viewing does not take keyboard focus automatically.
 
@@ -20,7 +28,7 @@ Before each scheduled reminder, Windows checks the system notification state. Wi
 
 Correct feedback and knowledge display each use their own duration, starting after a correct answer or when the answer is shown. Incorrect answers do not use the timer; unanswered cards also stay open. Automatic cards pause while the main window is open; the full interval restarts after returning to the tray and finishing practice.
 
-Practice mode in the top toolbar switches between Answer and Knowledge. Start a manual card from the system tray; scheduled reminders use the selected mode. Facts close after the Knowledge display duration or with Enter/Esc.
+At the bottom of the main window, click **Answer** or **View** to choose a practice mode. You can also Tab to the switch and use the left and right arrow keys. Start a manual card from the system tray. Scheduled reminders use the selected mode. Facts close after the Knowledge display duration or with Enter/Esc.
 
 You can also switch directly from the system tray or menu-bar menu. Open **Practice mode · Current mode** and choose **Answer** or **Knowledge**; ✓ marks the selected option. Changes save automatically and synchronize with the main window. An open card keeps its current mode; the next card uses the new selection.
 
@@ -38,9 +46,9 @@ Choose knowledge you want to recall at a glance, then break it into brief cues w
 
 Expand Description below the title to read the full scope and conventions, or collapse it to a first-line summary. Long descriptions scroll within the panel. Edit opens the editor; saving or canceling keeps the panel expanded. Use Add when no description is present. Switching packs collapses the panel and displays the new pack's summary.
 
-- Click a sidebar name to browse a pack. Each sidebar pack has its own participation switch; several packs can be enabled together, and switching one does not change the pack being viewed. Disabling and re-enabling preserves selected questions.
-- Row checkboxes control individual questions; Include all controls the whole pack. Each row has an answer-mode menu; Set all types applies a mode in bulk. A mode with missing content is unavailable until the question is edited.
-- The sidebar plus creates a pack; the down arrow imports JSON. Add question creates a card. The ⋯ menu beside the pack title provides name, tag, description, export and delete commands. Enter saves a name; Esc cancels.
+- Click a sidebar name to browse a pack. With a pack name focused, use Up and Down to browse adjacent packs, or Home and End to jump to the first or last pack. Each pack has its own participation switch. You can enable multiple packs while viewing another. Disabling and re-enabling a pack preserves its selected questions.
+- Row checkboxes control individual questions. The checkbox at the left of the table header controls the whole pack. Each row has an answer-mode menu, and **Set all types** applies a mode in bulk. A mode with missing content is unavailable until the question is edited.
+- The sidebar plus creates a pack and the down arrow imports JSON. Use **New card** at the upper right of a pack or inside an empty pack to add a question. The ⋯ menu beside the pack name provides name, tag, description, export and delete commands. Enter saves a name and Esc cancels.
 - Click a question to edit it. Typed mode needs a prompt and answer; multiple choice needs three options and a correct selection; true/false needs a statement and ✓ / ✕. Save validates the complete question; ordinary Cancel keeps the saved question.
 - To delete one question, choose Delete from its row menu or use the upper-right trash icon in its editor and confirm. Canceling deletion retains the draft. The last deletion leaves an empty pack for new questions or imports.
 - To delete a pack, choose Delete from the ⋯ menu beside its title and confirm. Export first if you need a backup. Deleting the last pack leaves an empty library; restarting does not restore deleted content.
@@ -48,6 +56,8 @@ Expand Description below the title to read the full scope and conventions, or co
 Deletion confirmation appears in the center of the window with Cancel focused by default; Esc also cancels. It identifies the affected pack or question. When an update is available, a red dot appears on the bottom-left About icon; open About to view the update.
 
 Import copies the complete pack into Try's local data. Moving, renaming or deleting the source JSON does not affect it. External edits require re-importing; replacing the same id asks for confirmation. In-app edits and deletions do not change the source file. Export contains pack content; reminder settings, participation and per-question modes are local preferences.
+
+The bottom of the main window shows import and export status. If a transfer fails, it shows the reason and offers a retry. If saving a replacement fails, the confirmation stays open so you can try again.
 
 Adding to a partially selected pack leaves new questions unselected. Adding to a fully selected pack includes them. An empty pack does not produce cards; adding questions retains its enabled state. Authoring resources: [format](knowledge_pack_format.md), [AI instructions](knowledge_pack_ai_template.md). Three advanced templates contain 12 questions each, with a complementary tag and name: [Formulas · Calculus](../knowledge_packs/authoring_template.json), [English · Advanced words](../knowledge_packs/vocabulary_template.json) and [Rust · Common patterns](../knowledge_packs/rust_template.json). Their tags and names use Chinese except for Rust, preserving the authored content when you change the UI language.
 
@@ -71,7 +81,7 @@ Each question can include one static PNG or JPEG. In the question editor, choose
 
 Practice uses the compact card: short prompt, picture, then the answer controls. A picture can serve as the entire prompt. Input, multiple-choice and knowledge cards then omit the caption and its spacing. A numbered “Picture question” entry remains in the main list for editing. Picture questions that need a text prompt keep it; true/false still shows the judgment statement. A prompt is required when there is no picture.
 
-Pictures keep their colors and aspect ratio, and work with input, multiple choice, true/false and knowledge display. Click a picture to open a larger window; Esc closes that window. Automatic dismissal pauses while viewing the enlarged picture; continue answering or dismiss the card manually afterwards. Incorrect answers still require Enter to acknowledge.
+Pictures keep their colors and aspect ratio, and work with input, multiple choice, true/false and knowledge display. Click a picture to open a larger window; Esc closes that window. Automatic dismissal pauses while viewing the enlarged picture; continue answering or dismiss the card manually afterwards. Press Enter or use the close icon to dismiss a missed card.
 
 Try copies images into its own `media/` data folder, so moving or deleting the original file does not affect the question. Source files are limited to 8 MiB, 12 million pixels and 8192 pixels per dimension. Background processing resizes the display image to at most 524288 pixels. Each pack can use up to 128 distinct images totaling 16 MiB after processing. Shared pictures are removed only when no question or active draft references them.
 
@@ -79,7 +89,11 @@ Export still produces one JSON file, with the pictures included. Importing it on
 
 ## Formulas
 
-Type common expressions such as `sin(pi/3)`, `sqrt(3)/2`, or supported LaTeX without opening the keypad first. Recognized structures are edited directly in their typeset layout. Unfinished fractions, roots and other structures in math questions remain drafts; submitting them shows a completion hint. Ordinary text retains native text input and input methods.
+In the question editor, select a prompt, answer, or choice, then choose **Text** or **Formula** to the right of its heading. New fields start as text. For code, paths, and vocabulary, Try compares the typed answer with the expected spelling or aliases after trimming leading and trailing whitespace. Switching to Formula and back to Text preserves the original spelling and spaces when you make no edits in between.
+
+Older answers without `answer_latex` follow text matching rules. To keep accepting different spellings of the same formula, switch the answer to **Formula** and save, or add the accepted spellings as aliases.
+
+For formula answers, type expressions such as `sin(pi/3)` or `sqrt(3)/2`, or paste supported LaTeX. Recognized structures are edited in their typeset layout. Use ƒ to show or hide the keypad. If you submit an unfinished fraction or root, the card brings the message below the answer field into view.
 
 In math questions, paste compact forms such as `lnx` and `sinx`, or enter coefficient expressions such as `yln(x)` and `ysqrt(x)` using the math editor's recognition. Answer matching accepts implicit multiplication and redundant scalar parentheses, for example `2x`, `2*x` and `2*(x)`, while retaining function-argument and exponent boundaries.
 
@@ -103,9 +117,13 @@ The content editor's move-out and unwrap controls adjust scope while retaining c
 
 ## Settings and pauses
 
-Open Settings in the lower-left corner, beside About. Practice, Card and General organize the settings. Changes save automatically; a save failure retains valid data. General > Appearance offers Light, Dark and System, with System as the default. The main window, native title bar and practice card update together, and System follows changes to the operating system's appearance. Your choice persists through restarting; existing saved Light or Dark choices remain valid. Choose system language, Simplified Chinese or English under General > Language. Pack content keeps its authored language.
+Settings → Card → Show card hints is on by default. Turn it off to hide the reminders to press Enter, select an option by number, or click to activate a card. The card keeps its original height and spacing when the text is hidden. Keyboard shortcuts still work. Incomplete formulas and missed answers still show their feedback. Try remembers your choice after restarting.
 
-Under Practice, set Correct answer duration and Knowledge display duration independently. Incorrect answers stay open until you press Enter. Interval presets are 15, 25, 30 and 45 minutes; correct-answer presets are 1, 2 and 3 seconds, and knowledge-display presets are 5, 8, 15 and 30 seconds. Use the adjacent precise controls for custom values; both display durations accept 1–60 seconds. Enter applies and Esc cancels. Existing profiles initially use their previous display duration for both settings, then save each independently.
+Settings → General → Interface animations is on by default and remembers your choice. On Windows, menus, precise time controls, and About fade in place when opened with the mouse. Clicking the gear fades Settings content in place. Clicking another section brings its content in from the side of the selected tab with a short fade. The selection slides into place when you switch practice modes. Practice cards gently grow into view and shrink as they close. When you answer correctly, a thin green outline expands from the input field or selected option. A fainter line follows the card’s rounded edge and fades as it spreads outward. After a miss, a thin red line draws inward and fades at the card’s edge as the expected answer or correct option settles into place. Turning animations off shows the result immediately, with the same colors and Enter shortcut. Try also follows the Windows animation setting.
+
+Select the gear icon in the lower-left corner to open Settings. The About icon beside it shows the version and available updates. Practice, Card and General organize the settings. Changes save automatically; a save failure retains valid data. General > Appearance offers Light, Dark and System, with System as the default. The main window, native title bar and practice card update together, and System follows changes to the operating system's appearance. Your choice persists through restarting; existing saved Light or Dark choices remain valid. Choose system language, Simplified Chinese or English under General > Language. Pack content keeps its authored language.
+
+Under Practice, set Correct answer duration and Knowledge display duration independently. Missed cards stay open until you press Enter or click the close icon. Interval presets are 15, 25, 30 and 45 minutes; correct-answer presets are 1, 2 and 3 seconds, and knowledge-display presets are 5, 8, 15 and 30 seconds. Use the adjacent precise controls for custom values; both display durations accept 1–60 seconds. Enter applies and Esc cancels. Existing profiles initially use their previous display duration for both settings, then save each independently.
 
 A temporary pause lasts for its selected duration; Pause lasts until Resume. Pauses survive restarting. Resume starts the full interval without catching up missed cards. Manual practice works during pauses and quiet hours and does not resume automatic reminders.
 

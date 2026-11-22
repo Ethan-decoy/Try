@@ -24,7 +24,7 @@ Icon=try
 Terminal=false
 Categories=Education;
 DESKTOP
-cp assets/logo.svg "$task_output/try.svg"
+cp assets/app_icon.svg "$task_output/try.svg"
 
 download_verified() {
     curl --fail --location --retry 3 "$1" --output "$2"

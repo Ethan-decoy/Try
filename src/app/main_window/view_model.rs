@@ -1,4 +1,8 @@
 //! Project application state into the tray and main-window display models.
+use super::super::settings::{
+    FEEDBACK_SECOND_PRESETS, INTERVAL_MINUTE_PRESETS, KNOWLEDGE_SECOND_PRESETS,
+    PAUSE_MINUTE_PRESETS, preset_options,
+};
 use super::super::*;
 
 impl App {
@@ -42,39 +46,31 @@ impl App {
         let Some(window) = window.as_ref() else {
             return;
         };
-        let practice_entry_hint = if count > 0 {
-            if cfg!(target_os = "macos") {
-                tr!("从 Try 菜单栏图标选择「练习」")
-            } else {
-                tr!("点击托盘中的 Try 图标开始练习")
-            }
-        } else if library.packs.iter().any(|pack| !pack.cards.is_empty()) {
-            tr!("先勾选要练习的题目")
-        } else {
-            ""
-        };
-        window.set_practice_entry_hint(practice_entry_hint.into());
         self.refresh_library_view(window, &library);
         self.refresh_settings_view(window, &library, pause_minutes, &pause_end);
         self.refresh_pending_actions(window, &library);
     }
 
-    fn refresh_library_view(&self, window: &MainWindow, library: &Library) {
+    pub(super) fn refresh_library_view(&self, window: &MainWindow, library: &Library) {
         let rows = library
             .packs
             .iter()
             .map(|pack| {
                 let participating = library.pack_enabled_card_count(pack);
+                let total = pack.cards.len();
+                let enabled = library.is_enabled(&pack.id);
                 PackRow {
                     id: pack.id.clone().into(),
                     name: pack.name.clone().into(),
                     tag: pack.tag.trim().into(),
-                    participating: library.is_enabled(&pack.id),
+                    participating: enabled,
                     has_cards: !pack.cards.is_empty(),
-                    detail: if participating > 0 {
-                        tr!("{p0} / {p1} 题", p0 = participating, p1 = pack.cards.len())
+                    detail: if enabled && participating < total {
+                        tr!("{p0} / {p1} 题", p0 = participating, p1 = total)
+                    } else if total == 1 {
+                        tr!("1 道题").to_owned()
                     } else {
-                        tr!("{p0} 题 · 未参与", p0 = pack.cards.len())
+                        tr!("{p0} 道题", p0 = total)
                     }
                     .into(),
                 }
@@ -264,7 +260,7 @@ impl App {
         window.set_appearance(library.settings.appearance.index());
         window.set_interface_language(library.settings.interface_language.index());
         Self::refresh_practice_times(window, &library.settings);
-        let (options, index) = preset_options(pause_minutes, &[0, 60, 120, 180, -1], |n| match n {
+        let (options, index) = preset_options(pause_minutes, PAUSE_MINUTE_PRESETS, |n| match n {
             0 => tr!("不暂停").into(),
             -1 => tr!("直到恢复").into(),
             60 | 120 | 180 => tr!("{p0} 小时", p0 = n / 60),
@@ -283,8 +279,11 @@ impl App {
         window.set_autostart_error(self.autostart_error.borrow().clone().into());
         let quiet = &library.settings.quiet_hours;
         window.set_quiet_hours_enabled(quiet.enabled);
-        window.set_quiet_start(format_time(quiet.start_minute).into());
-        window.set_quiet_end(format_time(quiet.end_minute).into());
+        if !window.get_quiet_time_dirty() {
+            window.set_quiet_start(format_time(quiet.start_minute).into());
+            window.set_quiet_end(format_time(quiet.end_minute).into());
+            window.set_quiet_time_error("".into());
+        }
         window.set_quiet_summary(
             format!(
                 "{}–{}{}",
@@ -298,32 +297,39 @@ impl App {
             )
             .into(),
         );
-        window.set_quiet_time_error("".into());
         window.set_popup_corner(library.settings.popup_corner.index());
-        window.set_remember_position(library.settings.remember_position);
+        window.set_card_resize_available(cfg!(target_os = "windows"));
+        window.set_card_locked(library.settings.practice_card_locked);
+        window.set_has_custom_card_size(library.settings.practice_card_size.is_some());
         window.set_show_pack_tags(library.settings.show_pack_tags);
+        window.set_show_practice_hints(library.settings.show_practice_hints);
+        window.set_interface_animations(library.settings.interface_animations);
         window.set_focus_on_reminder(library.settings.focus_on_reminder);
         window.set_auto_check_updates(library.settings.auto_check_updates);
-        window.set_has_saved_position(library.settings.popup_position.is_some());
+        window.set_has_custom_position(library.settings.custom_popup_position().is_some());
     }
 
     pub(in crate::app) fn refresh_practice_times(window: &MainWindow, settings: &Settings) {
         let interval = settings.interval_minutes as i32;
         window.set_interval_minutes(interval);
-        let (options, index) =
-            preset_options(interval, &[15, 25, 30, 45], |n| tr!("{n} 分钟", n = n));
+        let (options, index) = preset_options(interval, INTERVAL_MINUTE_PRESETS, |n| {
+            tr!("{n} 分钟", n = n)
+        });
         window.set_interval_options(options);
         window.set_interval_selection(index);
 
         let feedback = settings.feedback_seconds as i32;
         window.set_feedback_seconds(feedback);
-        let (options, index) = preset_options(feedback, &[1, 2, 3], |n| tr!("{n} 秒", n = n));
+        let (options, index) =
+            preset_options(feedback, FEEDBACK_SECOND_PRESETS, |n| tr!("{n} 秒", n = n));
         window.set_feedback_options(options);
         window.set_feedback_selection(index);
 
         let knowledge = settings.knowledge_seconds as i32;
         window.set_knowledge_seconds(knowledge);
-        let (options, index) = preset_options(knowledge, &[5, 8, 15, 30], |n| tr!("{n} 秒", n = n));
+        let (options, index) = preset_options(knowledge, KNOWLEDGE_SECOND_PRESETS, |n| {
+            tr!("{n} 秒", n = n)
+        });
         window.set_knowledge_options(options);
         window.set_knowledge_selection(index);
     }

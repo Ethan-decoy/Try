@@ -39,6 +39,7 @@ mod editor;
 mod images;
 mod main_window;
 mod math;
+mod pack_transfer;
 mod packs;
 mod practice_menu;
 mod practice_window;
@@ -53,7 +54,7 @@ type ImageTask = (
 type UpdateFetch = fn() -> Result<CheckOutcome, CheckError>;
 
 pub struct App {
-    store: Store,
+    store: Arc<Store>,
     library: RefCell<Library>,
     learner: RefCell<Learner>,
     pending_learning_error: RefCell<Option<String>>,
@@ -74,11 +75,16 @@ pub struct App {
     update_transfer_timer: Timer,
     restart_update: RefCell<Option<PreparedUpdate>>,
     practice: RefCell<Option<PracticeSession>>,
+    outgoing_practice: RefCell<Option<(u64, PracticeWindow)>>,
     next_practice_id: Cell<u64>,
     pending_import: RefCell<Option<KnowledgePack>>,
+    pack_transfer: RefCell<pack_transfer::TransferState>,
+    pack_transfer_timer: Timer,
     pending_delete: RefCell<Option<String>>,
     pending_card_delete: RefCell<Option<QuestionKey>>,
+    pending_leave: Cell<Option<LeaveAction>>,
     editor: RefCell<Option<EditorTarget>>,
+    editor_initial: RefCell<Option<editor::DraftState>>,
     editor_preview_timer: Timer,
     editor_image: RefCell<Option<String>>,
     image_task: RefCell<Option<ImageTask>>,
@@ -194,6 +200,13 @@ enum EditorTarget {
     },
 }
 
+#[derive(Clone, Copy)]
+enum LeaveAction {
+    Background,
+    Quit,
+    Practice,
+}
+
 enum PackMetadata {
     Name,
     Description,
@@ -235,7 +248,7 @@ impl App {
         let app = Rc::new(Self {
             learner: RefCell::new(Learner::new(&store)),
             pending_learning_error: RefCell::new(None),
-            store,
+            store: Arc::new(store),
             library: RefCell::new(library),
             tray,
             #[cfg(not(target_os = "windows"))]
@@ -258,11 +271,16 @@ impl App {
             update_transfer_timer: Timer::default(),
             restart_update: RefCell::default(),
             practice: RefCell::new(None),
+            outgoing_practice: RefCell::new(None),
             next_practice_id: Cell::new(1),
             pending_import: RefCell::new(None),
+            pack_transfer: RefCell::default(),
+            pack_transfer_timer: Timer::default(),
             pending_delete: RefCell::new(None),
             pending_card_delete: RefCell::new(None),
+            pending_leave: Cell::new(None),
             editor: RefCell::new(None),
+            editor_initial: RefCell::new(None),
             editor_preview_timer: Timer::default(),
             editor_image: RefCell::new(None),
             image_task: RefCell::new(None),
@@ -313,12 +331,11 @@ impl App {
 
     #[cfg(target_os = "windows")]
     pub(crate) fn open_from_launcher(self: &Rc<Self>, practice: bool) {
-        let result = if practice {
-            self.show_practice()
+        if practice {
+            self.request_leave(LeaveAction::Practice);
         } else {
-            self.show_main()
-        };
-        self.report(result, "");
+            self.report(self.show_main(), "");
+        }
     }
 
     fn connect_tray(self: &Rc<Self>) {
@@ -376,16 +393,13 @@ impl App {
         let weak = Rc::downgrade(self);
         self.tray.on_practice_now(move || {
             if let Some(app) = weak.upgrade() {
-                app.defer_tray_action(|app| {
-                    let result = app.show_practice();
-                    app.report(result, "");
-                });
+                app.defer_tray_action(|app| app.request_leave(LeaveAction::Practice));
             }
         });
         let weak = Rc::downgrade(self);
         self.tray.on_quit_app(move || {
             if let Some(app) = weak.upgrade() {
-                app.defer_tray_action(|app| app.quit());
+                app.defer_tray_action(|app| app.request_leave(LeaveAction::Quit));
             }
         });
     }
@@ -530,33 +544,6 @@ impl App {
         let _ = self.tray.hide();
         let _ = slint::quit_event_loop();
     }
-}
-
-fn preset_value(index: i32, presets: &[i32], current: i32) -> Option<i32> {
-    let index = usize::try_from(index).ok()?;
-    presets
-        .get(index)
-        .copied()
-        .or_else(|| (index == presets.len() && !presets.contains(&current)).then_some(current))
-}
-
-fn preset_options(
-    current: i32,
-    presets: &[i32],
-    label: impl Fn(i32) -> String,
-) -> (ModelRc<slint::SharedString>, i32) {
-    let mut options = presets
-        .iter()
-        .map(|n| label(*n).into())
-        .collect::<Vec<slint::SharedString>>();
-    let index = presets
-        .iter()
-        .position(|n| *n == current)
-        .unwrap_or_else(|| {
-            options.push(tr!("{p0}（自定）", p0 = label(current)).into());
-            presets.len()
-        });
-    (ModelRc::new(VecModel::from(options)), index as i32)
 }
 
 fn make_icon() -> slint::Image {

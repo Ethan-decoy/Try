@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const project = path.resolve(__dirname, '..');
 const output = path.join(project, 'local_artifacts', 'logo');
 const sourcePath = path.join(project, 'assets', 'logo.svg');
+const appIconPath = path.join(project, 'assets', 'app_icon.svg');
 const logoColor = '#ffffff';
 const logoOutlineColor = '#000000';
 const logoOutlineWidth = 8;
@@ -19,6 +20,18 @@ const f = n => Number(n.toFixed(7));
 const point = p => `${f(p.x)} ${f(p.y)}`;
 const positive = angle => (angle % TAU + TAU) % TAU;
 const angle = p => Math.atan2(p.y,p.x);
+
+function areaCentroid(contour) {
+  let areaTwice = 0;
+  let moment = { x: 0, y: 0 };
+  for (const [index, point] of contour.entries()) {
+    const next = contour[(index + 1) % contour.length];
+    const weight = cross(point, next);
+    areaTwice += weight;
+    moment = add(moment, mul(add(point, next), weight));
+  }
+  return mul(moment, 1 / (3 * areaTwice));
+}
 
 function construct() {
   const unit = 16;
@@ -65,11 +78,33 @@ function construct() {
     });
   });
   const clearSpace = {left:shift.x+bounds.minX,right:256-shift.x-bounds.maxX,top:shift.y+bounds.minY,bottom:256-shift.y-bounds.maxY};
-  return {unit,rotationDegrees:45,tipDistances:[9,6,6,6],radiusPalette:[.5,3],origin:shift,tips:tips.map(transform),circles,arcs,lines,joins,d,clearSpace,model:'eight_circular_arcs_eight_common_tangents_g1',continuity:'G1 tangent continuity; not G2 curvature continuity'};
+  const areaCenter = add(areaCentroid(samples), shift);
+  return {unit,rotationDegrees:45,tipDistances:[9,6,6,6],radiusPalette:[.5,3],origin:shift,tips:tips.map(transform),circles,arcs,lines,joins,d,clearSpace,areaCenter,model:'eight_circular_arcs_eight_common_tangents_g1',continuity:'G1 tangent continuity; not G2 curvature continuity'};
 }
 
 const geometry = construct();
-function logo(fill=logoColor,size=256) {return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 256 256" role="img" aria-labelledby="title desc"><title id="title">Try · 跃点</title><desc id="desc">八段圆弧与八条公共切线；半径比为 1:6；伸展端与其余端的圆心距比为 3:2，整体向右上伸展。白色填充，黑色细描边，背景透明。</desc><path fill="${fill}" stroke="${logoOutlineColor}" stroke-width="${logoOutlineWidth}" stroke-linejoin="round" d="${geometry.d}"/></svg>`;}
+function mark(fill) {
+  return `<path fill="${fill}" stroke="${logoOutlineColor}" stroke-width="${logoOutlineWidth}" stroke-linejoin="round" d="${geometry.d}"/>`;
+}
+function logo(fill=logoColor,size=256) {return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 256 256" role="img" aria-labelledby="title desc"><title id="title">Try · 跃点</title><desc id="desc">八段圆弧与八条公共切线；半径比为 1:6；伸展端与其余端的圆心距比为 3:2，整体向右上伸展。白色填充，黑色细描边，背景透明。</desc>${mark(fill)}</svg>`;}
+function appIcon() {
+  const badgeWidth = 232;
+  const border = 6;
+  const inset = (256 - badgeWidth + border) / 2;
+  const faceWidth = badgeWidth - border;
+  const { left, right, top, bottom } = geometry.clearSpace;
+  const scale = 0.6 * badgeWidth / (256 - left - right);
+  const boundsCenter = { x: (left + 256 - right) / 2, y: (top + 256 - bottom) / 2 };
+  const anchor = mul(add(boundsCenter, geometry.areaCenter), 0.5);
+  const translation = sub({ x: 128, y: 128 }, mul(anchor, scale));
+  const round = (value) => Number(value.toFixed(8));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Try · 跃点</title>
+  <desc id="desc">白色跃点的外轮廓占黑色圆角底面宽度的六成。</desc>
+  <rect x="${inset}" y="${inset}" width="${faceWidth}" height="${faceWidth}" rx="49" fill="#151619" stroke="#3d3f45" stroke-width="${border}"/>
+  <g transform="translate(${round(translation.x)} ${round(translation.y)}) scale(${round(scale)})">${mark(logoColor)}</g>
+</svg>\n`;
+}
 function boundsOfCircles() {
   return {x:Math.min(...geometry.circles.map(c=>c.center.x-c.radius))-28,y:Math.min(...geometry.circles.map(c=>c.center.y-c.radius))-28,width:0,height:0,maxX:Math.max(...geometry.circles.map(c=>c.center.x+c.radius))+28,maxY:Math.max(...geometry.circles.map(c=>c.center.y+c.radius))+28};
 }
@@ -146,9 +181,15 @@ function run() {
   assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Usage: node scripts/generate_logo.cjs [--check]');
   const checking = args.includes('--check');
   const official = logo(logoColor, 32) + '\n';
-  if (!checking) fs.writeFileSync(sourcePath, official);
+  const icon = appIcon();
+  if (!checking) {
+    fs.writeFileSync(sourcePath, official);
+    fs.writeFileSync(appIconPath, icon);
+  }
   const actual = fs.readFileSync(sourcePath, 'utf8');
   assert.equal(actual.trim(), official.trim(), 'Canonical Logo must match the geometric construction');
+  assert.equal(fs.readFileSync(appIconPath, 'utf8').replace(/\r\n/g, '\n').trim(), icon.trim(),
+    'The application icon must match the geometric construction');
   const validation = {
     source: 'assets/logo.svg',
     geometry: {
@@ -183,6 +224,7 @@ function run() {
   }
   console.log(JSON.stringify({
     canonicalSource: 'assets/logo.svg',
+    appIconSource: 'assets/app_icon.svg',
     checkOnly: checking,
     arcs: validation.geometry.arcs,
     tangents: validation.geometry.commonTangents,

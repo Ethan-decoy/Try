@@ -62,7 +62,7 @@ fn run_phase(checks: Rc<Checks>, phase: u8) {
                 app.main_window.borrow().is_none(),
                 "Starting practice closes the management window"
             );
-            check_floating_window(window.window());
+            check_floating_window(&window);
             assert!(
                 window.get_prompt_formula_width() > 0.0,
                 "LaTeX question should have an image"
@@ -127,7 +127,7 @@ fn run_phase(checks: Rc<Checks>, phase: u8) {
         }
         6 => {
             let window = practice_window(app);
-            check_floating_window(window.window());
+            check_floating_window(&window);
             check_no_caption_paint(window.window());
             let answer = app
                 .practice
@@ -242,7 +242,7 @@ fn run_phase(checks: Rc<Checks>, phase: u8) {
                 "Real scheduled popup must keep the OS foreground window from just before it opened"
             );
             let window = practice_window(app);
-            check_floating_window(window.window());
+            check_floating_window(&window);
             let expected = app.store.load().unwrap().settings.popup_position.unwrap();
             let actual = FloatingWindow::remember(window.window()).unwrap();
             assert_eq!(actual, expected, "Native drag position survives reopening");

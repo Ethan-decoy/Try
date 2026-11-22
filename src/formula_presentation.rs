@@ -63,11 +63,5 @@ pub(crate) fn apply_practice(window: &PracticeWindow, prepared: &PreparedQuestio
         .iter()
         .map(|option| content(option, 15, scale))
         .collect();
-    window.set_option_formula_height(
-        options
-            .iter()
-            .map(|option| option.formula_height)
-            .fold(0.0, f32::max),
-    );
     window.set_options(ModelRc::new(VecModel::from(options)));
 }

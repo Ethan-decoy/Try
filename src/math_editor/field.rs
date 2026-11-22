@@ -1,7 +1,7 @@
 //! Content-editing session: drafts, UTF-8 selection, structural tools and undo.
 use super::parser::{applied_function, logarithm};
-use super::{Kind, Node, automatic_content, expression, from_latex};
-use crate::{math_vocabulary as vocabulary, tr};
+use super::{Kind, MAX_INPUT, Node, expression, from_latex};
+use crate::{knowledge::ContentFormat, math_vocabulary as vocabulary, tr};
 
 /// UTF-8 offsets, matching Slint's text input selection. A range and a node
 /// selection are separate: moving the text caret never selects a whole formula.
@@ -20,6 +20,7 @@ struct Draft {
 #[derive(Clone)]
 struct Snapshot {
     root: Node,
+    format: ContentFormat,
     selection: Vec<usize>,
     draft: Option<Draft>,
     caret: TextSelection,
@@ -31,6 +32,7 @@ pub struct Field {
     pub selection: Vec<usize>,
     original: (String, String),
     original_root: Node,
+    format: ContentFormat,
     dirty: bool,
     draft: Option<Draft>,
     caret: TextSelection,
@@ -40,16 +42,19 @@ pub struct Field {
 
 impl Field {
     pub fn new(text: &str, latex: &str) -> Self {
-        let root = if latex.trim().is_empty() {
-            Node::leaf(Kind::Text, text)
-        } else {
-            from_latex(latex).unwrap_or_else(|_| Node::leaf(Kind::Raw, latex))
+        let format = ContentFormat::from_latex(Some(latex));
+        let root = match format {
+            ContentFormat::Text => Node::leaf(Kind::Text, text),
+            ContentFormat::Formula => {
+                from_latex(latex).unwrap_or_else(|_| Node::leaf(Kind::Raw, latex))
+            }
         };
         let mut field = Self {
             original_root: root.clone(),
             root,
             selection: vec![],
             original: (text.into(), latex.into()),
+            format,
             dirty: false,
             draft: None,
             caret: TextSelection::default(),
@@ -58,6 +63,48 @@ impl Field {
         };
         field.caret_to_end();
         field
+    }
+    pub fn format(&self) -> ContentFormat {
+        self.format
+    }
+    pub fn accepts_text(&self) -> bool {
+        self.format == ContentFormat::Text
+            || (!self.selection.is_empty() && self.selected().is_text())
+    }
+    pub fn set_format(&mut self, format: ContentFormat) -> Result<(), String> {
+        if format == self.format {
+            return Ok(());
+        }
+        let root = match format {
+            ContentFormat::Formula => parse_formula(&self.input())?,
+            ContentFormat::Text => {
+                let text = if self.selection.is_empty()
+                    && let Some(draft) = &self.draft
+                {
+                    draft.input.clone()
+                } else if let Some(error) = self.error() {
+                    return Err(error.to_owned());
+                } else if let Some(previous) = self.undo.last().filter(|previous| {
+                    // A format conversion preserves its outgoing text in history.
+                    previous.format == ContentFormat::Text
+                        && parse_formula(&previous.root.value).is_ok_and(|root| root == self.root)
+                }) {
+                    previous.root.value.clone()
+                } else if self.root == self.original_root {
+                    self.original.0.clone()
+                } else {
+                    self.root.plain()
+                };
+                parse_text(&text)?
+            }
+        };
+        self.checkpoint();
+        self.root = root;
+        self.format = format;
+        self.selection.clear();
+        self.draft = None;
+        self.caret_to_end();
+        Ok(())
     }
     pub fn selected(&self) -> &Node {
         self.root.at(&self.selection).unwrap_or(&self.root)
@@ -69,7 +116,7 @@ impl Field {
         if *self.selected() == Node::blank() {
             return String::new();
         }
-        if self.selected().accepts_prose() {
+        if self.accepts_text() {
             self.selected().plain()
         } else {
             self.selected().editor_input()
@@ -105,6 +152,7 @@ impl Field {
     fn snapshot(&self) -> Snapshot {
         Snapshot {
             root: self.root.clone(),
+            format: self.format,
             selection: self.selection.clone(),
             draft: self.draft.clone(),
             caret: self.caret,
@@ -120,6 +168,7 @@ impl Field {
     }
     fn replace(&mut self, node: Node) {
         self.checkpoint();
+        self.format = ContentFormat::Formula;
         self.draft = None;
         if let Some(slot) = self.root.at_mut(&self.selection) {
             *slot = node;
@@ -131,21 +180,16 @@ impl Field {
         if input == self.input() {
             return self.error().map_or(Ok(()), |error| Err(error.to_owned()));
         }
-        let parsed: Result<Node, String> = (|| {
-            let node = if self.selected().accepts_prose() {
-                automatic_content(input)?
-            } else if crate::math_structure::is_latex(input) {
-                let node = from_latex(input)?;
-                if node.kind == Kind::Raw {
-                    return Err(tr!("这个公式暂不支持结构编辑。").into());
+        let parsed = if self.accepts_text() {
+            parse_text(input).and_then(|node| {
+                if self.format == ContentFormat::Formula {
+                    node.validate()?;
                 }
-                node
-            } else {
-                expression(input)?
-            };
-            node.validate()?;
-            Ok(node)
-        })();
+                Ok(node)
+            })
+        } else {
+            parse_formula(input)
+        };
         self.checkpoint();
         self.draft = Some(Draft {
             input: input.into(),
@@ -189,6 +233,7 @@ impl Field {
         let stack = if redo { &mut self.redo } else { &mut self.undo };
         if let Some(previous) = stack.pop() {
             self.root = previous.root;
+            self.format = previous.format;
             self.selection = previous.selection;
             self.draft = previous.draft;
             self.caret = previous.caret;
@@ -516,10 +561,9 @@ impl Field {
         self.dirty
     }
     pub fn clear(&mut self) {
-        let empty = if self.root.is_text() {
-            Node::leaf(Kind::Text, "")
-        } else {
-            Node::blank()
+        let empty = match self.format {
+            ContentFormat::Text => Node::leaf(Kind::Text, ""),
+            ContentFormat::Formula => Node::blank(),
         };
         if self.root != empty
             || self
@@ -841,18 +885,43 @@ impl Field {
         if let Some(error) = self.error() {
             return Err(error.to_owned());
         }
-        if !self.dirty || self.root == self.original_root {
+        if !self.dirty
+            || (self.root == self.original_root
+                && self.format == ContentFormat::from_latex(Some(&self.original.1)))
+        {
             return Ok(self.original.clone());
+        }
+        if self.format == ContentFormat::Text {
+            return Ok((self.root.value.clone(), String::new()));
         }
         if !self.root.complete() {
             return Err(tr!("还有未填写的公式位置。").into());
         }
-        if self.root.is_text() {
-            return Ok((self.root.value.clone(), String::new()));
-        }
         self.root.validate()?;
         Ok((self.root.plain(), self.root.tex()))
     }
+}
+
+fn parse_text(input: &str) -> Result<Node, String> {
+    if input.chars().count() > MAX_INPUT {
+        return Err(tr!("内容不能超过 1000 个字符。").into());
+    }
+    Ok(Node::leaf(Kind::Text, input))
+}
+
+fn parse_formula(input: &str) -> Result<Node, String> {
+    if input.chars().count() > MAX_INPUT {
+        return Err(tr!("内容不能超过 1000 个字符。").into());
+    }
+    let node = if input.trim().is_empty() {
+        Node::blank()
+    } else if crate::math_structure::is_latex(input) {
+        from_latex(input)?
+    } else {
+        expression(input)?
+    };
+    node.validate()?;
+    Ok(node)
 }
 
 // Do not consume a sum, relation or a neighboring matrix cell as an implicit

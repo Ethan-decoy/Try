@@ -5,6 +5,16 @@ use r#try::window_position::{PopupCorner, SavedPopupPosition, WorkArea};
 use winit::dpi::PhysicalPosition;
 use winit::window::{Theme, WindowAttributes, WindowLevel};
 
+#[cfg(target_os = "windows")]
+pub(crate) mod desktop_frame;
+
+#[cfg(target_os = "windows")]
+mod card_region;
+#[cfg(target_os = "windows")]
+pub(crate) mod card_ripple;
+#[cfg(target_os = "windows")]
+pub(crate) mod practice_resize;
+
 const PRACTICE_TITLE: &str = "Try · 练习";
 
 /// Watches input ownership only while an unfocused reminder exists. It neither
@@ -30,6 +40,7 @@ pub struct FloatingWindow {
     preferences: RefCell<(PopupCorner, Option<SavedPopupPosition>)>,
     placement: RefCell<Option<(winit::window::WindowId, Placement)>>,
     appearance: Cell<Appearance>,
+    practice_card_locked: Cell<bool>,
     creating_practice: Cell<bool>,
     creating_passive: Cell<bool>,
 }
@@ -74,6 +85,12 @@ impl Placement {
         self.placed
     }
 
+    #[cfg(target_os = "windows")]
+    fn keep_resized_position(&mut self, area: &WorkArea, current: (i32, i32)) {
+        self.placed = current;
+        self.preferred = Some(area.remember(current));
+    }
+
     fn moved_position(
         &mut self,
         area: &WorkArea,
@@ -101,6 +118,19 @@ impl Drop for PracticeCreation<'_> {
 }
 
 impl FloatingWindow {
+    #[cfg(target_os = "windows")]
+    pub fn client_animations_enabled() -> bool {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW,
+        };
+        let mut enabled = 0i32;
+        // SAFETY: this query writes one BOOL into the supplied buffer.
+        let ok = unsafe {
+            SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&raw mut enabled).cast(), 0)
+        };
+        ok != 0 && enabled != 0
+    }
+
     #[cfg(target_os = "windows")]
     pub fn system_dark() -> bool {
         use windows_sys::Win32::System::Registry::{
@@ -165,6 +195,7 @@ impl FloatingWindow {
             preferences: RefCell::default(),
             placement: RefCell::default(),
             appearance: Cell::new(Appearance::default()),
+            practice_card_locked: Cell::new(false),
             creating_practice: Cell::new(false),
             creating_passive: Cell::new(false),
         };
@@ -174,12 +205,10 @@ impl FloatingWindow {
 
     pub fn configure(&self, settings: &Settings) {
         self.appearance.set(settings.appearance);
+        self.practice_card_locked.set(settings.practice_card_locked);
         self.preferences.replace((
             settings.popup_corner,
-            settings
-                .remember_position
-                .then(|| settings.popup_position.clone())
-                .flatten(),
+            settings.custom_popup_position().cloned(),
         ));
     }
 
@@ -199,7 +228,7 @@ impl FloatingWindow {
         #[cfg(target_os = "windows")]
         let attributes = {
             use winit::platform::windows::WindowAttributesExtWindows;
-            attributes.with_taskbar_icon(icon)
+            attributes.with_taskbar_icon(icon).with_border_color(None)
         };
         // Slint calls this hook before applying the component's title and
         // no-frame properties, so identify the explicit creation scope.
@@ -211,7 +240,7 @@ impl FloatingWindow {
             .with_title(PRACTICE_TITLE)
             .with_active(false)
             .with_decorations(false)
-            .with_resizable(false)
+            .with_resizable(cfg!(target_os = "windows") && !self.practice_card_locked.get())
             .with_window_level(WindowLevel::AlwaysOnTop);
         log::debug!(target: "try::floating_window",
             "event=practice_native_attributes decorations={} active={} resizable={}",
@@ -230,18 +259,10 @@ impl FloatingWindow {
             }
             let (corner, saved) = &*self.preferences.borrow();
             let areas = windows::work_areas();
-            if let Some(area) = areas
-                .iter()
-                .find(|area| {
-                    saved
-                        .as_ref()
-                        .is_some_and(|saved| saved.monitor == area.monitor)
-                })
-                .or(areas.first())
-            {
+            if let Some(area) = preferred_work_area(&areas, saved.as_ref()) {
                 let size = attributes
                     .inner_size
-                    .unwrap_or(winit::dpi::LogicalSize::new(320.0, 230.0).into())
+                    .unwrap_or(winit::dpi::LogicalSize::new(320.0, 200.0).into())
                     .to_physical::<u32>(area.scale);
                 let (x, y) = area.place((size.width, size.height), *corner, saved.as_ref());
                 attributes.position = Some(PhysicalPosition::new(x, y).into());
@@ -272,7 +293,7 @@ impl FloatingWindow {
         });
     }
 
-    pub fn place(&self, window: &slint::Window) {
+    pub fn place(&self, window: &slint::Window, frame_scale: f32) {
         window.with_winit_window(|native| {
             #[cfg(target_os = "windows")]
             {
@@ -294,15 +315,7 @@ impl FloatingWindow {
                 })
                 .collect();
             let (corner, saved) = &*self.preferences.borrow();
-            if let Some(area) = areas
-                .iter()
-                .find(|area| {
-                    saved
-                        .as_ref()
-                        .is_some_and(|saved| saved.monitor == area.monitor)
-                })
-                .or(areas.first())
-            {
+            if let Some(area) = preferred_work_area(&areas, saved.as_ref()) {
                 let size = native.outer_size();
                 let placement =
                     Placement::new(area, (size.width, size.height), *corner, saved.as_ref());
@@ -310,7 +323,7 @@ impl FloatingWindow {
                 self.placement.replace(Some((native.id(), placement)));
                 native.set_outer_position(PhysicalPosition::new(x, y));
             }
-            shape(native);
+            shape(native, frame_scale);
         });
     }
 
@@ -332,12 +345,35 @@ impl FloatingWindow {
     }
 
     pub fn prepare_frame(window: &slint::Window) {
-        window.with_winit_window(shape);
+        window.with_winit_window(|native| shape(native, 1.0));
     }
 
-    pub fn reshape_and_clamp(&self, window: &slint::Window) {
+    pub fn set_frame_scale(window: &slint::Window, scale: f32) {
+        #[cfg(target_os = "windows")]
+        window.with_winit_window(|native| windows::set_card_region(native, scale));
+        #[cfg(not(target_os = "windows"))]
+        let _ = (window, scale);
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn practice_size_limit(&self) -> r#try::window_position::PracticeCardSize {
+        use r#try::window_position::PracticeCardSize;
+        let preferences = self.preferences.borrow();
+        let areas = windows::work_areas();
+        let Some(area) = preferred_work_area(&areas, preferences.1.as_ref()) else {
+            return PracticeCardSize::MAX;
+        };
+        PracticeCardSize {
+            width: ((f64::from(area.width) / area.scale).floor() as u32)
+                .clamp(PracticeCardSize::MIN.width, PracticeCardSize::MAX.width),
+            height: ((f64::from(area.height) / area.scale).floor() as u32)
+                .clamp(PracticeCardSize::MIN.height, PracticeCardSize::MAX.height),
+        }
+    }
+
+    pub fn reshape_and_clamp(&self, window: &slint::Window, frame_scale: f32) {
         window.with_winit_window(|native| {
-            shape(native);
+            shape(native, frame_scale);
             if let (Some(area), Ok(position)) = (current_area(native), native.outer_position()) {
                 let size = native.outer_size();
                 let (x, y) = {
@@ -368,6 +404,19 @@ impl FloatingWindow {
                 placement.moved_position(&area, (position.x, position.y))
             })
             .flatten()
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn keep_resized_position(&self, window: &slint::Window) {
+        window.with_winit_window(|native| {
+            let (Some(area), Ok(position)) = (current_area(native), native.outer_position()) else {
+                return;
+            };
+            let mut placement = self.placement.borrow_mut();
+            if let Some((_, placement)) = placement.as_mut().filter(|(id, _)| *id == native.id()) {
+                placement.keep_resized_position(&area, (position.x, position.y));
+            }
+        });
     }
 
     pub fn activate(window: &slint::Window) {
@@ -449,6 +498,16 @@ impl FloatingWindow {
     }
 }
 
+fn preferred_work_area<'a>(
+    areas: &'a [WorkArea],
+    saved: Option<&SavedPopupPosition>,
+) -> Option<&'a WorkArea> {
+    areas
+        .iter()
+        .find(|area| saved.is_some_and(|saved| saved.monitor == area.monitor))
+        .or(areas.first())
+}
+
 fn current_area(native: &winit::window::Window) -> Option<WorkArea> {
     #[cfg(target_os = "windows")]
     return windows::current_area(native);
@@ -502,7 +561,7 @@ unsafe extern "system" fn theme_watch_proc(
     unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }
 
-fn shape(native: &winit::window::Window) {
+fn shape(native: &winit::window::Window, frame_scale: f32) {
     log::debug!(target: "try::floating_window",
         "event=window_shape_requested window={:?} decorations={} scale={} size={:?} position={:?}",
         native.id(),
@@ -512,9 +571,9 @@ fn shape(native: &winit::window::Window) {
         native.outer_position()
     );
     #[cfg(target_os = "windows")]
-    windows::round_corners(native);
+    windows::round_corners(native, frame_scale);
     #[cfg(not(target_os = "windows"))]
-    let _ = native;
+    let _ = frame_scale;
 }
 
 #[cfg(target_os = "windows")]
@@ -523,18 +582,18 @@ mod windows {
     use std::mem::size_of;
     use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateRoundRectRgn, DeleteObject, EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR,
-        MONITOR_DEFAULTTONEAREST, MONITORINFO, MONITORINFOEXW, MonitorFromWindow, SetWindowRgn,
+        EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+        MONITORINFOEXW, MonitorFromWindow,
     };
     use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
     use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GWL_STYLE, GetWindowLongPtrW, IsIconic, SetWindowLongPtrW, WM_NCACTIVATE, WM_NCDESTROY,
-        WM_NCPAINT, WM_SETICON, WM_SETTEXT, WS_VISIBLE,
+        GWL_STYLE, GetWindowLongPtrW, IsIconic, IsWindow, SetWindowLongPtrW, WM_NCACTIVATE,
+        WM_NCDESTROY, WM_NCPAINT, WM_SETICON, WM_SETTEXT, WS_CAPTION, WS_VISIBLE,
     };
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-    fn handle(native: &winit::window::Window) -> Option<HWND> {
+    pub(super) fn handle(native: &winit::window::Window) -> Option<HWND> {
         match native.window_handle().ok()?.as_raw() {
             RawWindowHandle::Win32(handle) => Some(handle.hwnd.get() as HWND),
             _ => None,
@@ -878,6 +937,29 @@ mod windows {
     const WM_NCUAHDRAWCAPTION: u32 = 0x00ae;
     const WM_NCUAHDRAWFRAME: u32 = 0x00af;
 
+    unsafe fn forward_without_style(
+        hwnd: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+        mask: u32,
+    ) -> LRESULT {
+        // SAFETY: called synchronously from the subclass on the window's owning thread.
+        unsafe {
+            let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            let masked_bits = style & mask as isize;
+            if masked_bits == 0 || SetWindowLongPtrW(hwnd, GWL_STYLE, style & !masked_bits) == 0 {
+                return DefSubclassProc(hwnd, message, wparam, lparam);
+            }
+            let result = DefSubclassProc(hwnd, message, wparam, lparam);
+            if IsWindow(hwnd) != 0 {
+                let current = GetWindowLongPtrW(hwnd, GWL_STYLE);
+                SetWindowLongPtrW(hwnd, GWL_STYLE, current | masked_bits);
+            }
+            result
+        }
+    }
+
     unsafe extern "system" fn frameless_messages(
         hwnd: HWND,
         message: u32,
@@ -893,23 +975,13 @@ mod windows {
                 WM_NCUAHDRAWCAPTION | WM_NCUAHDRAWFRAME => 0,
                 WM_NCPAINT if IsIconic(hwnd) == 0 => 0,
                 WM_NCACTIVATE if IsIconic(hwnd) == 0 => {
-                    // Winit still needs activation messages for keyboard focus.
-                    // -1 asks DefWindowProc to skip only its frame paint.
-                    DefSubclassProc(hwnd, message, wparam, -1)
+                    // Windows can paint WS_CAPTION over the client area despite lParam = -1.
+                    // Keep forwarding activation to Winit so its focus state stays current.
+                    forward_without_style(hwnd, message, wparam, -1, WS_CAPTION)
                 }
                 WM_SETTEXT | WM_SETICON => {
-                    // Default title/icon updates can paint a caption directly,
-                    // bypassing WM_NCPAINT. Keep their native metadata update
-                    // while inhibiting paint for this synchronous call only.
-                    // No ShowWindow or frame refresh is performed here.
-                    let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
-                    if style as u32 & WS_VISIBLE == 0 {
-                        return DefSubclassProc(hwnd, message, wparam, lparam);
-                    }
-                    SetWindowLongPtrW(hwnd, GWL_STYLE, style & !(WS_VISIBLE as isize));
-                    let result = DefSubclassProc(hwnd, message, wparam, lparam);
-                    SetWindowLongPtrW(hwnd, GWL_STYLE, style);
-                    result
+                    // Title and icon updates can also draw directly, bypassing WM_NCPAINT.
+                    forward_without_style(hwnd, message, wparam, lparam, WS_VISIBLE)
                 }
                 WM_NCDESTROY => {
                     RemoveWindowSubclass(hwnd, Some(frameless_messages), id);
@@ -920,53 +992,32 @@ mod windows {
         }
     }
 
-    pub fn round_corners(native: &winit::window::Window) {
-        let Some(hwnd) = handle(native) else {
-            return;
-        };
-        // Native clipping changes Windows' frame painting path. Keep Winit's
-        // own styles intact and prevent default caption paint for this card's
-        // lifetime. Reinstalling the same callback/id simply updates it.
-        // SAFETY: this live practice HWND is borrowed on its owning UI thread.
+    pub(super) fn suppress_frame_paint(hwnd: HWND) -> bool {
+        // Keep Winit's window styles for system commands while Try draws the frame.
+        // SAFETY: the HWND belongs to this UI thread. Reinstalling the same ID is safe.
         if unsafe { SetWindowSubclass(hwnd, Some(frameless_messages), FRAMELESS_SUBCLASS, 0) } == 0
         {
             log::warn!(target: "try::floating_window",
                 "event=window_subclass_failed reason={}",
                 std::io::Error::last_os_error()
             );
-            return;
+            return false;
         }
-        let size = native.outer_size();
-        let diameter = (32.0 * native.scale_factor()).round() as i32;
-        // The software surface is opaque on Windows. A native window region cuts
-        // the corners out of both rendering and mouse hit testing.
-        // SAFETY: scalar dimensions are bounded by the live window; HWND is valid.
-        let region = unsafe {
-            CreateRoundRectRgn(
-                0,
-                0,
-                size.width as i32 + 1,
-                size.height as i32 + 1,
-                diameter,
-                diameter,
-            )
+        true
+    }
+
+    pub fn round_corners(native: &winit::window::Window, scale: f32) {
+        let Some(hwnd) = handle(native) else {
+            return;
         };
-        if region.is_null() {
-            log::warn!(target: "try::floating_window",
-                "event=window_region_create_failed reason={}",
-                std::io::Error::last_os_error()
-            );
-            return;
+        if suppress_frame_paint(hwnd) {
+            set_card_region(native, scale);
         }
-        // Windows owns the region after a successful SetWindowRgn; release only on failure.
-        if unsafe { SetWindowRgn(hwnd, region, 1) } == 0 {
-            log::warn!(target: "try::floating_window",
-                "event=window_region_apply_failed reason={}",
-                std::io::Error::last_os_error()
-            );
-            unsafe {
-                DeleteObject(region);
-            }
+    }
+
+    pub fn set_card_region(native: &winit::window::Window, scale: f32) {
+        if let Some(hwnd) = handle(native) {
+            card_region::apply(hwnd, native.outer_size(), native.scale_factor(), scale);
         }
     }
 }
@@ -1008,6 +1059,21 @@ mod placement_tests {
                 assert!(placement.moved_position(&area, collapsed).is_none());
             }
         }
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn manual_resizing_keeps_its_landing_position_without_saving_a_move() {
+        let area = area();
+        let mut placement = Placement::new(&area, (600, 402), PopupCorner::BottomRight, None);
+        let position = placement.placed;
+        assert_ne!(
+            area.place((480, 350), PopupCorner::BottomRight, None),
+            position
+        );
+        placement.keep_resized_position(&area, position);
+        assert_eq!(placement.resize(&area, (480, 350), position), position);
+        assert!(placement.moved_position(&area, position).is_none());
     }
 
     #[test]

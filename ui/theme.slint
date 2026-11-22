@@ -1,7 +1,14 @@
+export enum MotionPreference { color-only, full, reduced }
+
 // Shared desktop colors. Each window owns its palette; formula images use the
 // same ink through colorize, so switching appearance needs no rasterization.
 export global Theme {
     in-out property <bool> dark: true;
+    // Without a desktop motion preference, use color transitions only.
+    in-out property <MotionPreference> motion: color-only;
+    out property <bool> spatial-motion: self.motion == MotionPreference.full;
+    out property <duration> tint-duration: self.motion == MotionPreference.reduced ? 0ms : 140ms;
+    out property <duration> switch-duration: self.motion == MotionPreference.full ? 120ms : 0ms;
     out property <color> chrome: self.dark ? #25262a : #f5f5f6;
     out property <color> selected: self.dark ? #3b4657 : #dde5ef;
     out property <color> soft-border: self.dark ? #32343a : #ececef;
@@ -11,7 +18,10 @@ export global Theme {
     out property <color> soft: self.dark ? #292b2f : #f7f7f8;
     out property <color> hover: self.dark ? #32343a : #f0f1f3;
     out property <color> border: self.dark ? #414348 : #dedfe3;
+    out property <color> window-border: self.dark ? #53565c : #b9bcc2;
     out property <color> control-border: self.dark ? #777b85 : #a2a6af;
+    out property <color> switch-off: self.dark ? #525863 : #777d87;
+    out property <color> switch-on: self.dark ? #506e97 : self.primary;
     out property <color> ink: self.dark ? #ededf0 : #24262b;
     out property <color> muted: self.dark ? #b0b2ba : #6b6e77;
     out property <color> disabled: self.dark ? #727680 : #a3a6ad;
@@ -34,10 +44,10 @@ export global Theme {
     out property <color> caution-soft: self.dark ? #332b0f : #fff8e1;
     out property <color> on-caution: #261a00;
     out property <color> scrim: #00000066;
-    out property <color> correct: self.dark ? #1e4230 : #e1f4e8;
-    out property <color> correct-soft: self.dark ? #25583b : #ccebd9;
+    out property <color> correct: self.dark ? #22372e : #ebf6ef;
+    out property <color> correct-soft: self.dark ? #294b38 : #d5ecdd;
     out property <color> correct-ink: self.dark ? #78dfa1 : #1c7444;
-    out property <color> wrong: self.dark ? #4b232b : #ffe5e8;
-    out property <color> wrong-soft: self.dark ? #642e38 : #ffd2d8;
+    out property <color> wrong: self.dark ? #39292e : #fcf0f1;
+    out property <color> wrong-soft: self.dark ? #4c333a : #f7dce0;
     out property <color> wrong-ink: self.dark ? #ff929d : #b52b3d;
 }

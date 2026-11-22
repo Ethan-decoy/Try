@@ -749,6 +749,21 @@ mod tests {
             x: 80.0,
             y: 120.0,
         });
+        library.settings.remember_position = false;
+        assert!(library.settings.custom_popup_position().is_none());
+        library
+            .settings
+            .set_custom_popup_position(crate::window_position::SavedPopupPosition {
+                monitor: "left_display".into(),
+                x: 110.0,
+                y: 140.0,
+            });
+        library.settings.practice_card_size = Some(crate::window_position::PracticeCardSize {
+            // A locked card saved at the previous minimum must still load.
+            width: 280,
+            height: 190,
+        });
+        library.settings.practice_card_locked = true;
         let mut imported = library.packs[0].clone();
         imported.id = "my_math".into();
         let source_directory = tempfile::tempdir().unwrap();
@@ -765,7 +780,12 @@ mod tests {
         fs::remove_file(&moved).unwrap();
         drop(source_directory);
         let reopened = Store::open(directory.path().to_owned()).unwrap();
-        assert_eq!(reopened.load().unwrap(), library);
+        let restored = reopened.load().unwrap();
+        assert_eq!(
+            restored.settings.custom_popup_position(),
+            library.settings.popup_position.as_ref(),
+        );
+        assert_eq!(restored, library);
     }
 
     #[test]

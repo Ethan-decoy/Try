@@ -7,9 +7,7 @@ pub fn automatic_content(input: &str) -> Result<Node, String> {
     if input.chars().count() > MAX_INPUT {
         return Err(tr!("内容不能超过 1000 个字符。").into());
     }
-    if looks_mathematical(input)
-        && let Ok(node) = expression(input)
-    {
+    if let Some(node) = automatic_expression(input) {
         return Ok(node);
     }
     let mut nodes = vec![];
@@ -20,9 +18,7 @@ pub fn automatic_content(input: &str) -> Result<Node, String> {
             return;
         }
         let trimmed = run.trim();
-        if looks_mathematical(trimmed)
-            && let Ok(math) = expression(trimmed)
-        {
+        if let Some(math) = automatic_expression(trimmed) {
             if run.starts_with(char::is_whitespace) {
                 nodes.push(Node::leaf(Kind::Text, " "));
             }
@@ -52,6 +48,42 @@ pub fn automatic_content(input: &str) -> Result<Node, String> {
     } else {
         Ok(Node::branch(Kind::Row, nodes))
     }
+}
+
+fn automatic_expression(input: &str) -> Option<Node> {
+    if !looks_mathematical(input) || is_code_identifier(input) {
+        return None;
+    }
+    expression(input).ok()
+}
+
+/// Keep qualified code names and snake_case identifiers literal during inference.
+pub(crate) fn is_code_identifier(input: &str) -> bool {
+    let input = input.trim();
+    if let Some((namespace, member)) = input.split_once("::") {
+        return (namespace.is_empty() || ascii_identifier(namespace))
+            && member.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_');
+    }
+    let input = input.strip_prefix('.').unwrap_or(input);
+    let input = input.strip_suffix("()").unwrap_or(input);
+    let Some((base, _)) = input.split_once('_') else {
+        return false;
+    };
+    // The formula keypad also offers functions named after ordinary words
+    // such as `unique`. Use the shorthand parser's vocabulary for inference.
+    ascii_identifier(input)
+        && (base.is_empty()
+            || base.len() > 1
+                && vocabulary::symbol(base).is_none()
+                && vocabulary::function(base).is_none())
+}
+
+fn ascii_identifier(input: &str) -> bool {
+    let mut bytes = input.bytes();
+    bytes
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
+        && bytes.all(|c| c.is_ascii_alphanumeric() || c == b'_')
 }
 
 pub(crate) fn looks_mathematical(s: &str) -> bool {

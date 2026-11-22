@@ -10,20 +10,13 @@ pub fn with_answer(card: &Card, input: &str) -> AppResult<Card> {
     if input == card.answer.trim() {
         return Ok(card.clone());
     }
-    let node = if input.contains('\\') {
-        crate::math_editor::from_latex(input)?
-    } else if card.answer_latex.is_some() {
-        crate::math_editor::expression(input)?
-    } else {
-        crate::math_editor::automatic_content(input)?
-    };
-    if !node.complete() {
-        return Err(tr!("还有未填写的公式位置。").into());
-    }
-    node.validate()?;
+    let mut field =
+        crate::math_editor::Field::new(&card.answer, card.answer_latex.as_deref().unwrap_or(""));
+    field.update(input)?;
+    let (text, latex) = field.content()?;
     let mut updated = card.clone();
-    updated.answer = node.plain();
-    updated.answer_latex = (!node.is_text()).then(|| node.tex());
+    updated.answer = text;
+    updated.answer_latex = optional(latex);
     updated.discard_stale_aliases(card);
     Ok(updated)
 }
@@ -278,6 +271,23 @@ mod tests {
         assert!(changed.aliases.is_empty());
         assert!(changed.answer_latex.is_some());
         assert_eq!(changed.prompt_latex, original.prompt_latex);
+    }
+
+    #[test]
+    fn quick_edit_preserves_the_content_format() {
+        let mut card = crate::test_fixtures::regression_library().packs[0].cards[2].clone();
+        card.answer_latex = None;
+        for input in [r"C:\src\main.rs", "x_i", "map_err(e)", "sqrt("] {
+            let saved = with_answer(&card, input).unwrap();
+            assert_eq!(saved.answer, input);
+            assert!(saved.answer_latex.is_none());
+        }
+
+        card.answer_latex = Some(r"\frac{1}{2}".into());
+        let saved = with_answer(&card, "x_i").unwrap();
+        assert!(saved.answer_latex.is_some());
+        assert!(saved.accepts("x_{i}"));
+        assert!(with_answer(&card, "sqrt(").is_err());
     }
 
     #[test]

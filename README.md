@@ -6,17 +6,17 @@
 
 Try 是一款轻量、开源的桌面闪卡工具。它常驻系统托盘，按你设定的间隔在桌面角落弹出一道题。把总要查的公式、词义或代码写法放进自己的题库，在用电脑的间隙练出「看到提示就想到答案」的肌肉记忆。
 
-你可以在卡片上填空、选择或判断，也可以切换到「知识展示」直接看答案。答题时先出未答过的题，再根据对错和距上次作答的时间安排间隔复习。练习可以离线进行，题库和练习记录保存在本机。
+你可以在卡片上填空、选择或判断，也可以切换到「展示」直接看答案。答题时先出未答过的题，再根据对错和距上次作答的时间安排间隔复习。练习可以离线进行，题库和练习记录保存在本机。
 
 *Open-source desktop flashcards for active recall and spaced repetition. Try runs in the system tray and shows one card at a time from your own decks.*
 
-![桌面角落的 Try 词汇卡显示 hesitate，作答框内已输入「犹豫」](docs/images/practice_desktop.png)
+![Try 词汇卡悬浮在代码编辑器右下角的终端上，题面是 hesitate，作答框内已输入「犹豫」](docs/images/practice_desktop.png)
 
-[观看一次完整作答](docs/images/practice_demo.gif) · 词汇卡由 Windows 版界面渲染，桌面背景为示意。
+[观看一次完整作答](docs/images/practice_demo.gif) · Windows 版卡片已隐藏操作提示，桌面为示意。
 
 ## 下载
 
-从 [GitHub 最新发布](https://github.com/Ethan-decoy/Try/releases/latest) 下载对应平台的附件。
+从 [v0.10.0 预发布版](https://github.com/Ethan-decoy/Try/releases/tag/v0.10.0) 下载对应平台的附件。当前开发源码面向待验收的 1.0.0。
 
 | 平台 | 下载文件 | 状态 |
 | --- | --- | --- |
@@ -28,11 +28,11 @@ Windows 将 `try.exe` 放在可写文件夹中双击运行。题库、设置和�
 
 正式版的兼容支持从 1.0.0 开始。从 0.x 预发布版升级前，请备份数据目录。Try 会沿用仍可读取的旧数据。
 
-首次运行已有示例题。关闭主窗口后开始计时，想马上试一题可左键点击托盘图标。macOS 从菜单栏的 Try 图标选择「练习」。希望卡片弹出后仍能在原窗口打字，可关闭「弹出时自动聚焦」。详见[使用说明](docs/user_guide.md)。
+首次运行已有示例题。在主窗口点「回到托盘」即可开始提醒计时，想马上试一题可左键点击托盘图标。macOS 从菜单栏的 Try 图标选择「练习」。希望卡片弹出后仍能在原窗口打字，可关闭「弹出时自动聚焦」。详见[使用说明](docs/user_guide.md)。
 
 ## 选择想练习的内容
 
-自带的知识包里有 `hesitate` → 犹豫，也有「Rust 可变引用」→ `&mut T`。在主窗口勾选想练的题目，点击题面即可编辑。题面可以配图，作答时可以直接输入常用的 LaTeX 公式。
+自带的知识包里有 `hesitate` → 犹豫，也有「Rust 可变引用」→ `&mut T`。在主窗口勾选想练的题目，点击题面即可编辑。题面可以配图，公式题可以直接输入常用的 LaTeX 写法。
 
 ![Try 主窗口列出五个自带知识包，当前选中「常用公式」，题目和答案并排显示](docs/images/knowledge_library.png)
 

@@ -1,13 +1,15 @@
 #[path = "src/math_palette.rs"]
 mod math_palette;
 
+const APP_ICON_SOURCE: &str = "assets/app_icon.svg";
+
 fn main() {
     record_build_identity();
     let translations = compile_translations();
     compile_notices();
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=ui");
-    println!("cargo:rerun-if-changed=assets/logo.svg");
+    println!("cargo:rerun-if-changed={APP_ICON_SOURCE}");
     compile_logo();
     compile_math_palette();
     slint_build::compile_with_config(
@@ -408,9 +410,9 @@ fn record_build_identity() {
 
 fn compile_logo() {
     const SIZE: u32 = 32;
-    let source = std::fs::read("assets/logo.svg").expect("Logo SVG must be available");
+    let source = std::fs::read(APP_ICON_SOURCE).expect("Application icon SVG must be available");
     let tree = resvg::usvg::Tree::from_data(&source, &resvg::usvg::Options::default())
-        .expect("Logo SVG must be valid");
+        .expect("Application icon SVG must be valid");
     let mut pixmap = resvg::tiny_skia::Pixmap::new(SIZE, SIZE).expect("Logo size must be valid");
     let transform = resvg::tiny_skia::Transform::from_scale(
         SIZE as f32 / tree.size().width(),
@@ -500,7 +502,7 @@ END
 }
 
 fn compile_desktop_icon(tree: &resvg::usvg::Tree, output: &std::path::Path) {
-    // Packaging uses this PNG for macOS ICNS and Linux desktop integration.
+    // The macOS packager resizes this PNG for ICNS.
     // It stays in OUT_DIR and does not enlarge the embedded tray icon.
     let mut desktop = resvg::tiny_skia::Pixmap::new(1024, 1024).expect("Icon size must be valid");
     resvg::render(

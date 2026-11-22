@@ -1,7 +1,56 @@
 //! Question drafts and mixed text/math authoring in the main window.
 use super::*;
+use r#try::knowledge::ContentFormat;
+
+#[derive(PartialEq)]
+pub(super) struct DraftState {
+    pack_name: slint::SharedString,
+    aliases: slint::SharedString,
+    mode: i32,
+    correct_choice: i32,
+    truth_choice: i32,
+    image: Option<String>,
+    fields: Vec<AppResult<(String, String)>>,
+}
 
 impl App {
+    fn editor_state(&self, window: &MainWindow) -> DraftState {
+        DraftState {
+            pack_name: window.get_editor_pack_name(),
+            aliases: window.get_editor_aliases(),
+            mode: window.get_editor_answer_mode(),
+            correct_choice: window.get_editor_correct_choice(),
+            truth_choice: window.get_editor_truth_choice(),
+            image: self.editor_image.borrow().clone(),
+            fields: self
+                .math_fields
+                .borrow()
+                .iter()
+                .map(Field::content)
+                .collect(),
+        }
+    }
+
+    pub(super) fn editor_has_changes(&self, window: &MainWindow) -> bool {
+        self.editor_initial
+            .borrow()
+            .as_ref()
+            .is_some_and(|initial| {
+                self.image_task
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|(revision, _)| *revision == self.image_revision.get())
+                    || self
+                        .structured_math
+                        .borrow()
+                        .as_ref()
+                        .is_some_and(|(target, session)| {
+                            matches!(target, MathTarget::Content { .. }) && session.has_changes()
+                        })
+                    || *initial != self.editor_state(window)
+            })
+    }
+
     pub(super) fn set_editor_answer_mode(&self, index: i32) {
         if self.pending_card_delete.borrow().is_some() {
             return;
@@ -166,6 +215,7 @@ impl App {
         if let Err(error) = self.set_editor_image(draft_image) {
             window.set_editor_error(error.into());
         }
+        self.editor_initial.replace(Some(self.editor_state(window)));
     }
 
     pub(super) fn render_editor_preview(&self) {
@@ -309,6 +359,25 @@ impl App {
         self.refresh_math(true);
     }
 
+    pub(super) fn set_content_formula(&self, formula: bool) {
+        if !self.apply_content_math() {
+            return;
+        }
+        // Flush a pending edit into the draft. Switching to Text can keep a
+        // whole-field formula draft even while its notation is incomplete.
+        self.flush_math();
+        let format = if formula {
+            ContentFormat::Formula
+        } else {
+            ContentFormat::Text
+        };
+        self.modify_math(|field| {
+            field.set_format(format)?;
+            self.math_pending.set(false);
+            Ok(())
+        });
+    }
+
     pub(super) fn flush_math(&self) -> bool {
         self.editor_preview_timer.stop();
         let main = self.main_window.borrow();
@@ -381,7 +450,8 @@ impl App {
         window.set_math_position(position);
         window.set_math_navigation(navigation);
         window.set_math_error(field.error().unwrap_or_default().into());
-        window.set_math_text_mode(field.selected().accepts_prose());
+        window.set_math_text_mode(field.accepts_text());
+        window.set_math_field_formula(field.format() == ContentFormat::Formula);
         window.set_math_has_formula(!field.root.is_text());
         window.set_math_can_undo(field.can_undo());
         window.set_math_can_redo(field.can_redo());
@@ -645,6 +715,7 @@ impl App {
         self.editor_preview_timer.stop();
         self.pending_card_delete.borrow_mut().take();
         self.editor.borrow_mut().take();
+        self.editor_initial.borrow_mut().take();
         self.math_fields.borrow_mut().clear();
         self.math_paths.borrow_mut().clear();
         self.math_pending.set(false);

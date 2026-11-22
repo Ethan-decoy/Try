@@ -1,4 +1,4 @@
-//! Knowledge-pack participation, metadata, import/export and quick edits.
+//! Knowledge-pack participation, metadata, deletion and quick edits.
 use super::*;
 
 impl App {
@@ -199,67 +199,6 @@ impl App {
         }
     }
 
-    pub(super) fn import_pack(self: &Rc<Self>) {
-        let Some(path) = rfd::FileDialog::new()
-            .set_title(tr!("导入 Try 知识包"))
-            .add_filter(tr!("Try 知识包"), &["json"])
-            .pick_file()
-        else {
-            return;
-        };
-        let imported = self.store.import_pack(&path);
-        if imported.is_err() {
-            self.collect_media();
-        }
-        match imported {
-            Ok(pack) => {
-                let duplicate = self
-                    .library
-                    .borrow()
-                    .packs
-                    .iter()
-                    .any(|item| item.id == pack.id);
-                if duplicate {
-                    self.pending_import.replace(Some(pack));
-                    self.refresh();
-                    self.notify("", false);
-                } else {
-                    let id = pack.id.clone();
-                    let result = self.commit(|library| library.import(pack, false));
-                    if result.is_ok() {
-                        let index = self
-                            .library
-                            .borrow()
-                            .packs
-                            .iter()
-                            .position(|pack| pack.id == id)
-                            .unwrap_or(0);
-                        self.selected_pack.set(index);
-                        if let Some(window) = self.main_window.borrow().as_ref() {
-                            window.invoke_reset_overview();
-                        }
-                        self.refresh();
-                    }
-                    self.report(result, tr!("已导入。"));
-                }
-            }
-            Err(error) => self.notify(&error, true),
-        }
-    }
-
-    pub(super) fn confirm_import(self: &Rc<Self>) {
-        let Some(pack) = self.pending_import.borrow_mut().take() else {
-            return;
-        };
-        let replacement = pack.clone();
-        let result = self.commit(|library| library.import(pack, true));
-        if result.is_err() {
-            self.pending_import.replace(Some(replacement));
-        }
-        self.refresh();
-        self.report(result, tr!("已替换。"));
-    }
-
     pub(super) fn request_delete_card(&self) {
         let key = match self.editor.borrow().as_ref() {
             Some(EditorTarget::Card {
@@ -411,30 +350,5 @@ impl App {
         }
         self.refresh();
         self.report(result, "");
-    }
-
-    pub(super) fn export_pack(&self) {
-        let pack = self
-            .library
-            .borrow()
-            .packs
-            .get(self.selected_pack.get())
-            .cloned();
-        let Some(pack) = pack else { return };
-        let Some(mut path) = rfd::FileDialog::new()
-            .set_title(tr!("导出 Try 知识包"))
-            .set_file_name(format!("{}.json", pack.id))
-            .add_filter(tr!("Try 知识包"), &["json"])
-            .save_file()
-        else {
-            return;
-        };
-        if path.extension().is_none() {
-            path.set_extension("json");
-        }
-        self.report(
-            self.store.export_portable_pack(&path, &pack),
-            tr!("已导出。"),
-        );
     }
 }

@@ -95,6 +95,10 @@ export component StructuredMathSurface inherits Rectangle {
     out property <float> canvas-scale: 1;
     private property <bool> cursor-visible: true;
     private property <length> plain-scroll;
+    private property <length> plain-width: max(0px, root.width - 24px);
+    private property <bool> plain-overflows: !root.structured && root.plain-width > 1px
+        && input.preferred-width > root.plain-width - 1px;
+    changed plain-overflows => { if !root.plain-overflows { root.plain-scroll = 0px; } }
     private property <float> scroll-x: root.structured ? max(0, view.caret-x - (self.width / 1px - 42)) : 0;
     private property <float> scroll-y: root.structured ? max(0, view.caret-y + view.caret-height - (self.height / 1px - 24)) : 0;
     private property <length> image-y: max(0px, (self.height - view.content-height * 1px) / 2) - scroll-y * 1px;
@@ -114,9 +118,10 @@ export component StructuredMathSurface inherits Rectangle {
         width: 1.5px; height: root.view.caret-height * 1px; background: Theme.ink;
     }
     input := TextInput {
-        x: root.structured ? 12px + (root.view.caret-x - root.scroll-x) * 1px : 12px + root.plain-scroll;
+        x: root.structured ? 12px + (root.view.caret-x - root.scroll-x) * 1px
+            : 12px + (root.plain-overflows ? root.plain-scroll : 0px);
         y: root.structured ? root.image-y + root.view.caret-y * 1px : 0px;
-        width: root.structured ? max(16px, root.width - self.x - 12px) : root.width - 24px;
+        width: root.structured ? max(16px, root.width - self.x - 12px) : root.plain-width;
         height: root.structured ? max(22px, root.view.caret-height * 1px) : root.height;
         enabled: root.enabled;
         color: Theme.ink; font-size: root.structured ? root.view.font-size * 1px : 22px;
@@ -135,9 +140,9 @@ export component StructuredMathSurface inherits Rectangle {
         cursor-position-changed(position) => {
             if !root.structured {
                 if !root.restoring { root.plain-position-changed(self.text, self.anchor-position-byte-offset, self.cursor-position-byte-offset); }
-                if position.x + root.plain-scroll < 0px { root.plain-scroll = -position.x; }
-                else if position.x + root.plain-scroll > self.width - 1px { root.plain-scroll = self.width - position.x - 1px; }
-                if root.plain-scroll > 0px { root.plain-scroll = 0px; }
+                if root.plain-overflows {
+                    root.plain-scroll = min(0px, clamp(root.plain-scroll, -position.x, self.width - position.x - 1px));
+                }
             }
         }
         key-pressed(event) => {
@@ -250,7 +255,7 @@ export component StructuredMathPad inherits Rectangle {
             ToolButton { height: 28px; glyph: @image-url("../assets/redo.svg"); icon-only: true; name: @tr("重做"); enabled: MathInputState.formula.can-redo; activated => { root.press("key:redo"); } }
             ToolButton { height: 28px; label: @tr("清空"); name: @tr("清空此输入框"); font-size: 14px; destructive: true; enabled: MathInputState.formula.has-content; activated => { root.press("key:clear"); } }
         }
-        if MathInputState.error != "" : Text { text: MathInputState.error; color: Theme.wrong-ink; font-size: 12px; wrap: word-wrap; }
+        if !MathInputState.practice && MathInputState.error != "" : Text { text: MathInputState.error; color: Theme.wrong-ink; font-size: 12px; wrap: word-wrap; }
         if !MathInputState.practice : HorizontalLayout {
             height: 32px; spacing: 8px;
             ToolButton { label: @tr("取消"); name: self.label; font-size: 14px; border-width: 1px; border-color: Theme.border;

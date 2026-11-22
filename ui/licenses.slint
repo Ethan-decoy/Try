@@ -11,7 +11,7 @@ component NoticeEntry inherits Rectangle {
 }
 
 export component ThirdPartyNotices inherits Rectangle {
-    callback go-back();
+    callback go-back(bool);
     callback close-view();
     background: Theme.panel;
     border-radius: 8px;
@@ -21,13 +21,13 @@ export component ThirdPartyNotices inherits Rectangle {
     notices-focus := FocusScope {
         width: 100%; height: 100%;
         key-pressed(event) => {
-            if event.text == Key.Escape { root.go-back(); return accept; }
+            if event.text == Key.Escape { root.go-back(false); return accept; }
             return reject;
         }
         IconButton {
             x: 12px; y: 15px; glyph: @image-url("../assets/back.svg");
             label: @tr("返回关于"); borderless: true; ink: Theme.muted;
-            activated => { root.go-back(); }
+            activated => { root.go-back(self.pointer-activation); }
         }
         Text { x: 56px; y: 15px; width: 184px; height: 36px; text: @tr("第三方声明"); color: Theme.ink; vertical-alignment: center; }
         IconButton {

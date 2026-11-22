@@ -7,6 +7,104 @@ use support::{click, key, paint, software_window};
 
 slint::include_modules!();
 
+#[test]
+fn footer_actions_remain_reachable_above_the_dialog_scrim_at_scaled_dpi() {
+    let adapter = software_window();
+    let window = MainWindow::new().unwrap();
+    let scale = 1.5;
+    window
+        .window()
+        .dispatch_event(WindowEvent::ScaleFactorChanged {
+            scale_factor: scale,
+        });
+    adapter.set_size(PhysicalSize::new(1080, 720));
+    window.set_delete_pending(true);
+    window.show().unwrap();
+    paint(&adapter);
+    let bounds = || {
+        [
+            window.get_delete_dialog_left(),
+            window.get_delete_dialog_top(),
+            window.get_delete_dialog_width(),
+            window.get_delete_dialog_height(),
+        ]
+    };
+    let original = bounds();
+    let frame = window.global::<WindowFrame>();
+    frame.set_enabled(true);
+    let height = frame.get_caption_height();
+    adapter.set_size(PhysicalSize::new(
+        1080,
+        720 + (height * scale).round() as u32,
+    ));
+    paint(&adapter);
+    let [left, top, width, dialog_height] = original;
+    for (actual, expected) in bounds()
+        .into_iter()
+        .zip([left, top + height, width, dialog_height])
+    {
+        assert!((actual - expected).abs() < 1.0);
+    }
+
+    let tray = Rc::new(Cell::new(0));
+    let quit = Rc::new(Cell::new(0));
+    let count = tray.clone();
+    window.on_go_background(move || count.set(count.get() + 1));
+    let count = quit.clone();
+    window.on_quit_app(move || count.set(count.get() + 1));
+    let controls = window.get_window_controls();
+    let button = controls.button_width;
+    let center_y = controls.y + controls.height / 2.0;
+    assert!((center_y - (480.0 + height - 30.0)).abs() < 1.0);
+    click(&window, &adapter, 720.0 - 2.5 * button, height / 2.0);
+    click(&window, &adapter, 720.0 - 0.5 * button, height / 2.0);
+    assert_eq!((tray.get(), quit.get()), (0, 0));
+    click(&window, &adapter, controls.x + 0.5 * button, center_y);
+    assert_eq!((tray.get(), quit.get()), (1, 0));
+    click(&window, &adapter, controls.x + 2.5 * button, center_y);
+    assert_eq!((tray.get(), quit.get()), (1, 1));
+    assert!(window.get_delete_pending());
+}
+
+#[test]
+fn footer_actions_follow_window_width_and_remain_available_while_editing() {
+    let adapter = software_window();
+    let window = MainWindow::new().unwrap();
+    let tray = Rc::new(Cell::new(false));
+    let quit = Rc::new(Cell::new(false));
+    let received = tray.clone();
+    window.on_go_background(move || received.set(true));
+    let received = quit.clone();
+    window.on_quit_app(move || received.set(true));
+    window.show().unwrap();
+
+    let frame = window.global::<WindowFrame>();
+    adapter.set_size(PhysicalSize::new(720, 480));
+    paint(&adapter);
+    // Native window decorations have separate system controls and two app actions here.
+    click(&window, &adapter, 642.0, 450.0);
+    click(&window, &adapter, 686.0, 450.0);
+    assert!(tray.replace(false) && quit.replace(false));
+
+    frame.set_enabled(true);
+    for (width, height, margin, editing) in [
+        (720, 514, 16.0, false),
+        (880, 674, 24.0, true),
+        (1200, 794, 32.0, false),
+    ] {
+        window.set_editor_visible(editing);
+        adapter.set_size(PhysicalSize::new(width, height));
+        paint(&adapter);
+        let controls = window.get_window_controls();
+        let button = controls.button_width;
+        assert!((controls.x + 3.0 * button + margin - width as f32).abs() < 1.0);
+        let center_y = height as f32 - 30.0;
+        click(&window, &adapter, controls.x + 0.5 * button, center_y);
+        click(&window, &adapter, controls.x + 2.5 * button, center_y);
+        assert!(tray.replace(false) && quit.replace(false));
+    }
+}
+
 fn centered(bounds: [f32; 4], size: PhysicalSize) {
     let [x, y, width, height] = bounds;
     assert!((x + width / 2.0 - size.width as f32 / 2.0).abs() <= 1.0);
@@ -177,8 +275,17 @@ fn centered_deletion_guards_and_available_update_badge() {
     window.set_update_action_kind(0);
 
     window.set_delete_description("删除“微积分”及其中的 4 道题？此操作无法撤销。".into());
+    let sidebar_pixel = |pixels: &SharedPixelBuffer<Rgb8Pixel>| {
+        pixels.as_slice()[100 * pixels.width() as usize + 8].r
+    };
+    let undimmed = sidebar_pixel(&paint(&adapter));
     window.set_delete_pending(true);
     let deletion = paint(&adapter);
+    let dimmed = sidebar_pixel(&deletion);
+    assert!(
+        dimmed > 0 && dimmed < undimmed,
+        "the scrim keeps the library visible"
+    );
     centered(
         [
             window.get_delete_dialog_left(),

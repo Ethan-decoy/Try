@@ -1,7 +1,8 @@
 import { Theme } from "theme.slint";
 import { DesktopButton } from "desktop_controls.slint";
+import { EntranceMotion } from "controls.slint";
 
-export enum PracticeAction { exclude-question, pause, custom-pause, record-problem }
+export enum PracticeAction { exclude-question, pause, custom-pause, toggle-card-lock, record-problem }
 export enum ProblemRecordStatus { idle, saved, failed }
 
 // A window-local popup keeps card geometry and the current answer unchanged.
@@ -10,26 +11,30 @@ export component PracticeMenu inherits Rectangle {
     width: 0px; height: 0px;
     in property <length> viewport-width;
     in property <length> viewport-height;
+    in property <bool> card-locked;
     in property <ProblemRecordStatus> problem-record-status: ProblemRecordStatus.idle;
     in property <string> problem-record-error;
     out property <bool> opened: popup.is-open;
     out property <length> menu-width: min(240px, root.viewport-width - 16px);
-    out property <length> menu-height: root.pause-page ? 171px : 115px;
+    out property <length> menu-height: root.pause-page ? 171px : 147px;
     out property <length> menu-left: min(max(root.anchor-x, 8px), root.viewport-width - root.menu-width - 8px);
     out property <length> menu-top: min(max(root.anchor-y, 8px), root.viewport-height - root.menu-height - 8px);
     private property <length> anchor-x;
     private property <length> anchor-y;
     private property <bool> pause-page;
+    private property <int> last-index: root.pause-page ? 4 : 3;
     private property <int> cursor;
     private property <bool> keyboard-used;
+    private property <bool> animate-opening;
     callback state-changed(bool);
     callback activated(PracticeAction, int);
     callback cancelled();
     changed opened => { root.state-changed(root.opened); }
-    public function open(x: length, y: length) {
+    public function open(x: length, y: length, animated: bool) {
         if popup.is-open { popup.close(); }
         root.anchor-x = x; root.anchor-y = y;
-        root.pause-page = false; root.cursor = 0; root.keyboard-used = false;
+        root.pause-page = false; root.cursor = 0; root.keyboard-used = !animated;
+        root.animate-opening = animated;
         popup.show();
     }
     public function close() { popup.close(); }
@@ -41,6 +46,7 @@ export component PracticeMenu inherits Rectangle {
             else { root.choose(PracticeAction.pause, index * 60); }
         } else if index == 0 { root.choose(PracticeAction.exclude-question, 0); }
         else if index == 1 { root.pause-page = true; root.cursor = 0; }
+        else if index == 2 { root.choose(PracticeAction.toggle-card-lock, 0); }
         else if root.problem-record-status != ProblemRecordStatus.saved { root.activated(PracticeAction.record-problem, 0); }
     }
     popup := PopupWindow {
@@ -48,7 +54,9 @@ export component PracticeMenu inherits Rectangle {
         x: root.menu-left; y: root.menu-top;
         close-policy: close-on-click-outside;
         forward-focus: menu-focus;
+        opening := EntranceMotion { play-on-init: root.animate-opening; duration: 150ms; }
         Rectangle {
+            opacity: opening.alpha;
             background: Theme.panel; border-radius: 8px;
             border-width: 1px; border-color: Theme.border;
             menu-focus := FocusScope {
@@ -60,14 +68,14 @@ export component PracticeMenu inherits Rectangle {
                     if event.text == Key.LeftArrow && root.pause-page { root.pause-page = false; root.cursor = 1; return accept; }
                     if event.text == Key.RightArrow && !root.pause-page && root.cursor == 1 { root.activate(1); return accept; }
                     if event.text == Key.UpArrow { root.cursor = max(0, root.cursor - 1); return accept; }
-                    if event.text == Key.DownArrow { root.cursor = min(root.pause-page ? 4 : 2, root.cursor + 1); return accept; }
+                    if event.text == Key.DownArrow { root.cursor = min(root.last-index, root.cursor + 1); return accept; }
                     if event.text == Key.Tab {
-                        if event.modifiers.shift { root.cursor = root.cursor > 0 ? root.cursor - 1 : root.pause-page ? 4 : 2; }
-                        else { root.cursor = root.cursor < (root.pause-page ? 4 : 2) ? root.cursor + 1 : 0; }
+                        if event.modifiers.shift { root.cursor = root.cursor > 0 ? root.cursor - 1 : root.last-index; }
+                        else { root.cursor = root.cursor < root.last-index ? root.cursor + 1 : 0; }
                         return accept;
                     }
                     if event.text == Key.Home { root.cursor = 0; return accept; }
-                    if event.text == Key.End { root.cursor = root.pause-page ? 4 : 2; return accept; }
+                    if event.text == Key.End { root.cursor = root.last-index; return accept; }
                     if event.text == Key.Return || event.text == Key.Space { root.activate(root.cursor); return accept; }
                     return reject;
                 }
@@ -96,6 +104,12 @@ export component PracticeMenu inherits Rectangle {
                                 horizontal-alignment: center; vertical-alignment: center;
                             }
                         }
+                        DesktopButton {
+                            width: parent.width; text: root.card-locked ? @tr("解锁卡片") : @tr("锁定卡片");
+                            glyph: root.card-locked ? @image-url("../assets/unlock_card.svg") : @image-url("../assets/lock_card.svg");
+                            highlighted: root.keyboard-used && root.cursor == 2;
+                            activated => { root.activate(2); }
+                        }
                         Rectangle {
                             height: 9px;
                             Rectangle { x: 6px; y: 4px; width: parent.width - 12px; height: 1px; background: Theme.border; }
@@ -106,8 +120,8 @@ export component PracticeMenu inherits Rectangle {
                             text: root.problem-record-status == ProblemRecordStatus.saved ? @tr("已在本地记录") : root.problem-record-status == ProblemRecordStatus.failed ? @tr("记录失败，重试") : @tr("记录此题问题");
                             enabled: root.problem-record-status != ProblemRecordStatus.saved;
                             destructive: root.problem-record-status == ProblemRecordStatus.failed;
-                            highlighted: root.keyboard-used && root.cursor == 2;
-                            activated => { root.activate(2); }
+                            highlighted: root.keyboard-used && root.cursor == 3;
+                            activated => { root.activate(3); }
                             Tooltip { text: @markdown("\{root.problem-record-status == ProblemRecordStatus.failed ? root.problem-record-error : @tr("保存到数据目录的 bug_reports 文件夹")}"); }
                         }
                     }

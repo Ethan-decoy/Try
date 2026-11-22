@@ -1,8 +1,23 @@
 import { Theme } from "theme.slint";
+import { WindowFrame } from "desktop_window.slint";
 import { Palette, ScrollView } from "std-widgets.slint";
 import { AnswerOption, FormulaLabel, NativeText, ToolButton, QuestionPicture, FormulaPosition } from "content.slint";
 import { MathInputState, StructuredMathSurface, StructuredMathPad } from "structured_math.slint";
 import { PracticeMenu, PracticeAction, ProblemRecordStatus } from "practice_menu.slint";
+import { IconButton } from "controls.slint";
+
+component AnswerRipple inherits Rectangle {
+    in property <float> progress: 1;
+    in property <length> distance: 9px;
+    private property <length> outset: Theme.spatial-motion ? root.distance * root.progress : 0px;
+    visible: Theme.tint-duration > 0ms && root.progress < 1;
+    Rectangle {
+        x: -root.outset; y: -root.outset;
+        width: parent.width + 2 * root.outset; height: parent.height + 2 * root.outset;
+        border-radius: 7px + root.outset; border-width: 1.5px;
+        border-color: Theme.correct-ink.with-alpha(0.74 * (1 - root.progress * root.progress));
+    }
+}
 
 component AnswerTile inherits Rectangle {
     in property <AnswerOption> option;
@@ -10,14 +25,20 @@ component AnswerTile inherits Rectangle {
     in property <image> symbol;
     in property <bool> enabled: true;
     in property <int> feedback: 0;
+    in property <float> confirmation: 1;
+    in property <length> correction-offset;
     callback activated();
     forward-focus: tile-focus;
     min-width: 0px;
     horizontal-stretch: 1;
     border-radius: 7px;
-    border-width: root.feedback == 0 ? 1px : 2px;
-    border-color: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink : tile-focus.has-focus ? Theme.focus : Theme.control-border;
-    background: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft : tile-touch.has-hover && root.enabled ? Theme.hover : Theme.soft;
+    border-width: root.feedback == 1 ? 2px : root.enabled ? 1px : 0px;
+    border-color: root.feedback == 1 ? Theme.correct-ink : tile-focus.has-focus ? Theme.focus : Theme.control-border;
+    background: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft
+        : !root.enabled ? transparent : tile-touch.has-hover ? Theme.hover : Theme.soft;
+    animate background { duration: root.enabled ? 0ms : Theme.tint-duration; easing: ease-out; }
+    private property <color> label-ink: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink
+        : root.enabled ? Theme.ink : Theme.muted;
     accessible-role: button;
     accessible-label: root.option.label;
     accessible-enabled: root.enabled;
@@ -27,12 +48,12 @@ component AnswerTile inherits Rectangle {
         source: root.symbol;
         width: 24px; height: 24px;
         x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        colorize: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink : Theme.ink;
+        y: (parent.height - self.height) / 2 + root.correction-offset;
+        colorize: root.label-ink;
     }
     FormulaLabel {
         visible: !root.symbol-only;
-        x: 8px; y: 8px;
+        x: 8px; y: 8px + root.correction-offset;
         width: parent.width - 16px;
         height: parent.height - 16px;
         fallback: root.option.label;
@@ -41,8 +62,9 @@ component AnswerTile inherits Rectangle {
         formula-height: root.option.formula-height;
         texts: root.option.texts;
         font-size: 20px;
-        ink: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink : Theme.ink;
+        ink: root.label-ink;
     }
+    AnswerRipple { distance: 5px; progress: root.confirmation; }
     tile-focus := FocusScope {
         enabled: root.enabled;
         key-pressed(event) => {
@@ -59,6 +81,45 @@ component AnswerTile inherits Rectangle {
     }
 }
 
+component CardContentScroll inherits ScrollView {
+    in property <length> natural-height;
+    private property <length> scroll-range: max(0px, self.natural-height - self.visible-height);
+    horizontal-scrollbar-policy: always-off;
+    content-width: self.visible-width;
+    content-height: max(self.visible-height, self.natural-height);
+    changed scroll-range => {
+        // Keep content reachable when the card grows while scrolled.
+        if self.content-y < -self.scroll-range { self.content-y = -self.scroll-range; }
+    }
+
+    function scroll-by(distance: length) -> bool {
+        if self.scroll-range <= 0px { return false; }
+        self.content-y = clamp(self.content-y - distance, -self.scroll-range, 0px);
+        return true;
+    }
+
+    public function scroll-key(key: string, directional: bool) -> bool {
+        let page = max(24px, self.visible-height - 24px);
+        if key == Key.PageDown { return self.scroll-by(page); }
+        if key == Key.PageUp { return self.scroll-by(-page); }
+        if !directional { return false; }
+        if key == Key.DownArrow { return self.scroll-by(32px); }
+        if key == Key.UpArrow { return self.scroll-by(-32px); }
+        if key == Key.End { return self.scroll-by(self.scroll-range); }
+        if key == Key.Home { return self.scroll-by(-self.scroll-range); }
+        return false;
+    }
+
+    // The coordinates are relative to the visible viewport. For a tall range,
+    // prioritize its bottom so an error below an input can still be read.
+    public function reveal-region(top: length, bottom: length) {
+        let min-offset = bottom - self.content-y - self.visible-height;
+        let max-offset = max(min-offset, top - self.content-y);
+        let offset = clamp(-self.content-y, min-offset, max-offset);
+        self.content-y = -clamp(offset, 0px, self.scroll-range);
+    }
+}
+
 export component PracticeWindow inherits Window {
     in property <bool> dark-theme: true;
     in property <image> app-icon;
@@ -66,31 +127,102 @@ export component PracticeWindow inherits Window {
     title: @tr("Try · 练习");
     no-frame: true;
     always-on-top: true;
-    width: 320px;
+    in property <bool> resize-available;
+    in property <bool> card-locked;
+    in property <bool> resizing;
+    in property <length> card-width: 320px;
+    in property <length> card-height;
+    in property <length> min-card-width: 320px;
+    in property <length> min-card-height: 288px;
+    in property <length> max-card-width: 1280px;
+    in property <length> max-card-height: 900px;
+    private property <bool> fixed-size: !root.resize-available || root.card-locked;
+    out property <bool> move-enabled: card-move.enabled;
+    private property <length> target-width: clamp(root.card-width, root.min-card-width, root.max-card-width);
+    preferred-width: root.target-width;
+    min-width: root.fixed-size ? root.target-width : root.min-card-width;
+    max-width: root.fixed-size ? root.target-width : root.max-card-width;
+    resize-border-width: root.fixed-size || root.dismissing || root.context-menu-open ? 0px : 8px;
     in property <string> pack-tag;
     in property <bool> show-pack-tags: true;
+    in property <bool> show-practice-hints: true;
     in property <bool> tag-on-right;
     out property <bool> pack-tag-visible: root.show-pack-tags && root.pack-tag != "";
     private property <length> tag-space: root.pack-tag-visible ? 26px : 0px;
     out property <length> pack-tag-left: tag-badge.x;
     out property <length> pack-tag-width: tag-badge.width;
-    private property <length> picture-height: root.question-image-width > 0 ? min(220px, (root.width - 48px) * root.question-image-height / root.question-image-width) : 0px;
+    private property <length> content-column-width: clamp(root.width - 48px, 0px, 480px);
+    private property <length> content-column-left: (root.width - root.content-column-width) / 2;
+    private property <length> picture-height: root.question-image-width > 0 ? min(220px, root.content-column-width * root.question-image-height / root.question-image-width) : 0px;
     private property <length> practice-content-height: (root.has-prompt ? max(48px, practice-prompt.preferred-height) : 0px) + root.picture-height + (root.has-prompt && root.question-image-width > 0 ? 14px : 0px) + 20px + root.answer-row-height + root.answer-footer-height;
-    private property <length> knowledge-content-height: (root.has-prompt ? max(48px, knowledge-prompt.preferred-height) + 32px : 0px) + root.picture-height + (root.has-prompt && root.question-image-width > 0 ? 16px : 0px) + (root.standard-answer != "" ? 24px + max(32px, standard-label.preferred-height) : 0px);
+    private property <length> knowledge-content-height: (root.has-prompt ? max(48px, knowledge-prompt.preferred-height) + 32px : 0px) + root.picture-height + (root.has-prompt && root.question-image-width > 0 ? 16px : 0px) + (root.standard-answer != "" ? 24px + max(32px, knowledge-answer.preferred-height) : 0px);
     private property <length> practice-bottom-inset: root.feedback == 2 ? 36px : 18px;
-    private property <length> standard-answer-top: 34px;
-    private property <length> answer-footer-height: MathInputState.open && MathInputState.keypad-expanded ? root.structured-pad-height + 13px
-        : root.feedback == 2 ? max(64px, root.standard-answer-top + standard-label.preferred-height + 8px)
-        : max(64px, answer-error.preferred-height + 26px);
-    private property <length> desired-height: min(560px, max(230px,
-        root.knowledge-only ? root.knowledge-content-height + 64px
-            : root.practice-content-height + 24px + root.practice-bottom-inset) + root.tag-space);
-    height: root.desired-height;
-    // Native resize events assign height. Retain the content-derived target
-    // separately so a taller formula updates the window after expansion.
-    changed desired-height => { root.height = root.desired-height; }
+    private property <bool> corrected-input: root.feedback == 2 && root.answer-mode == 0;
+    private property <string> validation-message: root.feedback == 0
+        ? (MathInputState.open ? MathInputState.error : root.input-error) : "";
+    private property <length> validation-space: root.validation-message == "" ? 0px : answer-error.height + 8px;
+    // Keep the answer anchored while its confirmation expands on a bottom-docked card.
+    private property <length> answer-footer-height: MathInputState.open && MathInputState.keypad-expanded ? root.structured-pad-height + 13px + root.validation-space
+        : root.corrected-input ? attempt-line.height + 4px
+        : root.feedback == 2 ? 20px : max(36px, answer-error.preferred-height + 26px);
+    private property <length> desired-height: min(560px, (root.knowledge-only
+        ? max(230px, root.knowledge-content-height + 64px)
+        : max(200px, root.practice-content-height + 24px + root.practice-bottom-inset)) + root.tag-space);
+    private property <length> target-height: clamp(root.card-height > 0px ? root.card-height : root.desired-height, root.min-card-height, root.max-card-height);
+    preferred-height: root.target-height;
+    min-height: root.fixed-size ? root.target-height : root.min-card-height;
+    max-height: root.fixed-size ? root.target-height : root.max-card-height;
+    // Native resize events assign height. Follow content changes only when they
+    // would not compete with a drag or replace a manually chosen size.
+    changed target-height => { if !root.resizing { root.height = root.target-height; } }
     default-font-size: 18px;
-    background: root.feedback == 1 ? Theme.correct : root.feedback == 2 ? Theme.wrong : Theme.panel;
+    private property <color> card-color: root.feedback == 1 ? Theme.correct : root.feedback == 2 ? Theme.wrong : Theme.panel;
+    animate card-color { duration: root.feedback == 0 ? 0ms : Theme.tint-duration; easing: ease-out; }
+    background: root.card-color;
+
+    // The software renderer scales images. Capturing once keeps text, formulas
+    // and pictures together without resizing the native window or its layout.
+    out property <image> zoom-image;
+    private property <image> empty-image;
+    private property <duration> zoom-start;
+    private property <float> zoom-from;
+    out property <bool> dismissing;
+    private property <bool> zoom-active: root.zoom-image.width > 0;
+    private property <bool> spatial-motion: Theme.spatial-motion;
+    private property <duration> zoom-duration: root.dismissing ? 110ms : 170ms;
+    private property <float> zoom-time: root.zoom-active && root.spatial-motion
+        ? clamp((animation-tick() - root.zoom-start) / root.zoom-duration, 0, 1) : 1;
+    private property <float> zoom-curve: root.dismissing ? root.zoom-time * root.zoom-time
+        : 1 - (1 - root.zoom-time) * (1 - root.zoom-time) * (1 - root.zoom-time);
+    out property <float> frame-scale: root.zoom-active && root.spatial-motion
+        ? root.zoom-from + ((root.dismissing ? 0.94 : 1) - root.zoom-from) * root.zoom-curve : 1;
+    callback shape-frame(float);
+    callback dismiss-finished();
+    public function start-zoom(frame: image, closing: bool) {
+        root.zoom-from = root.zoom-active ? root.frame-scale : closing ? 1 : 0.94;
+        root.zoom-start = animation-tick();
+        root.dismissing = closing;
+        root.zoom-image = frame;
+        root.shape-frame(root.frame-scale);
+    }
+    public function interrupt-entrance() {
+        if !root.dismissing { root.zoom-image = root.empty-image; }
+    }
+    function finish-zoom() {
+        root.zoom-image = root.empty-image;
+        if root.dismissing { root.dismiss-finished(); }
+    }
+    changed frame-scale => { root.shape-frame(root.frame-scale); }
+    changed spatial-motion => {
+        if !root.spatial-motion {
+            root.card-ripple-armed = false;
+            if root.zoom-active { root.finish-zoom(); }
+        }
+    }
+    Timer {
+        running: root.zoom-active; interval: root.zoom-duration;
+        triggered => { root.finish-zoom(); }
+    }
 
     in property <string> prompt;
     in property <bool> has-prompt: true;
@@ -105,8 +237,8 @@ export component PracticeWindow inherits Window {
     in property <[NativeText]> prompt-texts;
     out property <length> prompt-natural-height: !root.has-prompt ? 0px : root.knowledge-only ? knowledge-prompt.preferred-height : practice-prompt.preferred-height;
     out property <length> prompt-area-height: root.knowledge-only ? knowledge-prompt.height : practice-prompt.height;
-    out property <length> answer-natural-height: standard-label.preferred-height;
-    out property <length> answer-area-height: standard-label.height;
+    out property <length> answer-natural-height: root.knowledge-only ? knowledge-answer.preferred-height : standard-label.preferred-height;
+    out property <length> answer-area-height: root.knowledge-only ? knowledge-answer.height : standard-label.height;
     out property <length> content-height: root.knowledge-only ? knowledge-scroll.content-height : practice-scroll.content-height;
     out property <length> visible-content-height: root.knowledge-only ? knowledge-scroll.visible-height : practice-scroll.visible-height;
     out property <length> content-scroll-y: root.knowledge-only ? knowledge-scroll.content-y : practice-scroll.content-y;
@@ -116,14 +248,51 @@ export component PracticeWindow inherits Window {
     in property <[NativeText]> answer-texts;
     out property <float> pixel-scale: 1px / 1phx;
     in property <int> feedback: 0;
+    private property <float> answer-reveal: 0;
+    private property <bool> card-ripple-armed;
+    // A correct answer leads its outward echo. A correction draws the eye back to the card.
+    private property <float> card-ripple-progress: root.card-ripple-armed && root.spatial-motion && !root.dismissing
+        ? (root.feedback == 2 ? root.answer-reveal : clamp((root.answer-reveal - 0.22) / 0.78, 0, 1)) : 1;
+    callback card-ripple-frame(float, color);
+    changed card-ripple-progress => {
+        let progress = root.card-ripple-progress;
+        let fade = min(1, progress / 0.13) * (1 - progress * progress);
+        if root.feedback == 2 {
+            root.card-ripple-frame(0.75 * (1 - progress), Theme.wrong-ink.with-alpha(0.46 * fade));
+        } else {
+            root.card-ripple-frame(progress, Theme.correct-ink.with-alpha(0.54 * fade));
+        }
+    }
+    changed feedback => {
+        root.card-ripple-armed = root.feedback != 0 && root.spatial-motion && !root.knowledge-only;
+        root.answer-reveal = root.feedback == 0 ? 0 : 1;
+    }
+    animate answer-reveal {
+        duration: root.feedback == 0 || Theme.tint-duration == 0ms ? 0ms : root.feedback == 1 ? 280ms : 175ms;
+        easing: ease-out;
+    }
+    private property <length> correction-offset: Theme.spatial-motion && root.feedback == 2
+        ? (1 - root.answer-reveal) * 6px : 0px;
     in property <int> answer-mode: 0;
     in property <bool> knowledge-only;
     in property <bool> awaiting-interaction;
+    private property <bool> accepts-text-answer: !root.knowledge-only && root.answer-mode == 0
+        && root.feedback == 0 && !root.awaiting-interaction && !root.dismissing && !root.context-menu-open;
+    private property <length> answer-top-in-viewport: answer-input.absolute-position.y - practice-scroll.absolute-position.y;
     in property <[AnswerOption]> options;
-    in property <float> option-formula-height;
     in property <int> selected-option: -1;
-    private property <length> answer-row-height: MathInputState.open ? max(64px, min(112px, MathInputState.formula.content-height * 1px + 20px)) : root.answer-mode == 0 ? max(48px, min(144px, root.input-preview.formula-height * 1px + 20px)) : max(48px, root.option-formula-height * 1px + 16px);
+    in property <int> correct-option: -1;
+    private property <length> column-width: (root.content-column-width - 8px * (root.options.length - 1)) / max(1, root.options.length);
+    out property <bool> stacked-options: root.answer-mode == 1 && option-widths.preferred-width + 16px > root.column-width;
+    private property <length> option-width: root.stacked-options ? root.content-column-width : root.column-width;
+    private property <length> option-height: max(48px, option-heights.preferred-height + 16px);
+    out property <length> answer-row-height: root.corrected-input ? max(48px, standard-label.preferred-height + 12px)
+        : root.feedback == 1 && root.answer-mode == 0 ? max(48px, accepted-label.preferred-height + 16px)
+        : MathInputState.open ? max(64px, min(112px, MathInputState.formula.content-height * 1px + 20px))
+        : root.answer-mode == 0 ? max(48px, min(144px, root.input-preview.formula-height * 1px + 20px))
+        : root.stacked-options ? root.option-height * root.options.length + 6px * (root.options.length - 1) : root.option-height;
     in-out property <string> answer-text;
+    in property <bool> formula-input-allowed: true;
     in property <AnswerOption> input-preview;
     in property <FormulaPosition> answer-position;
     out property <bool> input-math-mode: MathInputState.open;
@@ -154,8 +323,13 @@ export component PracticeWindow inherits Window {
     out property <length> context-menu-width: card-menu.menu-width;
     out property <length> context-menu-height: card-menu.menu-height;
     public function open-context-menu(x: length, y: length) {
+        root.show-context-menu(x, y, false);
+    }
+    function show-context-menu(x: length, y: length, animated: bool) {
+        if root.dismissing { return; }
+        root.interrupt-entrance();
         root.problem-record-status = ProblemRecordStatus.idle; root.problem-record-error = "";
-        card-menu.open(x, y);
+        card-menu.open(x, y, animated);
     }
     callback rasterize-formulas(float);
     changed pixel-scale => { root.rasterize-formulas(root.pixel-scale); MathInputState.refresh-view(); }
@@ -165,16 +339,84 @@ export component PracticeWindow inherits Window {
         else if root.answer-mode == 0 && !root.knowledge-only && root.feedback == 0 { answer-input.focus(); }
         else { card-focus.focus(); }
     }
+    public function focus-practice() {
+        // Focusing TextInput can scroll away from the cue. Keep the reading
+        // position while giving the native input method a real text target.
+        let position = practice-scroll.content-y;
+        root.focus-answer();
+        practice-scroll.content-y = position;
+    }
+    public function resume-answer-input() {
+        if !root.accepts-text-answer { return; }
+        let viewport-height = practice-scroll.visible-height;
+        let answer-top = root.answer-top-in-viewport - practice-scroll.content-y;
+        let visible-answer-height = min(viewport-height, answer-input.height);
+        let offset = clamp(-practice-scroll.content-y, answer-top + visible-answer-height - viewport-height, answer-top);
+        practice-scroll.content-y = -clamp(offset, 0px, max(0px, practice-scroll.content-height - viewport-height));
+        answer-input.focus();
+    }
+    public function prepare-card-shortcut() {
+        if root.accepts-text-answer && (root.answer-top-in-viewport < 0px
+            || root.answer-top-in-viewport + answer-input.height > practice-scroll.visible-height)
+        {
+            card-focus.focus();
+        }
+    }
+    function check-answer() {
+        root.submit-answer(root.answer-text);
+        if root.validation-message != "" {
+            let bottom = answer-error.absolute-position.y + answer-error.height + 4px - practice-scroll.absolute-position.y;
+            practice-scroll.reveal-region(root.answer-top-in-viewport, bottom);
+            if !answer-input.has-focus { root.focus-answer(); }
+        }
+    }
     init => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
     changed dark-theme => { Theme.dark = root.dark-theme; Palette.color-scheme = root.dark-theme ? ColorScheme.dark : ColorScheme.light; }
     tag-measure := Text { visible: false; text: root.pack-tag; font-size: 11px; }
+    input-measure := Text { visible: false; text: root.answer-text; font-size: root.corrected-input ? 15px : 22px; }
+    option-widths := VerticalLayout {
+        // These measurements must not contribute to the window's own size.
+        x: 0px; visible: false;
+        for option in root.options : Text {
+            text: option.formula-width > 0 ? "" : option.label; font-size: 20px;
+            min-width: option.formula-width * 1px;
+        }
+    }
+    option-heights := HorizontalLayout {
+        x: 0px; visible: false;
+        for option in root.options : FormulaLabel {
+            width: root.option-width - 16px; font-size: 20px; fallback: option.label;
+            formula-width: option.formula-width; formula-height: option.formula-height;
+        }
+    }
+    // The mounted live region can announce a result without adding a status line.
+    Rectangle {
+        width: 1px; height: 1px;
+        accessible-role: text; accessible-live-region: polite;
+        accessible-label: root.feedback == 1 ? @tr("答对了") : root.feedback == 2
+            ? @tr("正确答案") + " · " + (root.answer-mode == 2 && root.correct-option >= 0
+                ? root.options[root.correct-option].label : root.standard-answer) : "";
+    }
     card-focus := FocusScope {
         capture-key-pressed(event) => {
+            if root.dismissing { return accept; }
             if event.text == Key.Menu || (event.text == Key.F10 && event.modifiers.shift) { root.open-context-menu(root.width - 24px, 24px); return accept; }
             if event.text == Key.Escape && MathInputState.open { MathInputState.dismiss(); return accept; }
             if event.text == Key.Escape && root.feedback == 2 { return accept; }
             if event.text == Key.Escape || ((root.feedback != 0 || root.knowledge-only) && event.text == Key.Return) {
                 root.dismiss(); return accept;
+            }
+            root.interrupt-entrance();
+            if !event.modifiers.control && !event.modifiers.meta && !event.modifiers.alt && !event.modifiers.shift {
+                if root.knowledge-only {
+                    if knowledge-scroll.scroll-key(event.text, true) { return accept; }
+                } else {
+                    let input-focused = answer-input.has-focus;
+                    if practice-scroll.scroll-key(event.text, root.answer-mode != 0 || root.feedback != 0) {
+                        if input-focused { root.prepare-card-shortcut(); }
+                        return accept;
+                    }
+                }
             }
             if !root.knowledge-only && root.answer-mode != 0 && root.feedback == 0 {
                 if event.text == "1" { root.choose-answer(0); return accept; }
@@ -183,32 +425,37 @@ export component PracticeWindow inherits Window {
             }
             return reject;
         }
+        key-pressed(event) => {
+            // Let an already focused control handle Enter before falling back to the answer.
+            if event.text == Key.Return && root.accepts-text-answer {
+                root.check-answer();
+                return accept;
+            }
+            return reject;
+        }
         TouchArea {
             pointer-event(event) => {
-                if event.button == PointerEventButton.right && event.kind == PointerEventKind.up { root.open-context-menu(self.mouse-x, self.mouse-y); }
+                if event.button == PointerEventButton.right && event.kind == PointerEventKind.up { root.show-context-menu(self.mouse-x, self.mouse-y, true); }
             }
         }
-        WindowMoveArea { }
+        card-move := WindowMoveArea {
+            enabled: !root.card-locked && !root.dismissing && !root.context-menu-open;
+        }
         tag-badge := Rectangle {
             visible: root.pack-tag-visible;
             x: root.tag-on-right ? root.width - self.width - 24px : 24px;
-            y: 16px; width: min(138px, tag-measure.preferred-width + 18px); height: 21px;
-            border-radius: 5px; border-width: 1px;
-            background: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft : Theme.soft;
-            border-color: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft : Theme.border;
-            Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.pack-tag; color: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 ? Theme.wrong-ink : Theme.muted; font-size: 11px; overflow: elide; vertical-alignment: center; }
+            y: 16px; width: min(138px, tag-measure.preferred-width); height: 21px;
+            Text { width: parent.width; height: parent.height; text: root.pack-tag; color: Theme.muted; font-size: 11px; overflow: elide; vertical-alignment: center; }
             Tooltip { text: @markdown("\{root.pack-tag}"); }
         }
-        knowledge-scroll := ScrollView {
+        knowledge-scroll := CardContentScroll {
             visible: root.knowledge-only;
             x: 24px; y: 24px + root.tag-space;
             width: parent.width - 36px; height: parent.height - 64px - root.tag-space;
-            horizontal-scrollbar-policy: always-off;
-            content-width: self.visible-width;
-            content-height: max(self.visible-height, root.knowledge-content-height);
+            natural-height: root.knowledge-content-height;
             VerticalLayout {
-                x: 0px; y: 0px;
-                width: root.width - 48px;
+                x: root.content-column-left - knowledge-scroll.x; y: 0px;
+                width: root.content-column-width;
                 height: knowledge-scroll.content-height;
                 spacing: 0px;
                 Rectangle { min-height: root.has-prompt ? 16px : 0px; vertical-stretch: 1; background: transparent; }
@@ -224,34 +471,40 @@ export component PracticeWindow inherits Window {
                 if root.has-prompt && root.question-image-width > 0 : Rectangle { height: 16px; background: transparent; }
                 if root.question-image-width > 0 : QuestionPicture {
                     picture: root.question-image; picture-width: root.question-image-width; picture-height: root.question-image-height;
+                    fit-frame: true;
                     vertical-stretch: 0;
                     activated => { root.preview-question-image(); }
                 }
                 if root.standard-answer != "" : Rectangle { height: 24px; background: transparent; }
-                if root.standard-answer != "" : FormulaLabel {
+                knowledge-answer := FormulaLabel {
+                    visible: root.standard-answer != "";
                     fallback: root.standard-answer; formula: root.answer-formula;
                     formula-width: root.answer-formula-width; formula-height: root.answer-formula-height;
-                    texts: root.answer-texts; font-size: 20px; min-height: 32px; vertical-stretch: 0;
+                    texts: root.answer-texts; font-size: 20px; vertical-stretch: 0;
+                    min-height: self.visible ? 32px : 0px;
+                    max-height: self.visible ? max(32px, self.preferred-height) : 0px;
                 }
                 Rectangle { min-height: root.has-prompt ? 16px : 0px; vertical-stretch: 1; background: transparent; }
             }
         }
         if root.knowledge-only : Text {
             x: 24px; y: parent.height - 24px; width: parent.width - 48px; height: 14px;
-            text: @tr("知识展示 · 无需作答"); color: Theme.muted; font-size: 10px;
+            text: @tr("知识展示"); color: Theme.muted; font-size: 11px;
             horizontal-alignment: center; vertical-alignment: center;
         }
-        practice-scroll := ScrollView {
+        practice-scroll := CardContentScroll {
             visible: !root.knowledge-only;
-            x: 24px; y: 24px + root.tag-space;
-            width: parent.width - 36px; height: parent.height - self.y - root.practice-bottom-inset;
-            horizontal-scrollbar-policy: always-off;
-            content-width: self.visible-width;
-            content-height: max(self.visible-height, root.practice-content-height);
+            // Keep painting room on both sides of the 24px content inset.
+            x: 12px; y: 24px + root.tag-space;
+            width: parent.width - 24px; height: parent.height - self.y - root.practice-bottom-inset;
+            natural-height: root.practice-content-height;
             VerticalLayout {
-                x: 0px; y: 0px;
-                width: root.width - 48px;
-                height: practice-scroll.content-height;
+                x: root.content-column-left - practice-scroll.x;
+                // Keep the compact spacing and use extra height above and
+                // below the whole answer group when it fits.
+                y: max(0px, practice-scroll.visible-height - root.practice-content-height - 12px) * 0.46;
+                width: root.content-column-width;
+                height: root.practice-content-height;
                 spacing: 0px;
                 practice-prompt := FormulaLabel {
                     visible: root.has-prompt;
@@ -268,6 +521,7 @@ export component PracticeWindow inherits Window {
                 if root.has-prompt && root.question-image-width > 0 : Rectangle { height: 14px; vertical-stretch: 0; background: transparent; }
                 if root.question-image-width > 0 : QuestionPicture {
                     picture: root.question-image; picture-width: root.question-image-width; picture-height: root.question-image-height;
+                    fit-frame: true;
                     vertical-stretch: 0;
                     activated => { root.preview-question-image(); }
                 }
@@ -278,15 +532,21 @@ export component PracticeWindow inherits Window {
                     Rectangle {
                         visible: root.answer-mode == 0;
                         width: parent.width; height: parent.height;
-                        background: root.feedback == 1 ? Theme.correct-soft : root.feedback == 2 ? Theme.wrong-soft : Theme.soft;
+                        background: root.feedback == 0 ? Theme.soft : transparent;
                         border-radius: 7px;
-                        border-width: root.feedback == 0 ? 1px : 2px;
-                        border-color: root.feedback == 1 ? Theme.correct-ink : root.feedback == 2 || root.input-error != "" ? Theme.wrong-ink : answer-input.has-focus || MathInputState.open ? Theme.focus : Theme.control-border;
-                        accessible-role: text-input;
-                        accessible-label: @tr("你的答案");
+                        border-width: root.feedback == 0 ? 1px : 0px;
+                        border-color: root.validation-message != "" ? Theme.wrong-ink : answer-input.has-focus || MathInputState.open ? Theme.focus : Theme.control-border;
+                        TouchArea {
+                            enabled: root.feedback == 0;
+                            mouse-cursor: text;
+                            clicked => { answer-input.focus(); }
+                        }
                         answer-input := StructuredMathSurface {
+                            accessible-role: text-input;
+                            accessible-label: @tr("你的答案");
                             visible: root.feedback == 0;
-                            x: 0px; y: 0px; width: parent.width - 42px; height: parent.height;
+                            x: MathInputState.open || !root.formula-input-allowed ? 0px : clamp(parent.width - 66px - input-measure.preferred-width, 0px, 42px);
+                            width: parent.width - self.x - (root.formula-input-allowed ? 42px : 0px); height: parent.height;
                             framed: false;
                             structured: MathInputState.open;
                             enabled: root.feedback == 0;
@@ -297,22 +557,31 @@ export component PracticeWindow inherits Window {
                             plain-edited(value) => { root.answer-edited(value); }
                             plain-position-changed(value, anchor, caret) => { root.answer-position-changed(value, anchor, caret); }
                             plain-command(value) => { root.input-command(value); }
-                            submitted => { root.submit-answer(root.answer-text); }
+                            submitted => { root.check-answer(); }
                         }
-                        if root.feedback != 0 : FormulaLabel {
+                        accepted-label := FormulaLabel {
+                            visible: root.feedback == 1;
                             x: 12px; y: 8px; width: parent.width - 24px; height: parent.height - 16px;
                             fallback: root.answer-text; formula: root.input-preview.formula;
                             formula-width: root.input-preview.formula-width; formula-height: root.input-preview.formula-height;
                             texts: root.input-preview.texts; font-size: 22px;
-                            ink: root.feedback == 1 ? Theme.correct-ink : Theme.wrong-ink;
-                            formula-tint: root.feedback == 1 ? Theme.correct-ink : Theme.wrong-ink;
+                            ink: Theme.correct-ink;
+                        }
+                        if root.feedback == 1 : AnswerRipple { progress: root.answer-reveal; }
+                        standard-label := FormulaLabel {
+                            visible: root.corrected-input;
+                            y: 6px + root.correction-offset; width: parent.width; height: parent.height - 12px;
+                            opacity: Theme.tint-duration > 0ms ? 0.76 + 0.24 * root.answer-reveal : 1;
+                            fallback: root.standard-answer; formula: root.answer-formula;
+                            formula-width: root.answer-formula-width; formula-height: root.answer-formula-height;
+                            texts: root.answer-texts; font-size: 22px;
                         }
                         formula-toggle := ToolButton {
-                            visible: root.feedback == 0;
+                            visible: root.feedback == 0 && root.formula-input-allowed;
                             x: parent.width - 38px; y: (parent.height - 32px) / 2;
                             width: 32px; height: 32px;
                             label: "ƒ"; name: MathInputState.open && MathInputState.keypad-expanded ? @tr("收起公式输入") : @tr("公式输入");
-                            enabled: root.feedback == 0;
+                            enabled: self.visible;
                             activated => {
                                 if MathInputState.open {
                                     MathInputState.keypad-expanded = !MathInputState.keypad-expanded;
@@ -321,16 +590,21 @@ export component PracticeWindow inherits Window {
                             }
                         }
                     }
-                    HorizontalLayout {
+                    Rectangle {
                         visible: root.answer-mode != 0;
                         width: parent.width; height: parent.height;
-                        spacing: 8px;
                         for option[index] in root.options : AnswerTile {
+                            x: root.stacked-options ? 0px : index * (root.option-width + 8px);
+                            y: root.stacked-options ? index * (root.option-height + 6px) : 0px;
+                            width: root.option-width; height: root.option-height;
                             option: option;
                             symbol-only: root.answer-mode == 2;
                             symbol: index == 0 ? @image-url("../assets/check_mark.svg") : @image-url("../assets/cross_mark.svg");
                             enabled: root.feedback == 0;
-                            feedback: root.selected-option == index ? root.feedback : 0;
+                            feedback: root.selected-option == index ? root.feedback
+                                : root.feedback == 2 && root.correct-option == index ? 1 : 0;
+                            confirmation: root.feedback == 1 && root.selected-option == index ? root.answer-reveal : 1;
+                            correction-offset: root.correct-option == index ? root.correction-offset : 0px;
                             activated => { root.choose-answer(index); }
                         }
                     }
@@ -341,67 +615,80 @@ export component PracticeWindow inherits Window {
                     background: transparent;
                     if MathInputState.open : StructuredMathPad {
                         visible: MathInputState.keypad-expanded;
-                        x: 0px; y: 13px; width: parent.width;
+                        x: 0px; y: 13px + root.validation-space; width: parent.width;
                         changed natural-height => { root.structured-pad-height = self.natural-height; }
                         init => { root.structured-pad-height = self.natural-height; }
                     }
                     answer-error := Text {
                         visible: self.text != "";
                         x: 0px; y: 13px; width: parent.width; height: self.preferred-height;
-                        text: root.feedback != 0 || (MathInputState.open && MathInputState.keypad-expanded) ? ""
-                            : MathInputState.open ? MathInputState.error : root.input-error;
+                        text: root.validation-message;
                         color: Theme.wrong-ink; font-size: 12px; wrap: word-wrap;
                         accessible-role: text; accessible-label: self.text; accessible-live-region: polite;
                     }
                     Text {
-                        visible: root.feedback == 0 && answer-error.text == "" && !(MathInputState.open && MathInputState.keypad-expanded);
+                        visible: root.show-practice-hints && root.feedback == 0 && answer-error.text == "" && !(MathInputState.open && MathInputState.keypad-expanded);
                         y: 13px; width: parent.width; height: 18px;
                         text: root.awaiting-interaction ? @tr("点击题板后作答")
-                            : root.answer-mode == 0 ? @tr("按 Enter 核对答案")
-                            : root.answer-mode == 1 ? @tr("按 1、2、3 选择答案")
-                            : @tr("1 选正确，2 选不正确");
+                            : root.answer-mode == 0 ? @tr("Enter 核对")
+                            : root.answer-mode == 1 ? @tr("按 1–3 选择")
+                            : @tr("1 正确 · 2 不正确");
                         color: Theme.muted; font-size: 12px;
                         horizontal-alignment: center; vertical-alignment: center;
                     }
-                    Text {
-                        visible: root.feedback != 0;
-                        y: 12px; width: parent.width; height: 18px;
-                        text: root.feedback == 1 ? @tr("答对了") : @tr("正确答案");
-                        font-size: 13px; font-weight: 600;
-                        color: root.feedback == 1 ? Theme.correct-ink : Theme.wrong-ink;
-                        horizontal-alignment: center; vertical-alignment: center;
-                        accessible-role: text;
-                        accessible-label: root.feedback == 2 ? self.text + " · " + root.standard-answer : self.text;
-                        accessible-live-region: polite;
-                    }
-                    standard-label := FormulaLabel {
-                        visible: root.feedback == 2;
-                        x: 0px; y: root.standard-answer-top;
-                        width: parent.width;
-                        height: parent.height - self.y - 8px;
-                        fallback: root.standard-answer;
-                        formula: root.answer-formula;
-                        formula-width: root.answer-formula-width;
-                        formula-height: root.answer-formula-height;
-                        texts: root.answer-texts;
-                        font-size: 20px;
-                        ink: Theme.wrong-ink;
+                    attempt-line := HorizontalLayout {
+                        visible: root.corrected-input;
+                        width: parent.width; height: max(20px, attempt.preferred-height);
+                        alignment: center; spacing: 8px;
+                        prefix := Text {
+                            text: @tr("你的答案"); color: Theme.muted; font-size: 12px;
+                            vertical-alignment: root.input-preview.formula-width == 0 && attempt.preferred-height > 24px ? top : center;
+                        }
+                        attempt := FormulaLabel {
+                            width: min(answer-footer.width - prefix.preferred-width - 8px,
+                                root.input-preview.formula-width > 0 ? root.input-preview.formula-width * 0.8px : input-measure.preferred-width);
+                            fallback: root.answer-text; formula: root.input-preview.formula;
+                            formula-width: root.input-preview.formula-width; formula-height: root.input-preview.formula-height;
+                            texts: root.input-preview.texts; font-size: 15px; max-scale: 0.8;
+                            ink: Theme.muted; align-left: true;
+                        }
                     }
                 }
             }
         }
         if !root.knowledge-only && root.feedback == 2 : Text {
+            visible: root.show-practice-hints;
             x: 24px; y: parent.height - 28px; width: parent.width - 48px; height: 16px;
-            text: @tr("按 Enter 确认"); color: Theme.wrong-ink; font-size: 12px;
+            text: @tr("Enter 收起"); color: Theme.muted; font-size: 12px;
             horizontal-alignment: center; vertical-alignment: center;
         }
+        if !root.knowledge-only && root.feedback == 2 : IconButton {
+            x: parent.width - 42px; y: parent.height - 35px;
+            width: 32px; height: 30px;
+            glyph: @image-url("../assets/cross_mark.svg"); glyph-size: 14px;
+            label: @tr("收起练习卡"); ink: Theme.muted; borderless: true;
+            enabled: !root.dismissing;
+            activated => { root.dismiss(); }
+        }
+    }
+    if WindowFrame.enabled && !root.zoom-active : Rectangle {
+        width: root.width; height: root.height; border-radius: 16px;
+        border-width: 1phx;
+        border-color: root.feedback == 1 ? Theme.correct-ink.with-alpha(0.45)
+            : root.feedback == 2 ? Theme.wrong-ink.with-alpha(0.45) : Theme.window-border;
     }
     card-menu := PracticeMenu {
         viewport-width: root.width; viewport-height: root.height;
+        card-locked: root.card-locked;
         problem-record-status: root.problem-record-status;
         problem-record-error: root.problem-record-error;
         state-changed(opened) => { root.context-menu-changed(opened); }
         activated(action, minutes) => { root.practice-action(action, minutes); }
-        cancelled => { root.focus-answer(); }
+        cancelled => { root.focus-practice(); }
+    }
+    if root.zoom-active : Image {
+        x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+        width: parent.width * root.frame-scale; height: parent.height * root.frame-scale;
+        source: root.zoom-image; image-fit: fill;
     }
 }

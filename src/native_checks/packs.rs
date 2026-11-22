@@ -21,11 +21,14 @@ fn click_matrix(main: &MainWindow, row: Option<usize>, mode: usize) {
         main.get_matrix_area_left() + main.get_matrix_area_width()
             - 32.0
             - main.get_matrix_mode_width() / 2.0,
-        row.map_or(main.get_matrix_area_top() + 60.0, |row| {
-            main.get_question_area_top()
-                + (0..row).map(|i| matrix_row_height(main, i)).sum::<f32>()
-                + matrix_row_height(main, row) / 2.0
-        }),
+        row.map_or(
+            (main.get_matrix_area_top() + main.get_question_area_top()) / 2.0,
+            |row| {
+                main.get_question_area_top()
+                    + (0..row).map(|i| matrix_row_height(main, i)).sum::<f32>()
+                    + matrix_row_height(main, row) / 2.0
+            },
+        ),
     );
     main.window()
         .dispatch_event(WindowEvent::PointerMoved { position });
@@ -172,7 +175,7 @@ fn management_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 }
                 3 => {
                     let card = practice_window(app);
-                    check_floating_window(card.window());
+                    check_floating_window(&card);
                     assert_eq!(card.get_prompt(), "犹豫的英文动词？");
                     assert_eq!(card.get_feedback(), 0);
                     assert_eq!(
@@ -382,7 +385,7 @@ fn management_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 }
                 11 => {
                     let card = practice_window(app);
-                    check_floating_window(card.window());
+                    check_floating_window(&card);
                     check_no_caption_paint(card.window());
                     assert!(card.get_knowledge_only());
                     assert_eq!(card.get_prompt(), "尝试的英文？");
@@ -1284,7 +1287,7 @@ fn multi_pack_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 }
                 5 => {
                     let card = practice_window(app);
-                    check_floating_window(card.window());
+                    check_floating_window(&card);
                     let saved = app.store.load().unwrap();
                     {
                         let practice = app.practice.borrow();

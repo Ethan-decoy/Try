@@ -214,18 +214,24 @@ fn key(window: &slint::Window, text: slint::SharedString) {
 }
 
 fn click_option(window: &PracticeWindow, index: usize) {
-    let size = window
-        .window()
-        .size()
-        .to_logical(window.window().scale_factor());
     let count = window.get_options().row_count() as f32;
-    let width = (size.width - 48.0 - 8.0 * (count - 1.0)) / count;
-    let row_height = (window.get_option_formula_height() + 16.0).max(48.0);
-    let footer_height = (window.get_answer_formula_height() + 13.0).max(64.0);
-    let position = slint::LogicalPosition::new(
-        24.0 + width / 2.0 + index as f32 * (width + 8.0),
-        size.height - 18.0 - footer_height - row_height / 2.0,
-    );
+    let width = window.get_answer_footer_width();
+    let height = window.get_answer_row_height();
+    let left = window.get_answer_footer_left();
+    let top = window.get_answer_footer_top() - height;
+    let position = if window.get_stacked_options() {
+        let tile = (height - 6.0 * (count - 1.0)) / count;
+        slint::LogicalPosition::new(
+            left + width / 2.0,
+            top + (tile + 6.0) * index as f32 + tile / 2.0,
+        )
+    } else {
+        let tile = (width - 8.0 * (count - 1.0)) / count;
+        slint::LogicalPosition::new(
+            left + (tile + 8.0) * index as f32 + tile / 2.0,
+            top + height / 2.0,
+        )
+    };
     window
         .window()
         .dispatch_event(WindowEvent::PointerMoved { position });

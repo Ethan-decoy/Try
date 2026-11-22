@@ -56,28 +56,32 @@ public static class TryPackageIcon {
 if (-not [TryPackageIcon]::HasLogo($taskExecutable)) { throw 'try.exe has no embedded Try Logo; Explorer will use its default program icon.' }
 
 Add-Type -AssemblyName System.Drawing
-$taskSvg = [xml](Get-Content -LiteralPath (Join-Path $taskProjectRoot 'assets/logo.svg') -Raw)
-function Measure-TryLogoBitmap($Bitmap, [string]$Context) {
+$taskSvg = [xml](Get-Content -LiteralPath (Join-Path $taskProjectRoot 'assets/app_icon.svg') -Raw)
+$taskBadgeColor = [Drawing.ColorTranslator]::FromHtml($taskSvg.svg.rect.fill)
+function Measure-TryIconBitmap($Bitmap, [string]$Context) {
     $taskOpaquePixels = 0
     $taskFillPixels = 0
-    $taskOutlinePixels = 0
+    $taskBadgePixels = 0
     for ($taskY = 0; $taskY -lt $Bitmap.Height; $taskY++) {
         for ($taskX = 0; $taskX -lt $Bitmap.Width; $taskX++) {
             $taskPixel = $Bitmap.GetPixel($taskX, $taskY)
-            $taskOnWhite = $taskPixel.R * $taskPixel.A / 255.0 + 255 - $taskPixel.A
-            if ($taskPixel.A -ge 64 -and $taskOnWhite -le 192) { $taskOutlinePixels++ }
             if ($taskPixel.A -eq 255) {
                 $taskOpaquePixels++
-                if ([Math]::Abs($taskPixel.R - $taskPixel.G) -gt 1 -or [Math]::Abs($taskPixel.G - $taskPixel.B) -gt 1) { throw "The Logo has an unexpected color: $Context" }
-                if ($taskPixel.R -ge 224) { $taskFillPixels++ }
+                if ($taskPixel.R -ge 224 -and $taskPixel.G -ge 224 -and $taskPixel.B -ge 224) { $taskFillPixels++ }
+                if ([Math]::Abs($taskPixel.R - $taskBadgeColor.R) -le 4 -and
+                    [Math]::Abs($taskPixel.G - $taskBadgeColor.G) -le 4 -and
+                    [Math]::Abs($taskPixel.B - $taskBadgeColor.B) -le 4) { $taskBadgePixels++ }
             }
         }
     }
     foreach ($taskCorner in @(@(0,0), @(($Bitmap.Width - 1),0), @(0,($Bitmap.Height - 1)), @(($Bitmap.Width - 1),($Bitmap.Height - 1)))) {
-        if ($Bitmap.GetPixel($taskCorner[0], $taskCorner[1]).A -ne 0) { throw "The Logo background is not transparent: $Context" }
+        if ($Bitmap.GetPixel($taskCorner[0], $taskCorner[1]).A -ne 0) { throw "The icon needs transparent pixels outside its rounded corners: $Context" }
     }
-    if ($taskFillPixels -eq 0 -or $taskOutlinePixels -eq 0) { throw "The Logo needs both its white fill and dark outline: $Context" }
-    return [pscustomobject]@{ opaque_pixels=$taskOpaquePixels; fill_pixels=$taskFillPixels; outline_pixels=$taskOutlinePixels }
+    # The dark face covers a broad area even at the smallest Shell icon size.
+    if ($taskFillPixels -eq 0 -or $taskBadgePixels -lt ($Bitmap.Width * $Bitmap.Height / 4.0)) {
+        throw "The icon needs both its white mark and dark badge: $Context"
+    }
+    return [pscustomobject]@{ opaque_pixels=$taskOpaquePixels; fill_pixels=$taskFillPixels; badge_pixels=$taskBadgePixels }
 }
 $taskHandles = [TryPackageIcon]::Extract($taskExecutable)
 $taskOpaque = 0
@@ -85,7 +89,7 @@ try {
     $taskIcon = [Drawing.Icon]::FromHandle($taskHandles[0])
     $taskBitmap = $taskIcon.ToBitmap()
     try {
-        $taskIconPixels = Measure-TryLogoBitmap $taskBitmap $taskExecutable
+        $taskIconPixels = Measure-TryIconBitmap $taskBitmap $taskExecutable
         $taskOpaque = $taskIconPixels.opaque_pixels
     } finally { $taskBitmap.Dispose(); $taskIcon.Dispose() }
 } finally {
@@ -119,11 +123,11 @@ foreach ($taskShortcutPath in $taskShortcutPaths) {
         $taskIcon = [Drawing.Icon]::FromHandle($taskHandle)
         $taskBitmap = $taskIcon.ToBitmap()
         try {
-            $taskCachedPixels = Measure-TryLogoBitmap $taskBitmap $taskShortcutPath
+            $taskCachedPixels = Measure-TryIconBitmap $taskBitmap $taskShortcutPath
             $taskCachedOpaque = $taskCachedPixels.opaque_pixels
             if ($taskCachedOpaque -eq 0) { throw "The cached shortcut icon is empty: $taskShortcutPath" }
-            $taskCachedIcons += [pscustomobject]@{ shortcut = $taskShortcutPath; size = $taskBitmap.Width; opaque_pixels = $taskCachedOpaque; fill_pixels = $taskCachedPixels.fill_pixels; outline_pixels = $taskCachedPixels.outline_pixels }
+            $taskCachedIcons += [pscustomobject]@{ shortcut = $taskShortcutPath; size = $taskBitmap.Width; opaque_pixels = $taskCachedOpaque; fill_pixels = $taskCachedPixels.fill_pixels; badge_pixels = $taskCachedPixels.badge_pixels }
         } finally { $taskBitmap.Dispose(); $taskIcon.Dispose() }
     } finally { [TryPackageIcon]::DestroyIcon($taskHandle) | Out-Null }
 }
-[pscustomobject]@{ executable = $taskExecutable; version = $taskInfo.version; built_at = $taskInfo.built_at; packaged_at = $taskInfo.packaged_at; shortcut_icon_updated_at = $taskInfo.shortcut_icon_updated_at; logo_color = $taskSvg.svg.path.fill; logo_outline_color = $taskSvg.svg.path.stroke; icon_opaque_pixels = $taskOpaque; icon_fill_pixels = $taskIconPixels.fill_pixels; icon_outline_pixels = $taskIconPixels.outline_pixels; cached_shortcut_icons = $taskCachedIcons; sha256 = $taskHash } | ConvertTo-Json -Depth 4
+[pscustomobject]@{ executable = $taskExecutable; version = $taskInfo.version; built_at = $taskInfo.built_at; packaged_at = $taskInfo.packaged_at; shortcut_icon_updated_at = $taskInfo.shortcut_icon_updated_at; logo_color = $taskSvg.svg.g.path.fill; logo_outline_color = $taskSvg.svg.g.path.stroke; icon_badge_color = $taskSvg.svg.rect.fill; icon_opaque_pixels = $taskOpaque; icon_fill_pixels = $taskIconPixels.fill_pixels; icon_badge_pixels = $taskIconPixels.badge_pixels; cached_shortcut_icons = $taskCachedIcons; sha256 = $taskHash } | ConvertTo-Json -Depth 4

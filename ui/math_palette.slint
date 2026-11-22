@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { EntranceMotion } from "controls.slint";
 export struct MathTool {
     name: string,
     command: string,
@@ -46,7 +47,9 @@ export component MathPalette inherits Rectangle {
         height: ceil(root.tools.length / root.columns) * 36px + 12px;
         close-policy: close-on-click-outside;
         forward-focus: palette-focus;
+        opening := EntranceMotion { play-on-init: !root.keyboard-used; duration: 150ms; }
         Rectangle {
+            opacity: opening.alpha;
             background: Theme.soft; border-width: 1px; border-color: Theme.border; border-radius: 6px;
             palette-focus := FocusScope {
                 focus-changed-event => { root.expanded = self.has-focus; }

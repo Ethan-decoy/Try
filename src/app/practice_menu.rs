@@ -5,9 +5,9 @@ use crate::{PracticeAction, ProblemRecordStatus};
 impl App {
     pub(super) fn bind_practice_menu(self: &Rc<Self>, window: &PracticeWindow, id: u64) {
         let weak = Rc::downgrade(self);
-        window.on_context_menu_changed(move |opened| {
+        window.on_context_menu_changed(move |_| {
             if let Some(app) = weak.upgrade() {
-                app.hold_card_close_for_menu(id, opened);
+                app.update_card_close_hold(id);
             }
         });
         let weak = Rc::downgrade(self);
@@ -31,14 +31,7 @@ impl App {
                         library.set_card_enabled(&key.pack_id, &key.card_id, false)
                     });
                     if result.is_ok() {
-                        let current = app
-                            .practice
-                            .borrow()
-                            .as_ref()
-                            .is_some_and(|session| session.diagnostic_id == id);
-                        if current {
-                            app.close_practice();
-                        }
+                        app.dismiss_practice(id);
                     }
                     app.report(result, "");
                 }
@@ -50,6 +43,10 @@ impl App {
                 PracticeAction::CustomPause => {
                     let result = app.show_settings(true);
                     app.report(result, "");
+                }
+                PracticeAction::ToggleCardLock => {
+                    let locked = !app.library.borrow().settings.practice_card_locked;
+                    app.set_practice_card_locked(locked);
                 }
                 PracticeAction::RecordProblem => {
                     if let Some(context) = problem {

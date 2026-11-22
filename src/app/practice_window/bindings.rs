@@ -1,5 +1,46 @@
 //! Slint callbacks and native input dispatch for the current practice window.
 use super::*;
+use slint::winit_030::winit::event::{ElementState, Ime, KeyEvent};
+use slint::winit_030::winit::keyboard::{Key, ModifiersState, NamedKey};
+
+fn starts_answer_input(event: &WindowEvent, modifiers: ModifiersState) -> bool {
+    match event {
+        WindowEvent::KeyboardInput {
+            event,
+            is_synthetic: false,
+            ..
+        } if event.state == ElementState::Pressed => {
+            let paste = (modifiers.control_key() || modifiers.super_key())
+                && !modifiers.alt_key()
+                && matches!(&event.logical_key, Key::Character(key) if key.eq_ignore_ascii_case("v"));
+            let text = !modifiers.super_key()
+                && (!modifiers.control_key() || modifiers.alt_key())
+                && event
+                    .text
+                    .as_ref()
+                    .is_some_and(|text| text.chars().any(|character| !character.is_control()));
+            paste || text
+        }
+        WindowEvent::Ime(Ime::Preedit(text, _) | Ime::Commit(text)) => !text.is_empty(),
+        _ => false,
+    }
+}
+
+fn is_card_shortcut(event: &WindowEvent, modifiers: ModifiersState) -> bool {
+    let WindowEvent::KeyboardInput {
+        event,
+        is_synthetic: false,
+        ..
+    } = event
+    else {
+        return false;
+    };
+    event.state == ElementState::Pressed
+        && (matches!(
+            event.logical_key,
+            Key::Named(NamedKey::Escape | NamedKey::ContextMenu)
+        ) || (event.logical_key == Key::Named(NamedKey::F10) && modifiers.shift_key()))
+}
 
 impl App {
     pub(in crate::app) fn bind_practice_window(
@@ -38,9 +79,54 @@ impl App {
         let applied_theme = Cell::new(None);
         let floating = self.floating.clone();
         let pointer = Cell::new((0.0_f32, 0.0_f32));
+        let modifiers = Cell::new(ModifiersState::empty());
         let right_pressed = Cell::new(false);
+        let first_frame = Cell::new(true);
+        let shape_window = window.as_weak();
+        #[cfg(target_os = "windows")]
+        crate::floating_window::card_ripple::bind(window);
+        window.on_shape_frame(move |scale| {
+            if let Some(card) = shape_window.upgrade() {
+                FloatingWindow::set_frame_scale(card.window(), scale);
+            }
+        });
         window.window().on_winit_window_event(move |window, event| {
             crate::window_repaint::prepare(window, event);
+            if let WindowEvent::ModifiersChanged(state) = event {
+                modifiers.set(state.state());
+            }
+            if matches!(
+                event,
+                WindowEvent::KeyboardInput {
+                    is_synthetic: false,
+                    event: KeyEvent {
+                        state: ElementState::Pressed,
+                        ..
+                    },
+                    ..
+                } | WindowEvent::MouseInput { .. }
+                    | WindowEvent::MouseWheel { .. }
+                    | WindowEvent::Touch(_)
+                    | WindowEvent::Ime(Ime::Preedit(..) | Ime::Commit(_))
+            ) && let Some(card) = weak_window.upgrade()
+            {
+                if card.get_dismissing() {
+                    return EventResult::PreventDefault;
+                }
+                first_frame.set(false);
+                // The card handles keyboard dismissal before interrupting its
+                // entrance, so an early Escape can reverse from the current scale.
+                if !matches!(event, WindowEvent::KeyboardInput { .. }) {
+                    card.invoke_interrupt_entrance();
+                }
+                // Reveal the existing TextInput before Slint handles the
+                // original key or composition event, including its first character.
+                if starts_answer_input(event, modifiers.get()) {
+                    card.invoke_resume_answer_input();
+                } else if is_card_shortcut(event, modifiers.get()) {
+                    card.invoke_prepare_card_shortcut();
+                }
+            }
             if matches!(
                 event,
                 WindowEvent::Focused(true)
@@ -91,6 +177,14 @@ impl App {
                     &applied_theme,
                     matches!(event, WindowEvent::ThemeChanged(_)),
                 );
+                if matches!(event, WindowEvent::RedrawRequested)
+                    && reshape_ready.get()
+                    && first_frame.replace(false)
+                    && let Some(card) = weak_window.upgrade()
+                    && !card.get_dismissing()
+                {
+                    card.animate_visibility(false);
+                }
             }
             match event {
                 WindowEvent::Resized(size) => log::debug!(target: "try::app",
@@ -120,6 +214,9 @@ impl App {
                     | WindowEvent::Moved(_)
             ) {
                 let reshape = !matches!(event, WindowEvent::Moved(_));
+                let manual_resize = weak_window
+                    .upgrade()
+                    .is_some_and(|card| card.get_resizing());
                 let weak_window = weak_window.clone();
                 let ready = reshape_ready.clone();
                 let floating = floating.clone();
@@ -128,8 +225,8 @@ impl App {
                         return;
                     }
                     if let Some(window) = weak_window.upgrade() {
-                        if reshape {
-                            floating.reshape_and_clamp(window.window());
+                        if reshape && !manual_resize && !window.get_resizing() {
+                            floating.reshape_and_clamp(window.window(), window.get_frame_scale());
                         }
                         if let Some(on_right) = FloatingWindow::tag_on_right(window.window()) {
                             window.set_tag_on_right(on_right);
@@ -183,7 +280,18 @@ impl App {
         let weak = Rc::downgrade(self);
         window.on_dismiss(move || {
             if let Some(app) = weak.upgrade() {
-                app.close_practice();
+                app.dismiss_practice(diagnostic_id);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window.on_dismiss_finished(move || {
+            if let Some(app) = weak.upgrade()
+                && let Some((_, window)) = app
+                    .outgoing_practice
+                    .borrow_mut()
+                    .take_if(|(id, _)| *id == diagnostic_id)
+            {
+                let _ = window.hide();
             }
         });
         let weak = Rc::downgrade(self);
@@ -191,11 +299,76 @@ impl App {
             let weak = weak.clone();
             Timer::single_shot(Duration::ZERO, move || {
                 if let Some(app) = weak.upgrade() {
-                    app.close_practice();
+                    app.dismiss_practice(diagnostic_id);
                 }
             });
-            slint::CloseRequestResponse::HideWindow
+            slint::CloseRequestResponse::KeepWindowShown
         });
         native_ready
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(super) fn watch_practice_resize(
+        self: &Rc<Self>,
+        window: &PracticeWindow,
+        id: u64,
+        native: &slint::winit_030::winit::window::Window,
+    ) {
+        use crate::floating_window::practice_resize::{self, ResizeEvent};
+        let weak_window = window.as_weak();
+        let weak_app = Rc::downgrade(self);
+        let lock_window = weak_window.clone();
+        let is_locked = move || {
+            lock_window
+                .upgrade()
+                .is_none_or(|card| card.get_card_locked())
+        };
+        let installed = practice_resize::install(native, is_locked, move |event| {
+            match event {
+                ResizeEvent::Started => {
+                    if let (Some(window), Some(app)) = (weak_window.upgrade(), weak_app.upgrade()) {
+                        // Note any earlier move before the dragged edge changes the origin.
+                        let _ = app.floating.moved_position(window.window());
+                        window.invoke_interrupt_entrance();
+                        window.set_resizing(true);
+                        app.update_card_close_hold(id);
+                    }
+                }
+                ResizeEvent::Finished(size) => {
+                    // Persist after the native sizing loop exits and its final
+                    // Resized event has reached the Slint window.
+                    let weak_window = weak_window.clone();
+                    let weak_app = weak_app.clone();
+                    Timer::single_shot(Duration::ZERO, move || {
+                        let (Some(window), Some(app)) = (weak_window.upgrade(), weak_app.upgrade())
+                        else {
+                            return;
+                        };
+                        if let Some(size) = size
+                            && app
+                                .practice
+                                .borrow()
+                                .as_ref()
+                                .is_some_and(|session| session.diagnostic_id == id)
+                        {
+                            app.floating.keep_resized_position(window.window());
+                            window.set_card_width(size.width as f32);
+                            window.set_card_height(size.height as f32);
+                            let result = app.save_library_edit(|library| {
+                                library.settings.practice_card_size = Some(size);
+                                Ok(())
+                            });
+                            if result.is_err() {
+                                app.report(result, "");
+                            }
+                        }
+                        window.set_resizing(false);
+                        FloatingWindow::set_frame_scale(window.window(), window.get_frame_scale());
+                        app.update_card_close_hold(id);
+                    });
+                }
+            }
+        });
+        window.set_resize_available(installed);
     }
 }

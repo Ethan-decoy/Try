@@ -923,7 +923,7 @@ fn formula_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                 }
                 6 => {
                     let card = practice_window(app);
-                    check_floating_window(card.window());
+                    check_floating_window(&card);
                     check_no_caption_paint(card.window());
                     key(card.window(), "1/".into());
                     key(card.window(), Key::Return.into());
@@ -1049,7 +1049,7 @@ fn native_inline_answers() {
 }
 
 #[test]
-#[ignore = "opens a real practice card and types an exponent without a formula hint"]
+#[ignore = "opens a real practice card and checks that a text answer keeps operators literal"]
 fn native_inline_script_typing() {
     check_inline_answers(20);
 }
@@ -1064,7 +1064,7 @@ fn check_inline_answers(start_phase: u8) {
     library.settings.pause = PracticePause::UntilResumed;
     library.settings.feedback_seconds = 2;
     if start_phase == 20 {
-        library.packs[0].cards[2].answer = "Paris".into();
+        library.packs[0].cards[2].answer = "p^n+m".into();
         library.packs[0].cards[2].answer_latex = None;
     }
     library.set_pack_enabled("test_pack", false).unwrap();
@@ -1268,7 +1268,7 @@ fn inline_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         ["p", "^", "n", "+", "m"][(phase - start) as usize].into(),
                     );
                 }
-                18 | 25 => {
+                18 => {
                     assert!(ui.get_open());
                     assert!(!ui.get_keypad_expanded());
                     assert_eq!(
@@ -1282,23 +1282,26 @@ fn inline_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         "p^{n+m}",
                         "typing from the empty native answer must retain exponent scope; phase={phase}"
                     );
-                    if phase == 18 {
-                        app.close_practice();
-                        {
-                            let mut library = app.library.borrow_mut();
-                            library.packs[0].cards[2].answer = "Paris".into();
-                            library.packs[0].cards[2].answer_latex = None;
-                        }
-                        app.show_practice().unwrap();
-                    } else {
-                        checks.finished.set(true);
-                        app.quit();
-                        return;
+                    app.close_practice();
+                    {
+                        let mut library = app.library.borrow_mut();
+                        library.packs[0].cards[2].answer = "p^n+m".into();
+                        library.packs[0].cards[2].answer_latex = None;
                     }
+                    app.show_practice().unwrap();
                 }
                 19 => {
                     assert!(card.get_answer_text().is_empty());
                     assert!(!ui.get_open());
+                }
+                25 => {
+                    assert!(!ui.get_open());
+                    assert_eq!(card.get_answer_text(), "p^n+m");
+                    key(card.window(), Key::Return.into());
+                    assert_eq!(card.get_feedback(), 1);
+                    checks.finished.set(true);
+                    app.quit();
+                    return;
                 }
                 _ => unreachable!(),
             }
@@ -1488,9 +1491,11 @@ fn authoring_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     );
                     assert_eq!(saved.settings, before.settings);
                     main.invoke_add_card();
-                    type_content(app, &main, 0, "计算 sin(pi/3) 的值");
+                    main.invoke_activate_content(0);
+                    main.invoke_set_content_formula(true);
+                    type_content(app, &main, 0, r"\text{计算 }\sin(\pi/3)\text{ 的值}");
                     main.invoke_activate_content(1);
-                    main.invoke_math_tool("math".into());
+                    main.invoke_set_content_formula(true);
                     main.invoke_math_tool("root".into());
                     main.invoke_math_tool("fraction".into());
                     app.modify_math(|field| {
@@ -1556,6 +1561,8 @@ fn authoring_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     app.show_main().unwrap();
                     let main = main_window(app);
                     main.invoke_add_card();
+                    main.invoke_activate_content(0);
+                    main.invoke_set_content_formula(true);
                     type_content(app, &main, 0, "[[1,2],[3,4]]");
                     main.invoke_resize_math_grid(3, 3);
                     main.invoke_save_editor();
@@ -1586,6 +1593,8 @@ fn authoring_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     main.invoke_save_editor();
                     assert!(!main.get_editor_visible(), "{}", main.get_editor_error());
                     main.invoke_add_card();
+                    main.invoke_activate_content(0);
+                    main.invoke_set_content_formula(true);
                     type_content(app, &main, 0, "cases(x,x>=0,-x,x<0)");
                     type_content(app, &main, 1, "x");
                     main.invoke_activate_content(0);
@@ -1601,12 +1610,16 @@ fn authoring_phase(checks: Rc<AnswerChecks>, phase: u8) {
                         "Cancel leaves persisted content untouched"
                     );
                     main.invoke_add_card();
+                    main.invoke_activate_content(0);
+                    main.invoke_set_content_formula(true);
                     type_content(
                         app,
                         &main,
                         0,
                         "int(0,1,x^2)+sum(k=1,n,k)+lim(x->0,sin(x)/x)",
                     );
+                    main.invoke_activate_content(1);
+                    main.invoke_set_content_formula(true);
                     type_content(app, &main, 1, "1/3");
                     main.invoke_activate_content(0);
                     main.set_editor_scroll_y(0.0);

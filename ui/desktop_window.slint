@@ -1,0 +1,102 @@
+import { IconButton } from "controls.slint";
+import { Theme } from "theme.slint";
+
+export global WindowFrame {
+    in-out property <bool> enabled;
+    in-out property <bool> maximize-hovered;
+    out property <length> caption-height: 34px;
+    out property <length> button-width: 46px;
+    out property <length> resize-width: 5px;
+}
+
+// Logical coordinates shared by the drawn controls and the Windows hit test.
+export struct WindowControlBounds { x: length, y: length, button-width: length, height: length }
+
+struct CaptionAction { glyph: image, label: string }
+
+component CaptionButton inherits IconButton {
+    width: WindowFrame.button-width; height: WindowFrame.caption-height;
+    glyph-size: 16px;
+    borderless: true;
+    ink: root.hovered ? (root.destructive ? Theme.danger-ink : Theme.ink) : Theme.muted;
+}
+
+export component DesktopWindow inherits Window {
+    in property <length> sidebar-extent;
+    in property <bool> controls-in-footer;
+    in property <length> controls-right-inset;
+    in property <length> controls-bottom-inset;
+    in property <bool> close-on-escape;
+    in property <CaptionAction> leading-action;
+    in property <CaptionAction> trailing-action;
+    in property <bool> footer-actions-enabled: true;
+    callback leading-activated(bool);
+    callback trailing-activated(bool);
+    out property <length> titlebar-height: WindowFrame.enabled && !root.full-screen ? WindowFrame.caption-height : 0px;
+    out property <WindowControlBounds> control-bounds: {
+        x: root.width - root.controls-right-inset - 3 * WindowFrame.button-width,
+        y: root.controls-in-footer ? root.height - root.controls-bottom-inset - root.titlebar-height : 0px,
+        button-width: WindowFrame.button-width,
+        height: root.titlebar-height,
+    };
+    no-frame: WindowFrame.enabled;
+    resize-border-width: WindowFrame.enabled && !root.maximized && !root.full-screen ? WindowFrame.resize-width : 0px;
+
+    @children
+
+    if root.titlebar-height > 0px : Rectangle {
+        x: 0px; y: 0px; width: root.width; height: root.titlebar-height;
+        background: Theme.canvas;
+        Rectangle { x: 0px; width: root.sidebar-extent; height: parent.height; background: Theme.sidebar; }
+        if root.sidebar-extent > 0px : Rectangle {
+            x: root.sidebar-extent; width: 1px; height: parent.height; background: Theme.border;
+        }
+        Image {
+            x: 12px; y: (parent.height - self.height) / 2; width: 20px; height: 20px;
+            source: root.icon; image-fit: contain;
+        }
+        Text {
+            x: 38px; width: max(0px, drag-area.width - self.x - 8px);
+            height: parent.height; text: root.title; color: Theme.muted; font-size: 12px;
+            vertical-alignment: center; overflow: elide;
+        }
+        drag-area := WindowMoveArea {
+            x: 0px; width: root.controls-in-footer ? parent.width : root.control-bounds.x; height: parent.height;
+            TouchArea { double-clicked => { root.maximized = !root.maximized; } }
+        }
+    }
+    if root.titlebar-height > 0px : FocusScope {
+        x: root.control-bounds.x; y: root.control-bounds.y;
+        width: 3 * root.control-bounds.button-width; height: root.control-bounds.height;
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        capture-key-pressed(event) => {
+            if root.close-on-escape && event.text == Key.Escape { root.close(); return accept; }
+            return reject;
+        }
+        HorizontalLayout {
+            width: parent.width; height: parent.height;
+            CaptionButton {
+                glyph: root.leading-action.glyph; label: root.leading-action.label;
+                enabled: root.footer-actions-enabled;
+                activated => { root.leading-activated(self.pointer-activation); }
+            }
+            CaptionButton {
+                glyph: root.maximized ? @image-url("../assets/window_restore.svg") : @image-url("../assets/window_maximize.svg");
+                label: root.maximized ? @tr("还原窗口") : @tr("最大化");
+                highlighted: WindowFrame.maximize-hovered;
+                activated => { root.maximized = !root.maximized; }
+            }
+            CaptionButton {
+                glyph: root.trailing-action.glyph; label: root.trailing-action.label;
+                enabled: root.footer-actions-enabled;
+                destructive: true;
+                activated => { root.trailing-activated(self.pointer-activation); }
+            }
+        }
+    }
+    if root.titlebar-height > 0px && !root.maximized : Rectangle {
+        width: root.width; height: root.height;
+        border-width: 1phx; border-color: Theme.window-border;
+    }
+}

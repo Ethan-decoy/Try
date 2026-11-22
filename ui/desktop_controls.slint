@@ -1,18 +1,21 @@
 import { Theme } from "theme.slint";
-import { FocusOutline } from "controls.slint";
+import { EntranceMotion, FocusOutline, KeyboardFocus } from "controls.slint";
 import { ScrollView } from "std-widgets.slint";
 
 // Desktop actions share keyboard, pointer and accessibility behavior.
 export component DesktopButton inherits Rectangle {
     in property <bool> enabled: true;
     in property <string> text;
+    in property <bool> center-label;
     in property <image> glyph;
     in property <bool> primary;
     in property <bool> selected;
     in property <bool> highlighted;
     in property <bool> destructive;
     in property <bool> caution;
+    in property <bool> tab-stop: true;
     out property <bool> has-focus: keyboard.has-focus;
+    out property <bool> pointer-activation;
     private property <bool> hovered: root.highlighted || hit-area.has-hover;
     private property <color> action-ink: root.destructive ? Theme.danger-ink : root.caution ? Theme.caution-ink : Theme.ink;
     private property <color> filled-ink: root.destructive ? Theme.on-danger : root.caution ? Theme.on-caution : Theme.primary-ink;
@@ -26,7 +29,11 @@ export component DesktopButton inherits Rectangle {
     preferred-width: caption.preferred-width + (root.glyph.width > 0 ? 48px : 24px);
     horizontal-stretch: 0;
     border-radius: 6px;
-    background: !root.enabled ? (root.primary ? Theme.soft : transparent) : root.primary ? root.filled-background : root.selected ? Theme.selected : root.hovered ? root.hover-background : transparent;
+    background: !root.enabled ? (root.primary ? Theme.soft : transparent)
+        : root.primary ? root.filled-background
+        : hit-area.pressed && !root.destructive && !root.caution ? Theme.focus.with-alpha(0.18)
+        : root.selected ? Theme.selected : root.hovered ? root.hover-background : transparent;
+    animate background { duration: hit-area.pressed ? 0ms : Theme.tint-duration; easing: ease-out; }
     border-width: root.primary && root.caution ? 1px : 0px;
     border-color: Theme.caution-ink;
     opacity: root.enabled ? 1 : 0.45;
@@ -37,6 +44,7 @@ export component DesktopButton inherits Rectangle {
     accessible-checked: root.selected;
     accessible-action-default => { if root.enabled { root.activated(); } }
     forward-focus: keyboard;
+    public function focus-from-pointer() { keyboard.focus-from-pointer(); }
     HorizontalLayout {
         padding-left: 12px; padding-right: 12px; spacing: 6px;
         if root.glyph.width > 0 : Image {
@@ -48,29 +56,43 @@ export component DesktopButton inherits Rectangle {
             text: root.text;
             color: root.primary && root.enabled ? root.filled-ink : root.action-ink;
             font-size: 13px; vertical-alignment: center; overflow: elide;
+            horizontal-alignment: root.center-label ? center : left;
         }
     }
-    if keyboard.has-focus : FocusOutline {
+    if keyboard.show-focus : FocusOutline {
         ink: root.primary ? root.filled-ink : Theme.focus;
     }
-    keyboard := FocusScope {
-        width: 0px; enabled: root.enabled;
+    keyboard := KeyboardFocus {
+        width: 0px; enabled: root.enabled; focus-on-tab-navigation: root.tab-stop;
         key-pressed(event) => {
             if event.text == Key.Return || event.text == Key.Space { root.activated(); return accept; }
             return reject;
         }
     }
-    hit-area := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.activated(); } }
+    hit-area := TouchArea {
+        enabled: root.enabled; mouse-cursor: pointer;
+        clicked => {
+            root.pointer-activation = true;
+            root.activated();
+            root.pointer-activation = false;
+        }
+    }
 }
 
-// A window-local modal keeps deletion in context without resizing the page.
-export component DeleteConfirmation inherits Rectangle {
+export component ConfirmationDialog inherits Rectangle {
     in property <bool> opened;
     in property <string> title;
     in property <string> message;
     in property <string> error;
+    in property <string> confirm-label: root.title;
+    in property <string> cancel-label: @tr("取消");
+    in property <string> alternate-label;
+    in property <bool> alternate-enabled: true;
+    in property <bool> caution;
+    in property <bool> animate-opening;
     callback confirmed();
     callback cancelled();
+    callback alternate();
     out property <length> panel-left: panel.absolute-position.x;
     out property <length> panel-top: panel.absolute-position.y;
     out property <length> panel-width: panel.width;
@@ -82,10 +104,17 @@ export component DeleteConfirmation inherits Rectangle {
     out property <bool> cancel-focused: cancel-button.has-focus;
     out property <bool> confirm-focused: confirm-button.has-focus;
     visible: root.opened;
-    background: Theme.scrim;
     forward-focus: dialog-focus;
     init => { if root.opened { cancel-button.focus(); } }
-    changed opened => { if root.opened { cancel-button.focus(); } }
+    changed opened => {
+        if root.opened {
+            entrance.play(root.animate-opening);
+            cancel-button.focus();
+        }
+    }
+    private property <bool> has-alternate: root.alternate-label != "" && root.alternate-enabled;
+    entrance := EntranceMotion { duration: 165ms; }
+    Rectangle { width: parent.width; height: parent.height; background: Theme.scrim; opacity: entrance.alpha; }
     backdrop := TouchArea {
         enabled: root.opened;
         clicked => { cancel-button.focus(); }
@@ -99,7 +128,15 @@ export component DeleteConfirmation inherits Rectangle {
         capture-key-pressed(event) => {
             if event.text == Key.Escape { root.cancelled(); return accept; }
             if event.text == Key.Tab {
-                if cancel-button.has-focus { confirm-button.focus(); } else { cancel-button.focus(); }
+                if event.modifiers.shift {
+                    if cancel-button.has-focus { confirm-button.focus(); }
+                    else if confirm-button.has-focus && root.has-alternate { alternate-button.focus(); }
+                    else { cancel-button.focus(); }
+                } else {
+                    if cancel-button.has-focus && root.has-alternate { alternate-button.focus(); }
+                    else if !confirm-button.has-focus { confirm-button.focus(); }
+                    else { cancel-button.focus(); }
+                }
                 return accept;
             }
             return reject;
@@ -110,7 +147,8 @@ export component DeleteConfirmation inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             background: Theme.panel; border-radius: 10px;
-            border-width: 1px; border-color: Theme.danger-ink;
+            border-width: 1px; border-color: root.caution ? Theme.caution-ink : Theme.danger-ink;
+            opacity: entrance.alpha;
             accessible-role: groupbox; accessible-label: root.title;
             dialog-content := VerticalLayout {
                 padding: 24px; spacing: 16px;
@@ -124,14 +162,26 @@ export component DeleteConfirmation inherits Rectangle {
                         width: max(0px, details.visible-width - 14px);
                         spacing: 8px;
                         Text { text: root.message; color: Theme.ink; font-size: 13px; wrap: word-wrap; }
-                        if root.error != "" : Text { text: root.error; color: Theme.danger-ink; font-size: 13px; wrap: word-wrap; }
+                        if root.error != "" : Text {
+                            text: root.error; color: Theme.danger-ink; font-size: 13px; wrap: word-wrap;
+                            accessible-role: text; accessible-label: self.text; accessible-live-region: polite;
+                        }
                     }
                 }
                 HorizontalLayout {
                     height: 32px; spacing: 8px;
                     Rectangle { horizontal-stretch: 1; background: transparent; }
-                    cancel-button := DesktopButton { text: @tr("取消"); activated => { root.cancelled(); } }
-                    confirm-button := DesktopButton { text: root.title; primary: true; destructive: true; activated => { root.confirmed(); } }
+                    cancel-button := DesktopButton { text: root.cancel-label; activated => { root.cancelled(); } }
+                    alternate-button := DesktopButton {
+                        visible: root.alternate-label != ""; enabled: self.visible && root.alternate-enabled;
+                        width: self.visible ? self.preferred-width : 0px;
+                        text: root.alternate-label; primary: true; activated => { root.alternate(); }
+                    }
+                    confirm-button := DesktopButton {
+                        text: root.confirm-label; primary: !alternate-button.visible;
+                        destructive: !root.caution; caution: root.caution;
+                        activated => { root.confirmed(); }
+                    }
                 }
             }
         }
@@ -143,9 +193,8 @@ export component ParticipationCheck inherits Rectangle {
     in property <bool> checked;
     in property <bool> partial;
     in property <string> label;
-    in property <bool> show-label;
     callback toggled(bool);
-    width: root.show-label ? 36px + caption.preferred-width + 8px : 36px;
+    width: 36px;
     height: 36px;
     accessible-role: checkbox;
     accessible-label: root.label;
@@ -158,17 +207,11 @@ export component ParticipationCheck inherits Rectangle {
     Rectangle {
         x: 10px; y: (parent.height - 16px) / 2;
         width: 16px; height: 16px; border-radius: 4px;
-        background: root.checked || root.partial ? Theme.primary : hit-area.has-hover ? Theme.hover : Theme.panel;
-        border-width: root.checked || root.partial ? 0px : 1px;
-        border-color: Theme.control-border;
-        if root.checked : Image { x: 2px; y: 2px; width: 12px; height: 12px; source: @image-url("../assets/check_mark.svg"); colorize: Theme.primary-ink; }
-        if root.partial && !root.checked : Rectangle { x: 4px; y: 7px; width: 8px; height: 2px; background: Theme.primary-ink; }
-    }
-    caption := Text {
-        visible: root.show-label;
-        x: 36px; height: parent.height; width: parent.width - 36px;
-        text: root.label; font-size: 12px; color: hit-area.has-hover ? Theme.ink : Theme.muted;
-        vertical-alignment: center; overflow: elide;
+        background: root.checked || root.partial ? Theme.selected : hit-area.has-hover ? Theme.hover : Theme.panel;
+        border-width: 1px;
+        border-color: root.checked || root.partial || hit-area.has-hover ? Theme.focus : Theme.dark ? Theme.control-border : Theme.switch-off;
+        if root.checked : Image { x: 2px; y: 2px; width: 12px; height: 12px; source: @image-url("../assets/check_mark.svg"); colorize: Theme.focus; }
+        if root.partial && !root.checked : Rectangle { x: 4px; y: 7px; width: 8px; height: 2px; background: Theme.focus; }
     }
     if keyboard.has-focus : FocusOutline { }
     keyboard := FocusScope {
@@ -176,7 +219,7 @@ export component ParticipationCheck inherits Rectangle {
         key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.toggled(!root.checked); return accept; } return reject; }
     }
     hit-area := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.toggled(!root.checked); } }
-    if !root.show-label : Tooltip { text: @markdown("\{root.label}"); }
+    Tooltip { text: @markdown("\{root.label}"); }
 }
 
 // A single selection describes each question's answer mode. Unsupported modes
@@ -199,7 +242,13 @@ export component AnswerModeMenu inherits Rectangle {
     accessible-action-expand => { if root.enabled { root.open(); } }
     forward-focus: keyboard;
     function available(index: int) -> bool { return index == 0 || (index == 1 ? root.choice-available : root.judgment-available); }
-    public function open() { root.cursor = max(0, root.selection); choices.show(); }
+    private property <bool> pointer-open;
+    public function open() { root.open-choices(false); }
+    function open-choices(animated: bool) {
+        root.pointer-open = animated;
+        root.cursor = max(0, root.selection);
+        choices.show();
+    }
     function finish() { choices.close(); keyboard.focus(); }
     border-radius: 5px;
     background: hit-area.has-hover && root.enabled ? Theme.hover : transparent;
@@ -213,12 +262,14 @@ export component AnswerModeMenu inherits Rectangle {
         width: 0px; enabled: root.enabled;
         key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space || event.text == Key.DownArrow { root.open(); return accept; } return reject; }
     }
-    hit-area := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.open(); } }
+    hit-area := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.open-choices(true); } }
     choices := PopupWindow {
         x: root.width - self.width; y: root.height + 4px;
         width: 184px; height: 116px;
         close-policy: close-on-click-outside; forward-focus: choices-focus;
+        opening := EntranceMotion { play-on-init: root.pointer-open; }
         Rectangle {
+            opacity: opening.alpha;
             background: Theme.panel; border-radius: 8px; border-width: 1px; border-color: Theme.border;
             choices-focus := FocusScope {
                 key-pressed(event) => {
@@ -256,6 +307,7 @@ export component ActionMenu inherits Rectangle {
     in property <[string]> options;
     in property <string> label;
     in property <bool> destructive-last;
+    out property <bool> pointer-selection;
     private property <int> cursor;
     private property <bool> keyboard-used;
     callback choose(int);
@@ -267,7 +319,10 @@ export component ActionMenu inherits Rectangle {
     function open(keyboard: bool) { root.cursor = 0; root.keyboard-used = keyboard; menu.show(); }
     function finish() { menu.close(); keyboard.focus(); }
     // Capture the row index before closing its popup destroys the repeated item.
-    function activate(action: int) { root.finish(); root.choose(action); }
+    function activate(action: int, pointer: bool) {
+        root.finish();
+        root.pointer-selection = pointer; root.choose(action); root.pointer-selection = false;
+    }
     border-radius: 5px;
     background: hit-area.has-hover && root.enabled ? Theme.hover : transparent;
     for index in 3 : Rectangle {
@@ -285,7 +340,9 @@ export component ActionMenu inherits Rectangle {
         x: root.width - self.width; y: root.height + 4px;
         width: 168px; height: root.options.length * 32px + 8px;
         close-policy: close-on-click-outside; forward-focus: menu-focus;
+        opening := EntranceMotion { play-on-init: !root.keyboard-used; }
         Rectangle {
+            opacity: opening.alpha;
             background: Theme.panel; border-radius: 8px; border-width: 1px; border-color: Theme.border;
             menu-focus := FocusScope {
                 key-pressed(event) => {
@@ -294,7 +351,7 @@ export component ActionMenu inherits Rectangle {
                     if event.text == Key.End { root.cursor = root.options.length - 1; return accept; }
                     if event.text == Key.UpArrow { root.cursor = max(0, root.cursor - 1); return accept; }
                     if event.text == Key.DownArrow { root.cursor = min(root.options.length - 1, root.cursor + 1); return accept; }
-                    if event.text == Key.Return || event.text == Key.Space { root.activate(root.cursor); return accept; }
+                    if event.text == Key.Return || event.text == Key.Space { root.activate(root.cursor, false); return accept; }
                     if event.text == Key.Escape { root.finish(); return accept; }
                     return reject;
                 }
@@ -304,7 +361,7 @@ export component ActionMenu inherits Rectangle {
                         horizontal-stretch: 1; text: option;
                         highlighted: root.keyboard-used && root.cursor == index;
                         destructive: root.destructive-last && index == root.options.length - 1;
-                        activated => { root.activate(index); }
+                        activated => { root.activate(index, self.pointer-activation); }
                     }
                 }
             }
@@ -355,7 +412,9 @@ export component SelectionMenu inherits Rectangle {
         width: root.width; height: root.options.length * 36px + 8px;
         close-policy: close-on-click-outside;
         forward-focus: choices-focus;
+        opening := EntranceMotion { play-on-init: !root.keyboard-used; }
         Rectangle {
+            opacity: opening.alpha;
             background: Theme.soft; border-width: 1px; border-color: Theme.border; border-radius: 8px;
             choices-focus := FocusScope {
                 focus-changed-event => { root.expanded = self.has-focus; }

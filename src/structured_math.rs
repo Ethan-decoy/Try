@@ -10,6 +10,7 @@ pub use keypad::{catalog, categories, common_keys};
 
 pub struct Session {
     controller: MathInputController,
+    initial_latex: String,
 }
 
 pub enum Seed {
@@ -50,7 +51,11 @@ impl Session {
             }
             _ => {}
         }
-        Ok(Self { controller })
+        let initial_latex = controller.editor.latex_preview();
+        Ok(Self {
+            controller,
+            initial_latex,
+        })
     }
     pub fn insert(&mut self, text: &str) {
         insert_text(&mut self.controller, text);
@@ -72,6 +77,9 @@ impl Session {
     }
     pub fn latex_source(&self) -> String {
         self.controller.editor.latex_preview()
+    }
+    pub fn has_changes(&self) -> bool {
+        self.latex_source() != self.initial_latex
     }
     pub fn error(&self) -> String {
         self.controller
@@ -200,7 +208,7 @@ mod tests {
                 "{source}"
             );
             assert!(
-                r#try::math_answer::matches(&source, "", Some(latex), &[]),
+                r#try::math_answer::matches_formula(&source, latex, &[]),
                 "{source}: {latex}"
             );
             let mut original = slint_math_input::Editor::new();
@@ -274,7 +282,7 @@ mod tests {
             }
             let latex = session.complete().unwrap();
             assert!(
-                r#try::math_answer::matches(input, "", Some(&latex), &[]),
+                r#try::math_answer::matches_formula(input, &latex, &[]),
                 "{input}: {latex}"
             );
         }
@@ -300,13 +308,8 @@ mod tests {
             session.insert("n");
             assert_eq!(session.complete().unwrap(), edited);
             let answer = session.source();
-            assert!(r#try::math_answer::matches(&answer, "", Some(edited), &[]));
-            assert!(!r#try::math_answer::matches(
-                &answer,
-                "",
-                Some(original),
-                &[]
-            ));
+            assert!(r#try::math_answer::matches_formula(&answer, edited, &[]));
+            assert!(!r#try::math_answer::matches_formula(&answer, original, &[]));
         }
     }
 
@@ -663,12 +666,7 @@ mod tests {
                     r#try::math_answer::incomplete_error(&answer, true).is_none(),
                     "{typed} must reach feedback after conversion, expanded={expanded}"
                 );
-                assert!(r#try::math_answer::matches(
-                    &answer,
-                    "",
-                    Some(expected),
-                    &[]
-                ));
+                assert!(r#try::math_answer::matches_formula(&answer, expected, &[]));
                 let before = submissions.get();
                 key(&window, &adapter, Key::Return);
                 assert_eq!(submissions.get(), before + 1, "Enter: {typed}");
@@ -699,7 +697,7 @@ mod tests {
                     .expect("native commit enters structural editing")
                     .source();
                 assert!(
-                    r#try::math_answer::matches(&answer, "", Some(expected), &[]),
+                    r#try::math_answer::matches_formula(&answer, expected, &[]),
                     "native commit: {text}"
                 );
                 let before = submissions.get();
@@ -720,16 +718,14 @@ mod tests {
             key(&window, &adapter, Key::RightArrow);
             type_text("lnu");
             let answer = active.borrow().as_ref().unwrap().source();
-            assert!(r#try::math_answer::matches(
+            assert!(r#try::math_answer::matches_formula(
                 &answer,
-                "",
-                Some(r"u'a^{u}\ln u"),
+                r"u'a^{u}\ln u",
                 &[]
             ));
-            assert!(!r#try::math_answer::matches(
+            assert!(!r#try::math_answer::matches_formula(
                 &answer,
-                "",
-                Some(r"u'a^{u\ln u}"),
+                r"u'a^{u\ln u}",
                 &[]
             ));
             let before = submissions.get();
@@ -755,7 +751,7 @@ mod tests {
                 let answer = session.source();
                 assert!(!answer.trim().is_empty());
                 assert!(r#try::math_answer::incomplete_error(&answer, true).is_none());
-                assert!(r#try::math_answer::matches(&answer, "", Some(latex), &[]));
+                assert!(r#try::math_answer::matches_formula(&answer, latex, &[]));
                 refresh(&window, &session);
                 *active.borrow_mut() = Some(session);
                 ui.set_open(true);
@@ -811,12 +807,7 @@ mod tests {
                 expected
             );
             let answer = active.borrow().as_ref().unwrap().source();
-            assert!(r#try::math_answer::matches(
-                &answer,
-                "",
-                Some(expected),
-                &[]
-            ));
+            assert!(r#try::math_answer::matches_formula(&answer, expected, &[]));
             let before = submissions.get();
             key(&window, &adapter, Key::Return);
             assert_eq!(

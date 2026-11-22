@@ -6,15 +6,29 @@ Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 These changes are planned for **1.0.0**, the first stable release. Back up your data directory before upgrading from a 0.x preview. Try reuses data it can read, with no guaranteed migration from previews.
 
+### Added
+
+- Choose Text or Formula separately for prompts, answers and choices in the question editor.
+- Add a Show card hints preference under Settings → Card. Hiding the answer and dismissal instructions preserves the card layout, keyboard shortcuts, and corrections.
+- On Windows, resize practice cards from a minimum of 320 × 288 logical pixels and restore automatic sizing in Settings. Lock the card from Settings or its context menu to disable moving and resizing.
+- Add an Interface animations preference under Settings → General. On Windows, practice cards ease in and out. A correct answer sends a thin green outline outward, followed by a softer one from the card’s edge. A missed answer draws a soft red outline back toward the card as the correction settles into place. Turning off animations in Try or Windows makes these transitions instant.
+
 ### Changed
 
+- On Windows, the main window and image preview use Try’s own title bar and thin border in both themes. The main window groups Back to tray, Maximize or Restore, and Quit Try in the bottom-right corner. The library footer drops the persistent tray practice hint. The floating card has a matching rounded outline.
 - The app checks for published stable updates. When the GitHub API rate limit is reached, it checks the repository's latest stable release.
-- Offer create and import actions in empty libraries, show more questions in compact windows, and explain how to start practice from the tray or menu bar.
-- Make keyboard focus easier to see and show answer shortcuts, input errors, and labeled results directly on practice cards. Keep the Enter prompt visible while scrolling an incorrect answer.
+- Put New card beside the pack heading and bulk controls in the table header. Browse packs with the arrow keys and switch between Answer and View at the bottom of the window. Empty libraries offer create and import actions.
+- Import and export knowledge packs in the background with progress feedback and a retry action on failure.
+- Answers without `answer_latex` use literal text matching. To keep accepting different formula spellings in an older pack, switch its answer field to Formula or declare the accepted spellings as aliases.
+- Make keyboard focus easier to see and show answer shortcuts and input errors on practice cards. After grading, the card takes on a green or red tint. A missed fill-in shows the expected answer above your attempt. Choice and true/false cards highlight the correct option in place. When enabled, the dismissal hint stays visible while scrolling through a correction.
 
 ### Fixed
 
 - With `slint-math-input 0.1.0-preview.6`, Tab and Shift+Tab move between a logarithm's base, exponent and parenthesized argument in either direction. A square-bracketed expression beside the logarithm keeps its own editing scope.
+- Preserve code identifiers, method calls and paths when editing or answering text fields.
+- Preserve the original text when switching a field to Formula and back to Text without editing.
+- Reject equivalent formula spellings as distractors during import and editing. Saved questions still accept equivalent spellings of the correct answer.
+- Support keyboard scrolling on overflowing practice cards and bring unfinished-formula messages into view beneath the answer field, including with the keypad open.
 - Retrying a multiple-choice edit after a validation error now drops aliases for the previous correct answer, just like saving the edit on the first attempt.
 - Changing the reminder interval, correct-answer duration or knowledge-display duration preserves unfinished quiet-hours edits.
 

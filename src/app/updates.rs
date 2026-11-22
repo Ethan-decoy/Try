@@ -438,6 +438,7 @@ impl App {
 
     fn has_pending_update_edits(&self) -> bool {
         self.editor.borrow().is_some()
+            || self.pack_transfer.borrow().is_running()
             || self.pending_import.borrow().is_some()
             || self.structured_math.borrow().is_some()
             || self.main_window.borrow().as_ref().is_some_and(|window| {

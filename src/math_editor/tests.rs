@@ -710,3 +710,52 @@ fn ordinary_questions_stay_plain_and_can_add_a_math_fragment() {
     assert!(field.content().unwrap().1.contains(r"\text{求 }"));
     assert!(field.content().unwrap().1.contains(r"\log"));
 }
+
+#[test]
+fn explicit_format_changes_preserve_the_draft_and_are_undoable() {
+    use crate::knowledge::ContentFormat::{Formula, Text};
+
+    let mut field = Field::new("x_i", "");
+    assert_eq!(field.format(), Text);
+    assert_eq!(field.content().unwrap(), ("x_i".into(), String::new()));
+    field.set_format(Formula).unwrap();
+    assert_eq!(field.format(), Formula);
+    let formula = field.content().unwrap();
+    assert!(crate::math_structure::same(&formula.1, "x_{i}"));
+    field.undo(false);
+    assert_eq!(field.format(), Text);
+    assert_eq!(field.input(), "x_i");
+    field.undo(true);
+    assert_eq!(field.format(), Formula);
+    assert_eq!(field.content().unwrap(), formula);
+
+    assert!(field.update("sqrt(").is_err());
+    field.set_format(Text).unwrap();
+    assert_eq!(field.content().unwrap(), ("sqrt(".into(), String::new()));
+    assert!(field.set_format(Formula).is_err());
+    assert_eq!(field.format(), Text);
+    assert_eq!(field.input(), "sqrt(");
+    field.undo(false);
+    assert_eq!(field.format(), Formula);
+    assert_eq!(field.input(), "sqrt(");
+    assert!(field.content().is_err());
+}
+
+#[test]
+fn switching_back_from_an_unedited_formula_keeps_the_exact_text() {
+    use crate::knowledge::ContentFormat::{Formula, Text};
+
+    let mut field = Field::new("2 + x", "");
+    for text in ["2 + x", "2  +  y"] {
+        field.update(text).unwrap();
+        field.set_format(Formula).unwrap();
+        field.select(vec![]);
+        field.set_format(Text).unwrap();
+        assert_eq!(field.content().unwrap(), (text.into(), String::new()));
+    }
+
+    field.set_format(Formula).unwrap();
+    field.update("3 + z").unwrap();
+    field.set_format(Text).unwrap();
+    assert_eq!(field.content().unwrap(), ("3 + z".into(), String::new()));
+}

@@ -1,0 +1,114 @@
+import { ScrollView } from "std-widgets.slint";
+import { FocusOutline, KeyboardFocus, ParticipationSwitch } from "controls.slint";
+import { Theme } from "theme.slint";
+
+export struct PackRow {
+    id: string,
+    name: string,
+    tag: string,
+    detail: string,
+    participating: bool,
+    has-cards: bool,
+}
+
+export component PackList inherits ScrollView {
+    in property <[PackRow]> packs;
+    in property <int> selected-index: -1;
+    in property <bool> actions-enabled: true;
+    in property <bool> show-tags;
+    in property <length> tag-max-width: 48px;
+    out property <length> row-height: 54px;
+    out property <length> row-stride: 58px;
+    out property <length> toggle-center-x: self.absolute-position.x + self.visible-width - 22px;
+    private property <int> keyboard-row: -1;
+    callback select(int);
+    callback toggle-participation(string, bool);
+
+    accessible-role: list;
+    accessible-label: @tr("知识包");
+    vertical-stretch: 1;
+    horizontal-scrollbar-policy: always-off;
+    content-width: self.visible-width;
+
+    function browse(index: int) {
+        let target = clamp(index, 0, root.packs.length - 1);
+        let top = target * root.row-stride;
+        root.keyboard-row = target;
+        root.content-y = clamp(root.content-y, -top, root.visible-height - top - root.row-height);
+        if root.selected-index != target { root.select(target); }
+    }
+
+    VerticalLayout {
+        spacing: root.row-stride - root.row-height;
+        for pack[index] in root.packs : Rectangle {
+            height: root.row-height; border-radius: 6px;
+            background: pack-view.selected ? Theme.selected : pack-touch.has-hover ? Theme.hover : Theme.sidebar;
+            animate background { duration: Theme.tint-duration; easing: ease-out; }
+            pack-view := Rectangle {
+                private property <bool> selected: root.selected-index == index;
+                private property <bool> keyboard-target: root.keyboard-row == index;
+                changed keyboard-target => { if self.keyboard-target { pack-focus.focus(); } }
+                x: 0px; y: 0px;
+                width: parent.width - 42px; height: parent.height;
+                accessible-role: list-item; accessible-label: pack.name;
+                accessible-item-selectable: true; accessible-item-selected: self.selected; accessible-item-index: index;
+                accessible-enabled: root.actions-enabled;
+                accessible-action-default => { if root.actions-enabled { root.select(index); } }
+                forward-focus: pack-focus;
+
+                VerticalLayout {
+                    padding: 8px; spacing: 2px;
+                    HorizontalLayout {
+                        height: 20px; spacing: 5px;
+                        if root.show-tags && pack.tag != "" : Rectangle {
+                            width: min(root.tag-max-width, tag-measure.preferred-width + 10px);
+                            height: 18px; border-radius: 4px; background: Theme.panel.with-alpha(0.6);
+                            tag-measure := Text { visible: false; text: pack.tag; font-size: 10px; }
+                            Text {
+                                x: 5px; width: parent.width - 10px; height: parent.height;
+                                text: pack.tag; font-size: 10px; color: Theme.muted;
+                                vertical-alignment: center; overflow: elide;
+                            }
+                        }
+                        Text {
+                            text: pack.name; color: Theme.ink; font-size: 14px;
+                            font-weight: pack-view.selected ? 600 : 400;
+                            overflow: elide; min-width: 0px; preferred-width: 0px;
+                            horizontal-stretch: 1; vertical-alignment: center;
+                        }
+                    }
+                    Text { text: pack.detail; color: Theme.muted; font-size: 12px; overflow: elide; }
+                }
+                pack-focus := KeyboardFocus {
+                    width: 0px; enabled: root.actions-enabled;
+                    focus-changed-event => {
+                        if !self.has-focus && pack-view.keyboard-target { root.keyboard-row = -1; }
+                    }
+                    key-pressed(event) => {
+                        if event.text == Key.UpArrow { root.browse(index - 1); return accept; }
+                        if event.text == Key.DownArrow { root.browse(index + 1); return accept; }
+                        if event.text == Key.Home { root.browse(0); return accept; }
+                        if event.text == Key.End { root.browse(root.packs.length - 1); return accept; }
+                        if event.text == Key.Return || event.text == Key.Space { root.select(index); return accept; }
+                        return reject;
+                    }
+                }
+                if pack-focus.show-focus : FocusOutline { }
+                pack-touch := TouchArea {
+                    enabled: root.actions-enabled; mouse-cursor: pointer;
+                    clicked => { pack-focus.focus-from-pointer(); root.select(index); }
+                }
+                Tooltip { text: root.show-tags && pack.tag != "" ? @markdown("\{pack.tag} · \{pack.name}") : @markdown("\{pack.name}"); }
+            }
+            ParticipationSwitch {
+                x: parent.width - 40px; y: (parent.height - self.height) / 2;
+                width: 36px; height: 36px; borderless: true;
+                checked: pack.participating;
+                label: (pack.participating ? @tr("停止参与：") : @tr("参与练习：")) + pack.name;
+                enabled: root.actions-enabled;
+                toggled(value) => { root.toggle-participation(pack.id, value); }
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+    }
+}

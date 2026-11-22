@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { AnswerOption, FormulaLabel } from "content.slint";
-import { AnswerPick, FocusOutline } from "controls.slint";
+import { AnswerPick, EntranceMotion, FocusOutline } from "controls.slint";
 
 // The same column uses the answer control appropriate to each question type.
 export component QuickAnswer inherits Rectangle {
@@ -99,6 +99,7 @@ export component QuickAnswer inherits Rectangle {
     if root.error != "" : Text {
         x: 8px; y: root.field-height + 4px; width: parent.width - 16px; height: 20px;
         text: root.error; color: Theme.wrong-ink; font-size: 10px; overflow: elide;
+        accessible-role: text; accessible-label: self.text; accessible-live-region: polite;
         Tooltip { text: @markdown("\{root.error}"); }
     }
     choices := PopupWindow {
@@ -106,7 +107,9 @@ export component QuickAnswer inherits Rectangle {
         height: 8px + max(44px, root.options[0].formula-height * 1px + 8px) + max(44px, root.options[1].formula-height * 1px + 8px) + max(44px, root.options[2].formula-height * 1px + 8px);
         close-policy: close-on-click-outside;
         forward-focus: options-focus;
+        opening := EntranceMotion { play-on-init: !root.keyboard-used; duration: 150ms; }
         Rectangle {
+            opacity: opening.alpha;
             background: Theme.soft; border-radius: 6px; border-width: 1px; border-color: Theme.border;
             options-focus := FocusScope {
                 key-pressed(event) => {

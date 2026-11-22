@@ -11,7 +11,7 @@ pub use field::{Field, TextSelection};
 pub use latex::{answer_input, from_latex};
 pub use node::{Kind, Leaf, Node};
 pub use parser::{automatic_content, expression};
-pub(crate) use parser::{inline_division, looks_mathematical};
+pub(crate) use parser::{inline_division, is_code_identifier, looks_mathematical};
 
 const MAX_INPUT: usize = crate::math_latex::MAX_FORMULA_CHARS;
 const MAX_DEPTH: usize = 16;

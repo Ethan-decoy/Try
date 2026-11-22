@@ -1,5 +1,6 @@
 //! Host policy for structured formula sessions shared by authoring and practice.
 use super::*;
+use r#try::knowledge::ContentFormat;
 
 impl App {
     pub(super) fn with_math_ui(
@@ -59,7 +60,14 @@ impl App {
                 ui.set_focus_request(ui.get_focus_request() + 1);
             });
             if !expanded {
-                self.close_practice();
+                let id = self
+                    .practice
+                    .borrow()
+                    .as_ref()
+                    .map(|session| session.diagnostic_id);
+                if let Some(id) = id {
+                    self.dismiss_practice(id);
+                }
             }
         } else {
             self.close_structured_math();
@@ -226,6 +234,9 @@ impl App {
             let index = usize::try_from(main.as_ref()?.get_math_active_field()).ok()?;
             let fields = self.math_fields.borrow();
             let field = fields.get(index)?;
+            if field.format() != ContentFormat::Formula {
+                return None;
+            }
             let node = field.selected();
             // Keep mixed CJK prose on the existing native text surface.
             if node.plain().chars().any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{3400}'..='\u{9fff}' | '\u{ac00}'..='\u{d7af}')) {
@@ -266,6 +277,7 @@ impl App {
                 !session.answered
                     && !session.prepared.knowledge_only
                     && session.prepared.mode == AnswerMode::Input
+                    && session.prepared.allows_formula_input()
             })
             .map(|session| {
                 let input = session.window.get_answer_text().to_string();

@@ -1,5 +1,9 @@
 //! Main-window actions grouped by the feature that owns their behavior.
 use super::super::editor::editing_state;
+use super::super::settings::{
+    FEEDBACK_SECOND_PRESETS, INTERVAL_MINUTE_PRESETS, KNOWLEDGE_SECOND_PRESETS,
+    PAUSE_MINUTE_PRESETS, preset_value,
+};
 use super::super::*;
 
 pub(super) fn connect(app: &Rc<App>, window: &MainWindow) {
@@ -13,6 +17,13 @@ pub(super) fn connect(app: &Rc<App>, window: &MainWindow) {
 
 fn connect_navigation(app: &Rc<App>, window: &MainWindow) {
     let weak = Rc::downgrade(app);
+    window.window().on_close_requested(move || {
+        if let Some(app) = weak.upgrade() {
+            app.defer_tray_action(|app| app.request_leave(LeaveAction::Background));
+        }
+        slint::CloseRequestResponse::KeepWindowShown
+    });
+    let weak = Rc::downgrade(app);
     window.on_tray_navigation_changed(move || {
         if let Some(app) = weak.upgrade() {
             app.defer_tray_action(|app| app.refresh_tray_navigation());
@@ -21,13 +32,31 @@ fn connect_navigation(app: &Rc<App>, window: &MainWindow) {
     let weak = Rc::downgrade(app);
     window.on_go_background(move || {
         if let Some(app) = weak.upgrade() {
-            app.close_main();
+            app.request_leave(LeaveAction::Background);
         }
     });
     let weak = Rc::downgrade(app);
     window.on_quit_app(move || {
         if let Some(app) = weak.upgrade() {
-            app.quit();
+            app.request_leave(LeaveAction::Quit);
+        }
+    });
+    let weak = Rc::downgrade(app);
+    window.on_cancel_leave(move || {
+        if let Some(app) = weak.upgrade() {
+            app.cancel_leave();
+        }
+    });
+    let weak = Rc::downgrade(app);
+    window.on_discard_and_leave(move || {
+        if let Some(app) = weak.upgrade() {
+            app.resolve_leave(false);
+        }
+    });
+    let weak = Rc::downgrade(app);
+    window.on_save_and_leave(move || {
+        if let Some(app) = weak.upgrade() {
+            app.resolve_leave(true);
         }
     });
 }
@@ -81,22 +110,22 @@ fn connect_about_updates(app: &Rc<App>, window: &MainWindow) {
         }
     });
     let weak = Rc::downgrade(app);
-    window.on_open_notices(move || {
+    window.on_open_notices(move |animated| {
         if let Some(app) = weak.upgrade() {
             // Wait for the popup's pointer handler and close to finish.
-            app.defer_tray_action(|app| {
+            app.defer_tray_action(move |app| {
                 if let Some(window) = app.main_window.borrow().as_ref() {
-                    window.invoke_show_notices();
+                    window.invoke_show_notices_transition(animated);
                 }
             });
         }
     });
     let weak = Rc::downgrade(app);
-    window.on_return_to_about(move || {
+    window.on_return_to_about(move |animated| {
         if let Some(app) = weak.upgrade() {
-            app.defer_tray_action(|app| {
+            app.defer_tray_action(move |app| {
                 if let Some(window) = app.main_window.borrow().as_ref() {
-                    window.invoke_show_about();
+                    window.invoke_show_about_transition(animated);
                 }
             });
         }
@@ -115,8 +144,8 @@ fn connect_library(app: &Rc<App>, window: &MainWindow) {
                 window.set_current_tab(0);
                 window.set_question_scroll_y(0.0);
                 window.invoke_reset_overview();
+                app.refresh_library_view(window, &app.library.borrow());
             }
-            app.refresh();
         }
     });
     let weak = Rc::downgrade(app);
@@ -204,6 +233,18 @@ fn connect_library(app: &Rc<App>, window: &MainWindow) {
     window.on_export_pack(move || {
         if let Some(app) = weak.upgrade() {
             app.export_pack();
+        }
+    });
+    let weak = Rc::downgrade(app);
+    window.on_retry_pack_transfer(move || {
+        if let Some(app) = weak.upgrade() {
+            app.retry_pack_transfer();
+        }
+    });
+    let weak = Rc::downgrade(app);
+    window.on_dismiss_pack_transfer_error(move || {
+        if let Some(app) = weak.upgrade() {
+            app.dismiss_pack_transfer_error();
         }
     });
     let weak = Rc::downgrade(app);
@@ -388,6 +429,12 @@ fn connect_math(app: &Rc<App>, window: &MainWindow) {
         }
     });
     let weak = Rc::downgrade(app);
+    window.on_set_content_formula(move |formula| {
+        if let Some(app) = weak.upgrade() {
+            app.set_content_formula(formula);
+        }
+    });
+    let weak = Rc::downgrade(app);
     window.on_edit_math_input(move |_| {
         if let Some(app) = weak.upgrade() {
             app.math_pending.set(true);
@@ -540,7 +587,7 @@ fn connect_settings(app: &Rc<App>, window: &MainWindow) {
     window.on_choose_interval(move |index| {
         if let Some(app) = weak.upgrade() {
             let current = app.library.borrow().settings.interval_minutes as i32;
-            if let Some(value) = preset_value(index, &[15, 25, 30, 45], current) {
+            if let Some(value) = preset_value(index, INTERVAL_MINUTE_PRESETS, current) {
                 app.set_interval(value);
             }
         }
@@ -549,7 +596,7 @@ fn connect_settings(app: &Rc<App>, window: &MainWindow) {
     window.on_choose_feedback(move |index| {
         if let Some(app) = weak.upgrade() {
             let current = app.library.borrow().settings.feedback_seconds as i32;
-            if let Some(value) = preset_value(index, &[1, 2, 3], current) {
+            if let Some(value) = preset_value(index, FEEDBACK_SECOND_PRESETS, current) {
                 app.set_feedback(value);
             }
         }
@@ -558,7 +605,7 @@ fn connect_settings(app: &Rc<App>, window: &MainWindow) {
     window.on_choose_knowledge_duration(move |index| {
         if let Some(app) = weak.upgrade() {
             let current = app.library.borrow().settings.knowledge_seconds as i32;
-            if let Some(value) = preset_value(index, &[5, 8, 15, 30], current) {
+            if let Some(value) = preset_value(index, KNOWLEDGE_SECOND_PRESETS, current) {
                 app.set_knowledge_duration(value);
             }
         }
@@ -572,7 +619,7 @@ fn connect_settings(app: &Rc<App>, window: &MainWindow) {
                 .settings
                 .pause
                 .minutes(chrono::Utc::now().timestamp());
-            if let Some(value) = preset_value(index, &[0, 60, 120, 180, -1], current) {
+            if let Some(value) = preset_value(index, PAUSE_MINUTE_PRESETS, current) {
                 app.set_pause(value);
             }
         }
@@ -638,6 +685,12 @@ fn connect_settings(app: &Rc<App>, window: &MainWindow) {
         }
     });
     let weak = Rc::downgrade(app);
+    window.on_edit_quiet_range(move |start, end| {
+        if let Some(app) = weak.upgrade() {
+            app.update_quiet_range(start.as_str(), end.as_str(), false);
+        }
+    });
+    let weak = Rc::downgrade(app);
     window.on_set_corner(move |index| {
         if let Some(app) = weak.upgrade()
             && let Some(corner) = PopupCorner::from_index(index)
@@ -651,10 +704,16 @@ fn connect_settings(app: &Rc<App>, window: &MainWindow) {
         }
     });
     let weak = Rc::downgrade(app);
-    window.on_set_remember_position(move |enabled| {
+    window.on_set_card_locked(move |locked| {
+        if let Some(app) = weak.upgrade() {
+            app.set_practice_card_locked(locked);
+        }
+    });
+    let weak = Rc::downgrade(app);
+    window.on_reset_card_size(move || {
         if let Some(app) = weak.upgrade() {
             let result = app.commit(|library| {
-                library.settings.remember_position = enabled;
+                library.settings.practice_card_size = None;
                 Ok(())
             });
             app.report(result, "");
@@ -668,6 +727,42 @@ fn connect_settings(app: &Rc<App>, window: &MainWindow) {
                 Ok(())
             });
             app.report(result, "");
+        }
+    });
+    let weak = Rc::downgrade(app);
+    window.on_set_show_practice_hints(move |enabled| {
+        if let Some(app) = weak.upgrade() {
+            if let Err(error) = app.save_library_edit(|library| {
+                library.settings.show_practice_hints = enabled;
+                Ok(())
+            }) {
+                app.notify(&error, true);
+                return;
+            }
+            if let Some(window) = app.main_window.borrow().as_ref() {
+                window.set_show_practice_hints(enabled);
+            }
+            if let Some(session) = app.practice.borrow().as_ref() {
+                session.window.set_show_practice_hints(enabled);
+            }
+            app.report(Ok(()), "");
+        }
+    });
+    let weak = Rc::downgrade(app);
+    window.on_set_interface_animations(move |enabled| {
+        if let Some(app) = weak.upgrade() {
+            if let Err(error) = app.save_library_edit(|library| {
+                library.settings.interface_animations = enabled;
+                Ok(())
+            }) {
+                app.notify(&error, true);
+                return;
+            }
+            if let Some(window) = app.main_window.borrow().as_ref() {
+                window.set_interface_animations(enabled);
+            }
+            app.sync_appearance();
+            app.report(Ok(()), "");
         }
     });
     let weak = Rc::downgrade(app);

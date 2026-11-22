@@ -70,7 +70,7 @@ fn right_click_menu_routes_commands_once_and_escape_keeps_the_card() {
     let received = menu_states.clone();
     card.on_context_menu_changed(move |opened| received.borrow_mut().push(opened));
     card.show().unwrap();
-    adapter.set_size(PhysicalSize::new(320, 230));
+    adapter.set_size(PhysicalSize::new(320, 288));
     let before_menu = paint(&adapter);
 
     right_click(&card, &adapter, 8.0, 8.0);
@@ -101,7 +101,7 @@ fn right_click_menu_routes_commands_once_and_escape_keeps_the_card() {
     key(&card, &adapter, Key::Return);
     assert_eq!(&*actions.borrow(), &[(PracticeAction::ExcludeQuestion, 0)]);
 
-    card.invoke_open_context_menu(312.0, 222.0);
+    card.invoke_open_context_menu(312.0, 280.0);
     paint(&adapter);
     click(
         &card,
@@ -127,7 +127,7 @@ fn right_click_menu_routes_commands_once_and_escape_keeps_the_card() {
         ]
     );
 
-    card.invoke_open_context_menu(312.0, 222.0);
+    card.invoke_open_context_menu(312.0, 280.0);
     paint(&adapter);
     key(&card, &adapter, Key::DownArrow);
     key(&card, &adapter, Key::Return);
@@ -139,7 +139,7 @@ fn right_click_menu_routes_commands_once_and_escape_keeps_the_card() {
     );
 
     card.set_feedback(2);
-    card.invoke_open_context_menu(300.0, 220.0);
+    card.invoke_open_context_menu(300.0, 278.0);
     paint(&adapter);
     key(&card, &adapter, Key::Escape);
     assert_eq!(
@@ -147,13 +147,13 @@ fn right_click_menu_routes_commands_once_and_escape_keeps_the_card() {
         0,
         "Closing the menu does not acknowledge a wrong answer"
     );
-    card.invoke_open_context_menu(300.0, 220.0);
+    card.invoke_open_context_menu(300.0, 278.0);
     paint(&adapter);
     click(
         &card,
         &adapter,
         card.get_context_menu_left() + 20.0,
-        card.get_context_menu_top() + 85.0,
+        card.get_context_menu_top() + 126.0,
     );
     assert_eq!(
         &*actions.borrow(),
@@ -200,14 +200,14 @@ fn right_click_menu_routes_commands_once_and_escape_keeps_the_card() {
     card.set_knowledge_only(true);
     card.set_feedback(0);
     card.set_dark_theme(false);
-    card.invoke_open_context_menu(300.0, 220.0);
+    card.invoke_open_context_menu(300.0, 278.0);
     paint(&adapter);
     assert_eq!(card.get_problem_record_status(), ProblemRecordStatus::Idle);
     assert!(card.get_context_menu_open());
     save_preview("practice_menu_light", &paint(&adapter));
     key(&card, &adapter, Key::Escape);
     assert_eq!(dismissals.get(), 0);
-    card.invoke_open_context_menu(300.0, 220.0);
+    card.invoke_open_context_menu(300.0, 278.0);
     paint(&adapter);
     key(&card, &adapter, Key::Tab);
     key(&card, &adapter, Key::Return);

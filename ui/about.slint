@@ -32,7 +32,7 @@ export component AboutContent inherits Rectangle {
     callback cancel-update-download();
     callback restart-update();
     callback open-home();
-    callback open-notices();
+    callback open-notices(bool);
     callback close-view();
     forward-focus: about-focus;
     background: Theme.panel;
@@ -64,7 +64,12 @@ export component AboutContent inherits Rectangle {
         }
         if root.update-view.state != 0 : HorizontalLayout {
             x: 64px; y: 80px; width: 216px; height: 36px; spacing: 6px;
-            Text { text: root.update-view.status; color: Theme.muted; font-size: 12px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+            Text {
+                text: root.update-view.status; color: Theme.muted; font-size: 12px;
+                vertical-alignment: center; overflow: elide; horizontal-stretch: 1;
+                accessible-role: text; accessible-label: self.text; accessible-live-region: polite;
+                Tooltip { text: @markdown("\{root.update-view.status}"); }
+            }
             if root.update-view.available && root.update-view.action-kind == 0 : TextLink {
                 width: 102px; font-size: 12px; centered: true;
                 label: root.update-view.action;
@@ -101,7 +106,7 @@ export component AboutContent inherits Rectangle {
             y: root.metrics.notices-top;
             width: 280px - self.x; font-size: 12px; ink: Theme.muted;
             label: @tr("第三方声明");
-            activated => { root.open-notices(); root.close-view(); }
+            activated => { root.open-notices(self.pointer-activation); root.close-view(); }
         }
     }
 }

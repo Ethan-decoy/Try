@@ -1,4 +1,6 @@
-use crate::knowledge::{AnswerContent, AnswerMode, AppResult, Card, KnowledgePack, Library};
+use crate::knowledge::{
+    AnswerContent, AnswerMode, AppResult, Card, ContentFormat, KnowledgePack, Library,
+};
 use crate::tr;
 use rand::{Rng, seq::SliceRandom};
 
@@ -67,9 +69,14 @@ pub struct PreparedQuestion {
     pub answer: AnswerContent,
     pub options: Vec<AnswerContent>,
     correct_index: Option<usize>,
+    equivalent_options: Vec<usize>,
 }
 
 impl PreparedQuestion {
+    pub fn allows_formula_input(&self) -> bool {
+        self.answer.format() == ContentFormat::Formula
+    }
+
     pub fn has_prompt(&self) -> bool {
         !self.prompt.text.trim().is_empty()
             || self
@@ -94,6 +101,7 @@ impl PreparedQuestion {
             },
             options: vec![],
             correct_index: None,
+            equivalent_options: vec![],
         };
         match mode {
             AnswerMode::Input => {}
@@ -110,6 +118,13 @@ impl PreparedQuestion {
                 );
                 choices.shuffle(rng);
                 result.correct_index = choices.iter().position(|(correct, _)| *correct);
+                result.equivalent_options = choices
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, (correct, option))| {
+                        (!correct && card.choice_matches_answer(option, true)).then_some(index)
+                    })
+                    .collect();
                 result.options = choices.into_iter().map(|(_, option)| option).collect();
             }
             AnswerMode::TrueFalse => {
@@ -155,6 +170,7 @@ impl PreparedQuestion {
             },
             options: vec![],
             correct_index: None,
+            equivalent_options: vec![],
         };
         let equation = |text: &str| {
             text.trim_end()
@@ -191,7 +207,12 @@ impl PreparedQuestion {
     }
 
     pub fn accepts_choice(&self, index: usize) -> Option<bool> {
-        (index < self.options.len()).then(|| self.correct_index == Some(index))
+        (index < self.options.len())
+            .then(|| self.correct_index == Some(index) || self.equivalent_options.contains(&index))
+    }
+
+    pub fn correct_index(&self) -> Option<usize> {
+        self.correct_index
     }
 }
 

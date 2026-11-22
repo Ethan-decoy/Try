@@ -32,6 +32,10 @@ impl CloseCountdown {
     }
 }
 
+fn holds_card_open(session: &PracticeSession) -> bool {
+    session.window.get_context_menu_open() || session.window.get_resizing()
+}
+
 impl App {
     pub(in crate::app) fn cancel_card_close(&self) {
         self.card_close_timer.stop();
@@ -61,7 +65,7 @@ impl App {
         self.schedule_card_close(id, duration);
     }
 
-    pub(in crate::app) fn hold_card_close_for_menu(self: &Rc<Self>, id: u64, opened: bool) {
+    pub(in crate::app) fn update_card_close_hold(self: &Rc<Self>, id: u64) {
         let duration = {
             let mut practice = self.practice.borrow_mut();
             let Some(session) = practice
@@ -70,7 +74,7 @@ impl App {
             else {
                 return;
             };
-            if opened {
+            if holds_card_open(session) {
                 session.close_countdown.pause(Instant::now());
                 self.card_close_timer.stop();
                 None
@@ -84,14 +88,14 @@ impl App {
     }
 
     fn schedule_card_close(self: &Rc<Self>, id: u64, duration: Duration) {
-        let opened = self
+        let held = self
             .practice
             .borrow()
             .as_ref()
             .filter(|session| session.diagnostic_id == id)
-            .is_some_and(|session| session.window.get_context_menu_open());
-        if opened {
-            self.hold_card_close_for_menu(id, true);
+            .is_some_and(holds_card_open);
+        if held {
+            self.update_card_close_hold(id);
             return;
         }
         let weak = Rc::downgrade(self);
@@ -105,10 +109,10 @@ impl App {
                         .borrow()
                         .as_ref()
                         .filter(|session| session.diagnostic_id == id)
-                        .map(|session| session.window.get_context_menu_open());
+                        .map(holds_card_open);
                     match state {
-                        Some(true) => app.hold_card_close_for_menu(id, true),
-                        Some(false) => app.close_practice(),
+                        Some(true) => app.update_card_close_hold(id),
+                        Some(false) => app.dismiss_practice(id),
                         None => {}
                     }
                 }

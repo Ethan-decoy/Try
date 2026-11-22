@@ -20,12 +20,12 @@ impl App {
                 origin,
             );
         }
-        session.window.invoke_focus_answer();
+        session.window.invoke_focus_practice();
     }
 
     pub(in crate::app) fn edit_answer_input(self: &Rc<Self>, input: &str) {
         self.close_structured_math_for(true);
-        let math_hint = {
+        let structure_input = {
             let mut practice = self.practice.borrow_mut();
             let Some(session) = practice.as_mut().filter(|session| {
                 !session.answered
@@ -38,10 +38,11 @@ impl App {
             session.window.set_input_error("".into());
             session.window.set_answer_text(input.into());
             session.window.set_input_preview(Default::default());
-            session.question.card.answer_latex.is_some()
-                || math_answer::recognize(&session.question.card.answer, false).is_some()
+            session.prepared.allows_formula_input()
+                && math_answer::starts_structured_edit(input, true)
+                && !starts_literal_spelling(&session.question.card, input)
         };
-        if math_answer::starts_structured_edit(input, math_hint) {
+        if structure_input {
             self.start_practice_math(false);
         }
     }
@@ -81,20 +82,21 @@ impl App {
     pub(in crate::app) fn refresh_answer_preview(&self) {
         let practice = self.practice.borrow();
         let Some(session) = practice.as_ref().filter(|session| {
-            session.prepared.mode == AnswerMode::Input && !session.prepared.knowledge_only
+            session.prepared.mode == AnswerMode::Input
+                && !session.prepared.knowledge_only
+                && session.prepared.allows_formula_input()
         }) else {
             return;
         };
         let window = &session.window;
-        let preview = math_answer::recognize_inline(
-            window.get_answer_text().as_str(),
-            session.question.card.answer_latex.is_some(),
-        )
-        .and_then(|node| {
-            formula::render_node(&node, 22, window.get_pixel_scale(), (232, 232, 232)).ok()
-        })
-        .map(|rendered| formula_presentation::option(window.get_answer_text(), rendered))
-        .unwrap_or_default();
+        let text = window.get_answer_text();
+        let preview = math_answer::recognize_inline(text.as_str(), true)
+            .filter(|_| !starts_literal_spelling(&session.question.card, text.as_str()))
+            .and_then(|node| {
+                formula::render_node(&node, 22, window.get_pixel_scale(), (232, 232, 232)).ok()
+            })
+            .map(|rendered| formula_presentation::option(window.get_answer_text(), rendered))
+            .unwrap_or_default();
         window.set_input_preview(preview);
     }
 
@@ -245,19 +247,30 @@ fn assess_input(
         return None;
     }
     let correct = session.question.card.accepts(&attempt.input);
-    let error = if correct {
-        None
-    } else {
-        let math_hint = session.question.card.answer_latex.is_some()
-            || math_answer::recognize(&session.question.card.answer, false).is_some();
-        math_answer::incomplete_error(&attempt.input, math_hint)
-    };
+    let error = (!correct && session.prepared.allows_formula_input())
+        .then(|| math_answer::incomplete_error(&attempt.input, true))
+        .flatten();
     session.last_attempt = Some(attempt);
     if let Some(error) = error {
         session.window.set_input_error(error.into());
         return None;
     }
     Some(correct)
+}
+
+// Let an explicitly accepted spelling reach the grader even when one of its
+// prefixes happens to be an SMI command.
+fn starts_literal_spelling(card: &r#try::knowledge::Card, input: &str) -> bool {
+    let Some(latex) = card.answer_latex.as_deref() else {
+        return false;
+    };
+    let input = input.trim_start();
+    std::iter::once(card.answer.as_str())
+        .chain(card.aliases.iter().map(String::as_str))
+        .map(str::trim)
+        .any(|spelling| {
+            spelling.starts_with(input) && !math_answer::matches_formula(spelling, latex, &[])
+        })
 }
 
 impl PracticeSession {
@@ -268,6 +281,11 @@ impl PracticeSession {
         self.answered = true;
         self.window
             .set_selected_option(choice.map_or(-1, |index| index as i32));
+        self.window.set_correct_option(
+            self.prepared
+                .correct_index()
+                .map_or(-1, |index| index as i32),
+        );
         self.window.set_feedback(if correct { 1 } else { 2 });
         // A disabled option must not keep the focus needed by Enter/Esc.
         self.window.invoke_focus_answer();
@@ -324,6 +342,10 @@ mod tests {
     use slint::PhysicalSize;
     use slint::platform::Key;
     use r#try::problem_report::{self, AnswerAttempt, Outcome};
+    use r#try::window_position::PracticeCardSize;
+
+    const MIN_CARD_SIZE: PhysicalSize =
+        PhysicalSize::new(PracticeCardSize::MIN.width, PracticeCardSize::MIN.height);
 
     fn session(window: &PracticeWindow) -> PracticeSession {
         let card = serde_json::from_str(
@@ -354,6 +376,272 @@ mod tests {
             input_history: RefCell::default(),
             last_attempt: None,
             close_countdown: CloseCountdown::default(),
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn dismiss_retires_the_question_immediately_and_only_finishes_its_own_window() {
+        let adapter = software_window();
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().to_owned()).unwrap();
+        let library = Library::default();
+        let floating = Rc::new(FloatingWindow::new(&library.settings));
+        let app = App::new(store, library, floating).unwrap();
+        let open = |id, motion| {
+            let card = PracticeWindow::new().unwrap();
+            let mut scene = session(&card);
+            scene.diagnostic_id = id;
+            app.bind_practice_window(&card, id, false);
+            app.practice.replace(Some(scene));
+            card.global::<crate::Theme>().set_motion(motion);
+            card.show().unwrap();
+            adapter.set_size(MIN_CARD_SIZE);
+            paint(&adapter);
+            card
+        };
+        let first = open(7, crate::MotionPreference::Full);
+        assert!(first.animate_visibility(false));
+        let opening_scale = first.get_frame_scale();
+        first.invoke_dismiss();
+        assert!(app.practice.borrow().is_none() && app.reminder_timer.running());
+        assert_eq!(first.get_frame_scale(), opening_scale);
+        app.hide_outgoing_practice();
+        let second = open(8, crate::MotionPreference::Full);
+        second.invoke_dismiss();
+        first.invoke_dismiss_finished();
+        assert_eq!(app.outgoing_practice.borrow().as_ref().unwrap().0, 8);
+        second
+            .global::<crate::Theme>()
+            .set_motion(crate::MotionPreference::Reduced);
+        paint(&adapter);
+        assert!(app.outgoing_practice.borrow().is_none());
+
+        let instant = open(9, crate::MotionPreference::Reduced);
+        assert!(!instant.animate_visibility(false));
+        instant.invoke_dismiss();
+        assert!(app.practice.borrow().is_none() && app.outgoing_practice.borrow().is_none());
+    }
+
+    #[test]
+    fn practice_menu_locks_and_unlocks_the_open_card_and_saves_the_setting() {
+        let adapter = software_window();
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().to_owned()).unwrap();
+        let library = store.load().unwrap();
+        let floating = Rc::new(FloatingWindow::new(&library.settings));
+        let app = App::new(store, library, floating).unwrap();
+        let card = PracticeWindow::new().unwrap();
+        let practice = session(&card);
+        app.bind_practice_menu(&card, practice.diagnostic_id);
+        app.practice.replace(Some(practice));
+        card.global::<crate::Theme>()
+            .set_motion(crate::MotionPreference::Reduced);
+        card.set_answer_text("draft".into());
+        card.show().unwrap();
+        adapter.set_size(MIN_CARD_SIZE);
+        paint(&adapter);
+
+        let anchor = (
+            MIN_CARD_SIZE.width as f32 - 10.0,
+            MIN_CARD_SIZE.height as f32 - 10.0,
+        );
+        card.invoke_open_context_menu(anchor.0, anchor.1);
+        paint(&adapter);
+        click(
+            &card,
+            &adapter,
+            card.get_context_menu_left() + 24.0,
+            card.get_context_menu_top() + 85.0,
+        );
+        assert!(!card.get_context_menu_open());
+        assert!(card.get_card_locked());
+        assert!(!card.get_move_enabled());
+        assert!(app.store.load().unwrap().settings.practice_card_locked);
+
+        card.invoke_open_context_menu(anchor.0, anchor.1);
+        paint(&adapter);
+        key(&card, &adapter, Key::End);
+        key(&card, &adapter, Key::UpArrow);
+        key(&card, &adapter, Key::Return);
+        assert!(!card.get_context_menu_open());
+        assert!(!card.get_card_locked());
+        assert!(card.get_move_enabled());
+        assert!(!app.store.load().unwrap().settings.practice_card_locked);
+        assert_eq!(card.get_answer_text(), "draft");
+        assert!(app.practice.borrow().is_some());
+        card.hide().unwrap();
+    }
+
+    #[test]
+    fn a_correct_stacked_choice_keeps_the_card_height_and_answer_position() {
+        let adapter = software_window();
+        let window = PracticeWindow::new().unwrap();
+        let mut scene = session(&window);
+        let card = serde_json::from_str(
+            r#"{"prompt":"Density?","answer":"mass divided by volume","distractors":[{"text":"length divided by time"},{"text":"force divided by area"}]}"#,
+        )
+        .unwrap();
+        scene.prepared =
+            PreparedQuestion::new(&card, AnswerMode::MultipleChoice, &mut rand::rng()).unwrap();
+        window.set_answer_mode(scene.prepared.mode.index());
+        formula_presentation::apply_practice(&window, &scene.prepared, 1.0);
+        window.show().unwrap();
+        adapter.set_size(MIN_CARD_SIZE);
+        paint(&adapter);
+        assert!(window.get_stacked_options());
+        let content_height = window.get_content_height();
+        let answer_bottom = window.get_answer_footer_top();
+
+        let selected = scene.prepared.correct_index().unwrap();
+        assert!(scene.finish_answer_feedback(true, Some(selected)));
+        paint(&adapter);
+        assert_eq!(window.get_content_height(), content_height);
+        assert_eq!(window.get_answer_footer_top(), answer_bottom);
+        window.hide().unwrap();
+    }
+
+    #[test]
+    fn a_missed_choice_reveals_the_prepared_option_in_its_original_position() {
+        let adapter = software_window();
+        let window = PracticeWindow::new().unwrap();
+        let mut scene = session(&window);
+        let card = serde_json::from_str(
+            r#"{"prompt":"hesitate","answer":"pause","distractors":[{"text":"hurry"},{"text":"agree"}]}"#,
+        )
+        .unwrap();
+        scene.prepared =
+            PreparedQuestion::new(&card, AnswerMode::MultipleChoice, &mut rand::rng()).unwrap();
+        window.set_answer_mode(scene.prepared.mode.index());
+        formula_presentation::apply_practice(&window, &scene.prepared, 1.0);
+        window
+            .global::<crate::Theme>()
+            .set_motion(crate::MotionPreference::Reduced);
+        window.show().unwrap();
+        adapter.set_size(MIN_CARD_SIZE);
+        paint(&adapter);
+        let correct = scene
+            .prepared
+            .options
+            .iter()
+            .position(|option| option.text == "pause")
+            .unwrap();
+        let chosen = (correct + 1) % 3;
+        assert!(scene.finish_answer_feedback(false, Some(chosen)));
+        assert_eq!(window.get_selected_option(), chosen as i32);
+        assert_eq!(window.get_correct_option(), correct as i32);
+        let pixels = paint(&adapter);
+        let width = (window.get_answer_footer_width() - 16.0) / 3.0;
+        let y = (window.get_answer_footer_top() - window.get_answer_row_height() + 6.0) as usize;
+        let tile_fill = |index| {
+            let x = (window.get_answer_footer_left() + (width + 8.0) * index as f32 + width / 2.0)
+                as usize;
+            let pixel = pixels.as_slice()[y * pixels.width() as usize + x];
+            slint::Color::from_rgb_u8(pixel.r, pixel.g, pixel.b)
+        };
+        assert_eq!(
+            tile_fill(correct),
+            window.global::<crate::Theme>().get_correct_soft()
+        );
+        assert_eq!(
+            tile_fill(chosen),
+            window.global::<crate::Theme>().get_wrong_soft()
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn practice_input_uses_the_saved_format_when_typing_or_pasting() {
+        use slint::platform::WindowEvent;
+
+        let adapter = software_window();
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().to_owned()).unwrap();
+        let library = Library::default();
+        let code = library
+            .packs
+            .iter()
+            .flat_map(|pack| &pack.cards)
+            .find(|card| card.id.as_deref() == Some("cpp_unique_pointer"))
+            .unwrap()
+            .clone();
+        let template = r#try::knowledge::KnowledgePack::from_json(include_bytes!(
+            "../../../knowledge_packs/rust_template.json"
+        ))
+        .unwrap();
+        let transpose = template
+            .cards
+            .iter()
+            .find(|card| card.id.as_deref() == Some("option_transpose"))
+            .unwrap();
+        let mut literal = code.clone();
+        literal.answer = "x_i".into();
+        literal.aliases.clear();
+        let mut formula = literal.clone();
+        formula.answer_latex = Some("x_{i}".into());
+        formula.aliases = vec!["transpose()".into()];
+        let mut path = literal.clone();
+        path.answer = r"src\main.rs".into();
+        let floating = Rc::new(FloatingWindow::new(&library.settings));
+        let app = App::new(store, library, floating).unwrap();
+
+        for (card, input, paste, structured, feedback) in [
+            (&code, "std::unique_ptr", false, false, 1),
+            (&code, "unique_ptr", false, false, 1),
+            (&code, "unique_ptr", true, false, 1),
+            (&code, "unique_{ptr}", true, false, 2),
+            (transpose, "transpose()", false, false, 1),
+            (&literal, "x_i", false, false, 1),
+            (&literal, "x_{i}", true, false, 2),
+            (&literal, "sqrt(", false, false, 2),
+            (&path, r"src\main.rs", false, false, 1),
+            (&formula, "x_i", false, true, 1),
+            (&formula, "x_{i}", true, true, 1),
+            (&formula, "transpose()", false, false, 1),
+        ] {
+            let window = PracticeWindow::new().unwrap();
+            let mut scene = session(&window);
+            scene.prepared =
+                PreparedQuestion::new(card, AnswerMode::Input, &mut rand::rng()).unwrap();
+            scene.question.card = card.clone();
+            window.set_formula_input_allowed(scene.prepared.allows_formula_input());
+            window.set_prompt(scene.prepared.prompt.text.clone().into());
+            window.set_standard_answer(card.answer.clone().into());
+            app.bind_practice_window(&window, scene.diagnostic_id, false);
+            app.practice.replace(Some(scene));
+            window.show().unwrap();
+            adapter.set_size(MIN_CARD_SIZE);
+            window.invoke_focus_answer();
+            if card.answer_latex.is_none() {
+                window.invoke_open_structured_entry();
+                assert!(!window.get_input_math_mode());
+            }
+            let enter_text = |text: slint::SharedString| {
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyReleased { text });
+                paint(&adapter);
+            };
+            if paste {
+                enter_text(input.into());
+            } else {
+                for ch in input.chars() {
+                    enter_text(ch.to_string().into());
+                }
+            }
+            assert_eq!(window.get_input_math_mode(), structured, "editing {input}");
+            key(&window, &adapter, Key::Return);
+            assert_eq!(window.get_feedback(), feedback, "submitting {input}");
+            if !structured {
+                assert_eq!(window.get_answer_text(), input, "submitted text: {input}");
+                assert_eq!(window.get_input_preview().formula_width, 0.0);
+            }
+            app.cancel_card_close();
+            window.hide().unwrap();
+            app.practice.borrow_mut().take();
         }
     }
 
@@ -419,19 +707,22 @@ mod tests {
                 });
             });
             window.show().unwrap();
-            adapter.set_size(PhysicalSize::new(320, 230));
+            adapter.set_size(MIN_CARD_SIZE);
             window.invoke_focus_answer();
             paint(&adapter);
             key(&window, &adapter, Key::Return);
             assert!(scene.borrow().answered);
             assert_eq!(window.get_feedback(), if correct { 1 } else { 2 });
-            window.invoke_open_context_menu(304.0, 214.0);
+            window.invoke_open_context_menu(
+                MIN_CARD_SIZE.width as f32 - 16.0,
+                MIN_CARD_SIZE.height as f32 - 16.0,
+            );
             paint(&adapter);
             click(
                 &window,
                 &adapter,
                 window.get_context_menu_left() + 24.0,
-                window.get_context_menu_top() + 94.0,
+                window.get_context_menu_top() + 126.0,
             );
             paint(&adapter);
             let path = saved
@@ -480,7 +771,7 @@ mod tests {
         ui.set_keypad_expanded(true);
         ui.set_error(error.clone().into());
         window.show().unwrap();
-        adapter.set_size(PhysicalSize::new(320, 230));
+        adapter.set_size(MIN_CARD_SIZE);
         paint(&adapter);
         let evidence = problem_context(&scene, Some(&edit));
         assert_eq!(evidence.outcome, Outcome::Unanswered);

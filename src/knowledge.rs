@@ -1,5 +1,5 @@
 use crate::tr;
-use crate::window_position::{PopupCorner, SavedPopupPosition};
+use crate::window_position::{PopupCorner, PracticeCardSize, SavedPopupPosition};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
@@ -83,6 +83,22 @@ impl PracticeConfig {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContentFormat {
+    Text,
+    Formula,
+}
+
+impl ContentFormat {
+    pub fn from_latex(latex: Option<&str>) -> Self {
+        if latex.is_some_and(|value| !value.trim().is_empty()) {
+            Self::Formula
+        } else {
+            Self::Text
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AnswerContent {
@@ -92,22 +108,24 @@ pub struct AnswerContent {
 }
 
 impl AnswerContent {
-    /// Compare declared spellings and the displayed formula without evaluating
-    /// algebra or numerical approximations. Plain fallback text alone can differ.
-    fn same_notation(&self, text: &str, latex: Option<&str>) -> bool {
-        self.text.trim() == text.trim()
-            || crate::math_answer::matches(
-                self.latex.as_deref().unwrap_or(&self.text),
-                text,
-                latex,
-                &[],
-            )
-            || crate::math_answer::matches(
-                latex.unwrap_or(text),
-                &self.text,
-                self.latex.as_deref(),
-                &[],
-            )
+    pub fn format(&self) -> ContentFormat {
+        ContentFormat::from_latex(self.latex.as_deref())
+    }
+
+    fn same_notation(&self, text: &str, latex: Option<&str>, compare_mixed: bool) -> bool {
+        if self.text.trim() == text.trim() {
+            return true;
+        }
+        match (self.latex.as_deref(), latex) {
+            (Some(own), Some(other)) => crate::math_answer::matches_formula(own, other, &[]),
+            (Some(own), None) if compare_mixed => {
+                crate::math_answer::matches_formula(text, own, &[])
+            }
+            (None, Some(other)) if compare_mixed => {
+                crate::math_answer::matches_formula(&self.text, other, &[])
+            }
+            _ => false,
+        }
     }
 }
 
@@ -158,24 +176,34 @@ impl Card {
         !input.is_empty()
             && (input == self.answer.trim()
                 || self.aliases.iter().any(|alias| input == alias.trim())
-                || crate::math_answer::matches(
-                    input,
-                    &self.answer,
-                    self.answer_latex.as_deref(),
-                    &self.aliases,
-                ))
+                || self.answer_latex.as_deref().is_some_and(|latex| {
+                    crate::math_answer::matches_formula(input, latex, &self.aliases)
+                }))
+    }
+
+    pub(crate) fn choice_matches_answer(
+        &self,
+        option: &AnswerContent,
+        compare_mixed: bool,
+    ) -> bool {
+        (compare_mixed && self.accepts(&option.text))
+            || option.same_notation(&self.answer, self.answer_latex.as_deref(), compare_mixed)
+            || self.aliases.iter().any(|alias| {
+                option.same_notation(alias, None, compare_mixed || self.answer_latex.is_some())
+            })
     }
 
     pub(crate) fn discard_stale_aliases(&mut self, original: &Self) {
         if !self.aliases.is_empty()
             && !original.aliases.is_empty()
             && self.answer.trim() != original.answer.trim()
-            && !crate::math_answer::matches(
-                &self.answer,
-                &original.answer,
-                original.answer_latex.as_deref(),
-                &[],
-            )
+            && !self
+                .answer_latex
+                .as_deref()
+                .zip(original.answer_latex.as_deref())
+                .is_some_and(|(current, previous)| {
+                    crate::math_answer::matches_formula(current, previous, &[])
+                })
         {
             self.aliases.retain(|alias| {
                 !original
@@ -267,6 +295,10 @@ impl KnowledgePack {
     }
 
     pub fn validate(&self) -> AppResult<()> {
+        self.validate_with_mixed_choices(|_| true)
+    }
+
+    fn validate_with_mixed_choices(&self, check_mixed: impl Fn(usize) -> bool) -> AppResult<()> {
         if self.format != "try" || self.schema_version != 1 {
             return Err(tr!("请选择 format 为 try、schema_version 为 1 的知识包。").into());
         }
@@ -362,16 +394,17 @@ impl KnowledgePack {
                 if card.distractors.len() != 2 {
                     return Err(tr!("第 {p0} 题需要两个干扰项。", p0 = index + 1));
                 }
+                let compare_mixed = check_mixed(index);
                 let mut distinct: Vec<&AnswerContent> = Vec::new();
                 for option in &card.distractors {
                     validate_content(&option.text, &option.latex)?;
-                    if option.same_notation(&card.answer, card.answer_latex.as_deref())
-                        || card
-                            .aliases
-                            .iter()
-                            .any(|alias| option.same_notation(alias, None))
+                    if card.choice_matches_answer(option, compare_mixed)
                         || distinct.iter().any(|previous| {
-                            option.same_notation(&previous.text, previous.latex.as_deref())
+                            option.same_notation(
+                                &previous.text,
+                                previous.latex.as_deref(),
+                                compare_mixed,
+                            )
                         })
                     {
                         return Err(tr!(
@@ -434,6 +467,7 @@ impl Appearance {
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub appearance: Appearance,
+    pub interface_animations: bool,
     pub interface_language: crate::i18n::InterfaceLanguage,
     // Read the old total switch once; a disabled switch becomes UntilResumed.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -449,8 +483,17 @@ pub struct Settings {
     pub enabled_pack_ids: Vec<String>,
     pub popup_corner: PopupCorner,
     pub show_pack_tags: bool,
+    pub show_practice_hints: bool,
+    // An older profile may have stored a position while leaving it disabled.
     pub remember_position: bool,
     pub popup_position: Option<SavedPopupPosition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub practice_card_size: Option<PracticeCardSize>,
+    #[serde(
+        rename = "practice_card_size_locked",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub practice_card_locked: bool,
     // Read legacy pack-wide preferences, then migrate them into question settings.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub answer_modes: BTreeMap<String, AnswerMode>,
@@ -465,6 +508,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             appearance: Appearance::default(),
+            interface_animations: true,
             interface_language: crate::i18n::InterfaceLanguage::default(),
             reminders_enabled: None,
             pause: crate::reminder_schedule::PracticePause::None,
@@ -478,13 +522,29 @@ impl Default for Settings {
             enabled_pack_ids: STARTER_PACKS.iter().map(|(id, _)| (*id).into()).collect(),
             popup_corner: PopupCorner::BottomRight,
             show_pack_tags: true,
+            show_practice_hints: true,
             remember_position: true,
             popup_position: None,
+            practice_card_size: None,
+            practice_card_locked: false,
             answer_modes: BTreeMap::new(),
             card_answer_modes: BTreeMap::new(),
             pack_practice_configs: BTreeMap::new(),
             excluded_card_ids: BTreeMap::new(),
         }
+    }
+}
+
+impl Settings {
+    pub fn custom_popup_position(&self) -> Option<&SavedPopupPosition> {
+        self.popup_position
+            .as_ref()
+            .filter(|_| self.remember_position)
+    }
+
+    pub fn set_custom_popup_position(&mut self, position: SavedPopupPosition) {
+        self.popup_position = Some(position);
+        self.remember_position = true;
     }
 }
 
@@ -606,9 +666,18 @@ impl Library {
         {
             return Err(tr!("保存的练习窗口位置无效，请保留原文件。").into());
         }
+        if self
+            .settings
+            .practice_card_size
+            .is_some_and(|size| !size.is_valid())
+        {
+            return Err(tr!("保存的练习卡片尺寸无效，请保留原文件。").into());
+        }
         let mut ids = HashSet::new();
         for pack in &self.packs {
-            pack.validate()?;
+            // Previously saved mixed choices remain editable. New imports and
+            // edits enforce the current rule and practice grades their equivalents.
+            pack.validate_with_mixed_choices(|_| false)?;
             if !ids.insert(pack.id.as_str()) {
                 return Err(tr!("知识包 id 重复：{p0}", p0 = pack.id));
             }
@@ -1022,22 +1091,25 @@ impl Library {
         let mut pack = self.packs[index].clone();
         let was_all_selected = self.pack_enabled_card_count(&pack) == pack.cards.len();
         let adding = card_id.is_none();
-        if let Some(id) = card_id {
-            let target = pack
+        let edited_index = if let Some(id) = card_id {
+            let card_index = pack
                 .cards
-                .iter_mut()
-                .find(|card| card.id.as_deref() == Some(id))
+                .iter()
+                .position(|card| card.id.as_deref() == Some(id))
                 .ok_or(tr!("这道题已不存在，请重新选择。"))?;
+            let target = &mut pack.cards[card_index];
             card.id = target.id.clone();
             if mode == AnswerMode::MultipleChoice {
                 card.discard_stale_aliases(target);
             }
             *target = card;
+            card_index
         } else {
             card.id = None;
             pack.cards.push(card);
-        }
-        pack.validate()?;
+            pack.cards.len() - 1
+        };
+        pack.validate_with_mixed_choices(|index| index == edited_index)?;
         pack.assign_card_ids(None);
         let added_id = adding.then(|| pack.cards.last().unwrap().id.clone().unwrap());
         let target_id = card_id.or(added_id.as_deref()).unwrap().to_owned();
@@ -1816,6 +1888,101 @@ mod tests {
     }
 
     #[test]
+    fn mixed_choices_cannot_repeat_a_formula_answer_alias_or_other_option() {
+        let mut pack = crate::test_fixtures::regression_library().packs.remove(0);
+        let card = &mut pack.cards[0];
+        card.answer = "2x".into();
+        card.answer_latex = Some("2x".into());
+        card.aliases = vec!["3y".into()];
+        card.distractors = vec![
+            AnswerContent {
+                text: "2*x".into(),
+                latex: None,
+            },
+            AnswerContent {
+                text: "1".into(),
+                latex: None,
+            },
+        ];
+        for spelling in ["2*x", "3*y"] {
+            pack.cards[0].distractors[0].text = spelling.into();
+            assert!(pack.cards[0].accepts(spelling));
+            assert!(KnowledgePack::from_json(&serde_json::to_vec(&pack).unwrap()).is_err());
+        }
+
+        let card = &mut pack.cards[0];
+        card.distractors[0] = AnswerContent {
+            text: "4z".into(),
+            latex: Some("4z".into()),
+        };
+        card.distractors[1].text = "4*z".into();
+        assert!(pack.validate().is_err());
+        pack.cards[0].distractors.swap(0, 1);
+        assert!(pack.validate().is_err());
+
+        let card = &mut pack.cards[0];
+        card.answer_latex = None;
+        card.distractors[0].text = "2*x".into();
+        card.distractors[1].latex = None;
+        assert!(!card.accepts("2*x"));
+        assert!(pack.validate().is_ok());
+    }
+
+    #[test]
+    fn existing_mixed_choices_keep_the_library_readable_and_grade_equivalent_options() {
+        let mut library = crate::test_fixtures::regression_library();
+        let pack_id = library.packs[0].id.clone();
+        let target = &mut library.packs[0].cards[0];
+        let card_id = target.id.clone().unwrap();
+        target.answer = "2x".into();
+        target.answer_latex = Some("2x".into());
+        target.aliases.clear();
+        target.distractors[0] = AnswerContent {
+            text: "2*x".into(),
+            latex: None,
+        };
+        assert!(library.validate().is_ok());
+
+        let card = library.packs[0].cards[0].clone();
+        let prepared = crate::practice::PreparedQuestion::new(
+            &card,
+            AnswerMode::MultipleChoice,
+            &mut rand::rng(),
+        )
+        .unwrap();
+        let equivalent = prepared
+            .options
+            .iter()
+            .position(|option| option.text == "2*x")
+            .unwrap();
+        assert_eq!(prepared.accepts_choice(equivalent), Some(true));
+
+        let before = library.clone();
+        assert!(
+            library
+                .save_card_with_mode(
+                    &pack_id,
+                    Some(&card_id),
+                    card.clone(),
+                    AnswerMode::MultipleChoice
+                )
+                .is_err()
+        );
+        assert_eq!(library, before);
+        let mut repaired = card;
+        repaired.distractors[0].text = "x^2".into();
+        library
+            .save_card_with_mode(
+                &pack_id,
+                Some(&card_id),
+                repaired,
+                AnswerMode::MultipleChoice,
+            )
+            .unwrap();
+        assert!(library.packs[0].validate().is_ok());
+    }
+
+    #[test]
     fn accepts_declared_spellings_without_guessing() {
         let card = &crate::test_fixtures::regression_library().packs[0].cards[2];
         assert!(card.accepts("  √3/2\n"));
@@ -1823,6 +1990,24 @@ mod tests {
         assert!(!card.accepts("0.866"));
         assert!(!card.accepts("SQRT(3)/2"));
         assert!(!card.accepts(""));
+    }
+
+    #[test]
+    fn formula_matching_requires_an_explicit_latex_answer() {
+        let mut card = crate::test_fixtures::regression_library().packs[0].cards[2].clone();
+        card.answer = "x_i".into();
+        card.answer_latex = None;
+        card.aliases = vec!["x-index".into()];
+        assert!(card.accepts("  x_i  "));
+        assert!(card.accepts("x-index"));
+        assert!(!card.accepts("x_{i}"));
+        assert!(!card.accepts("X_i"));
+
+        card.answer_latex = Some("x_{i}".into());
+        assert!(card.accepts("x_i"));
+        assert!(card.accepts("x_{i}"));
+        assert!(card.accepts("x-index"));
+        assert!(!card.accepts("x_{j}"));
     }
 
     #[test]

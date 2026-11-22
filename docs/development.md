@@ -54,7 +54,7 @@ Windows 的两种准备入口按用途区分：
 
 `practice_window.rs` 保留闪卡创建、展示与关闭；其私有的 `bindings.rs` 注册界面和原生事件，`answer.rs` 处理输入、判分反馈及问题现场采集，`timing.rs` 管理提醒和自动收起，集中维护收起倒计时的启动、暂停、恢复与取消。菜单和图片预览通过该入口控制计时。`practice_menu.rs` 只分派具名菜单动作；动作和记录状态使用 Slint 导出的枚举，由 Rust 与界面共享。问题现场先冻结，再交给 `problem_report` 原子保存；记录包含当前显示内容与最近提交的输入，独立于题库和学习数据。
 
-`ui/app.slint` 保留 Rust 侧使用的统一导出，窗口实现分别位于 `main_window.slint`、`practice_window.slint` 与 `app_shell.slint`。`about.slint` 负责关于内容；弹出位置和文字测量仍由主窗口持有，保证更新状态变化时几何稳定。`tests/support/mod.rs` 共用无窗口渲染与输入驱动，各测试保留自己的界面夹具和行为断言。
+`ui/app.slint` 保留 Rust 侧使用的统一导出，窗口实现分别位于 `main_window.slint`、`practice_window.slint` 与 `app_shell.slint`。`pack_list.slint` 管理知识包列表的选中、滚动和键盘导航，焦点显示规则由 `controls.slint` 共享。选包更新题库视图，时间设置的菜单和保存动作共用 `src/app/settings.rs` 中的预设。`about.slint` 负责关于内容；弹出位置和文字测量由主窗口持有，保证更新状态变化时几何稳定。`tests/support/mod.rs` 共用无窗口渲染与输入驱动，各测试保留自己的界面夹具和行为断言。
 
 `src/structured_math.rs` 负责结构化编辑器的宿主接入；其剪贴板适配与整段输入共用表达式规范化，保留组件的结构、选区与撤销语义。`src/text_history.rs` 只维护普通文字的有界撤销记录。原生检查按功能放在 `src/native_checks/`，`mod.rs` 保留共享窗口与输入驱动；测试通过当前可见的输入框和 ƒ 入口验证练习，不保留已退役的公式面板入口。
 
@@ -74,7 +74,9 @@ Windows 在提醒到期时调用 [SHQueryUserNotificationState](https://learn.mi
 
 `Store` 负责将含图包组装为单个 JSON 或从中安装资源，`media` 传输字段不进入 `state.json`。导入、编辑失败保留原题库；清理只处理已识别且未被库、当前草稿或待确认导入引用的自有文件。修改图片或文字仍按原规则改变学习指纹。若明确只删除同一图片的冗余提示并希望保留记忆，须基于修改前后的完整题目核对每种题型的旧指纹，再显式迁移匹配的进度、作答记录与呈现标记；不复用不匹配的旧指纹，不仅复制原记录文件，也不全局忽略题面。格式与配额见 [知识包格式](knowledge_pack_format.md#题面图片与可携带资源)。Windows 可用 `./scripts/build_windows.ps1 -Action test -NativeChecks -NativeTest native_picture_questions` 验证隔离题库中的编辑、取消、保存、纯图与含文字布局、放大与资源清理；生成的截图留在 `local_artifacts/`。
 
-版本检查使用固定 GitHub Release 源，忽略草稿。预发布通道的 REST API 请求受限时，沿用系统代理检查同一仓库的公开 Atom 订阅源，并确认 `checksums.sha256` 已可匿名访问；只有标签、没有公开分发附件的候选不会提示更新。订阅源限制为 1 MiB／10000 个 XML 节点，最多探测三个版本的附件，不跟随下载重定向；正式版本通道保留 API 的预发布过滤规则。两条路径均失败时保留受限错误，关于页显示稍后重试。自动检查默认开启，启动后延迟至少 30 秒，每 24 小时最多一次；手动检查可覆盖预算，同时只运行一个检查任务。缓存受大小限制，结果安静显示在关于页。显式网络验证可分别运行 `update_check::tests::live_release_check` 与 `update_check::tests::live_rate_limited_api_fallback`，后者模拟 API 403 后通过实际传输检查公开源，不反复请求已耗尽的 API 额度。
+正式更新通道使用固定仓库的 GitHub Release API，过滤草稿和预发布版。遇到 API 限流时读取同一仓库的 `releases/latest` 跳转，核对仓库、标签和版本。备用检查也失败时，关于页保留限流提示。自动检查默认开启，启动后延迟至少 30 秒，每 24 小时最多一次。手动检查可覆盖预算，同时只运行一个检查任务。缓存受大小限制，结果显示在关于页。
+
+`update_check::tests::stable_rate_limit_uses_only_this_repositorys_latest_release` 用模拟响应覆盖正式通道的限流分支。可显式联网运行 `update_check::tests::live_release_check` 检查正式通道的当前结果。`update_check::tests::live_rate_limited_api_fallback` 覆盖旧预发布通道的 Atom 订阅和公开校验附件。
 
 Windows 窗口激活直接调用 [SetForegroundWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)，避免 Winit 0.30 的 `focus_window()` 为取得前台权限而模拟 Alt 按下／释放，误触其他软件的全局快捷键。系统拒绝激活时仅请求窗口注意提示，保留系统焦点限制；自动提醒的聚焦开关与非聚焦输入保护继续生效。
 

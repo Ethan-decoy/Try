@@ -72,6 +72,9 @@ fn repaint_phase(checks: Rc<RepaintChecks>, phase: u8) {
             match phase {
                 0 => {
                     snapshot(window, checks.output.join("renderer.png"));
+                    if let RepaintTarget::Main(main) = &checks.target {
+                        check_main_frame_activation(main.window());
+                    }
                     // A snapshot refreshes the renderer's cache; allow another
                     // unchanged frame to settle before the screen-loss probe.
                     unsafe {
@@ -219,6 +222,39 @@ fn native_repaint_baseline() {
     run_native_repaint(true);
 }
 
+fn check_main_frame_activation(window: &slint::Window) {
+    use windows_sys::Win32::Graphics::Gdi::GetWindowDC;
+
+    let hwnd = native_handle(window);
+    let scale = window.scale_factor();
+    // Sample the native surface without taking a renderer snapshot after activation.
+    // A snapshot or a queued client repaint can mask the stray system frame.
+    // SAFETY: hwnd is the live test window, and its DC is released after each sample.
+    unsafe {
+        let mut bounds = RECT::default();
+        assert_ne!(GetWindowRect(hwnd, &mut bounds), 0);
+        let sample = || {
+            let dc = GetWindowDC(hwnd);
+            assert!(!dc.is_null());
+            let colors = [
+                GetPixel(dc, (bounds.right - bounds.left) / 2, (12.0 * scale) as i32),
+                GetPixel(dc, (3.0 * scale) as i32, (bounds.bottom - bounds.top) / 2),
+            ];
+            ReleaseDC(hwnd, dc);
+            assert!(!colors.contains(&u32::MAX));
+            colors
+        };
+        let expected = sample();
+        let deactivated = SendMessageW(hwnd, WM_NCACTIVATE, 0, 0);
+        let inactive = sample();
+        SendMessageW(hwnd, WM_NCACTIVATE, 1, 0);
+        let active = sample();
+        assert_ne!(deactivated, 0, "Windows must be able to deactivate Try");
+        assert_eq!(inactive, expected, "Deactivation must preserve Try's frame");
+        assert_eq!(active, expected, "Reactivation must preserve Try's frame");
+    }
+}
+
 pub(super) fn native_handle(window: &slint::Window) -> HWND {
     window
         .with_winit_window(|native| match native.window_handle().unwrap().as_raw() {
@@ -228,11 +264,18 @@ pub(super) fn native_handle(window: &slint::Window) -> HWND {
         .unwrap()
 }
 
-pub(super) fn check_floating_window(window: &slint::Window) {
+pub(super) fn check_floating_window(card: &PracticeWindow) {
+    let window = card.window();
     let hwnd = native_handle(window);
     window.with_winit_window(|native| {
         assert!(!native.is_decorated(), "No system title bar");
-        assert!(!native.is_resizable(), "No resizing border");
+        let has_size_range = card.get_min_card_width() < card.get_max_card_width()
+            || card.get_min_card_height() < card.get_max_card_height();
+        assert_eq!(
+            native.is_resizable(),
+            card.get_resize_available() && !card.get_card_locked() && has_size_range,
+            "Native resizing follows the card lock and size limits"
+        );
         assert_eq!(
             native.inner_size(),
             native.outer_size(),
@@ -359,7 +402,7 @@ fn run_frameless_probe(with_controller: bool) {
     let probe = FramelessProbe::new().unwrap();
     probe.show().unwrap();
     if with_controller {
-        floating.place(probe.window());
+        floating.place(probe.window(), 1.0);
         FloatingWindow::activate(probe.window());
     }
     drop(_creation);
@@ -368,7 +411,7 @@ fn run_frameless_probe(with_controller: bool) {
     Timer::single_shot(Duration::from_millis(500), move || {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if with_controller {
-                floating.place(probe.window());
+                floating.place(probe.window(), 1.0);
             }
             let hwnd = native_handle(probe.window());
             assert!(
@@ -538,7 +581,7 @@ fn native_drag_repaint() {
     let passed = Rc::new(Cell::new(false));
     let result = passed.clone();
     Timer::single_shot(Duration::from_millis(500), move || {
-        floating.place(probe.window());
+        floating.place(probe.window(), 1.0);
         FloatingWindow::activate(probe.window());
         probe.window().with_winit_window(|native| {
             let position = native.outer_position().unwrap();

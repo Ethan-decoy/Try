@@ -1,6 +1,7 @@
 //! Practice-window creation, presentation and shutdown.
 mod answer;
 mod bindings;
+mod motion;
 mod timing;
 
 pub(super) use answer::problem_context;
@@ -36,6 +37,7 @@ impl App {
             self.arm_reminder();
             return Ok(());
         }
+        self.hide_outgoing_practice();
         let existing = self
             .practice
             .borrow()
@@ -121,10 +123,31 @@ impl App {
         let diagnostic_id = self.next_practice_id.get();
         self.next_practice_id.set(diagnostic_id.wrapping_add(1));
         let window = PracticeWindow::new().map_err(|error| error.to_string())?;
+        #[cfg(target_os = "windows")]
+        window.global::<crate::WindowFrame>().set_enabled(true);
+        window
+            .global::<crate::Theme>()
+            .set_motion(self.interface_motion());
         window.set_dark_theme(self.resolved_dark_theme(self.library.borrow().settings.appearance));
         {
             let library = self.library.borrow();
+            window.set_card_locked(library.settings.practice_card_locked);
+            #[cfg(target_os = "windows")]
+            {
+                use r#try::window_position::PracticeCardSize;
+                let limit = self.floating.practice_size_limit();
+                window.set_resize_available(true);
+                window.set_min_card_width(PracticeCardSize::MIN.width as f32);
+                window.set_min_card_height(PracticeCardSize::MIN.height as f32);
+                window.set_max_card_width(limit.width as f32);
+                window.set_max_card_height(limit.height as f32);
+                if let Some(size) = library.settings.practice_card_size {
+                    window.set_card_width(size.width as f32);
+                    window.set_card_height(size.height as f32);
+                }
+            }
             window.set_show_pack_tags(library.settings.show_pack_tags);
+            window.set_show_practice_hints(library.settings.show_practice_hints);
             window.set_pack_tag(
                 library
                     .packs
@@ -146,6 +169,7 @@ impl App {
         );
         window.set_app_icon(self.icon.clone());
         window.set_answer_mode(prepared.mode.index());
+        window.set_formula_input_allowed(prepared.allows_formula_input());
         window.set_knowledge_only(prepared.knowledge_only);
         window.set_awaiting_interaction(awaiting_interaction);
         window.set_has_prompt(prepared.has_prompt());
@@ -215,6 +239,8 @@ impl App {
                 else {
                     return Ok(());
                 };
+                #[cfg(target_os = "windows")]
+                app.watch_practice_resize(&session.window, diagnostic_id, &native);
                 if awaiting_interaction {
                     FloatingWindow::prepare_frame(session.window.window());
                     session.input_guard = Some(ReminderInputGuard::install(&native)?);
@@ -222,7 +248,7 @@ impl App {
                 native_ready.set(true);
                 app.place_practice(session);
                 if !session.awaiting_interaction {
-                    session.window.invoke_focus_answer();
+                    session.window.invoke_focus_practice();
                 }
                 if origin == PracticeOrigin::Manual
                     || (!session.prepared.knowledge_only
@@ -264,13 +290,46 @@ impl App {
     }
 
     pub(super) fn place_practice(&self, session: &PracticeSession) {
-        self.floating.place(session.window.window());
+        self.floating
+            .place(session.window.window(), session.window.get_frame_scale());
         if let Some(on_right) = FloatingWindow::tag_on_right(session.window.window()) {
             session.window.set_tag_on_right(on_right);
         }
     }
 
+    pub(super) fn dismiss_practice(self: &Rc<Self>, id: u64) {
+        let window = self
+            .practice
+            .borrow()
+            .as_ref()
+            .filter(|session| session.diagnostic_id == id)
+            .map(|session| session.window.clone_strong());
+        if let Some(window) = window {
+            if window.animate_visibility(true) {
+                // The outgoing picture has no actionable controls. A click
+                // in its former position belongs to the underlying window.
+                let _ = FloatingWindow::set_mouse_passthrough(window.window(), true);
+                self.outgoing_practice.replace(Some((id, window)));
+            }
+            self.retire_practice();
+        }
+    }
+
+    pub(super) fn hide_outgoing_practice(&self) {
+        let outgoing = self.outgoing_practice.borrow_mut().take();
+        if let Some((_, window)) = outgoing {
+            let _ = window.hide();
+        }
+    }
+
     pub(super) fn close_practice(self: &Rc<Self>) {
+        self.hide_outgoing_practice();
+        self.retire_practice();
+    }
+
+    // Retire the question immediately. Only its frozen picture lives through
+    // the exit, so input, reminders and the next question never wait for it.
+    fn retire_practice(self: &Rc<Self>) {
         self.close_structured_math_for(true);
         self.close_image_preview();
 
@@ -283,16 +342,18 @@ impl App {
                 session.answered,
                 FloatingWindow::position(session.window.window())
             );
-            if self.library.borrow().settings.remember_position
+            if !session.window.get_card_locked()
                 && let Some(position) = self.floating.moved_position(session.window.window())
             {
                 let result = self.commit(|library| {
-                    library.settings.popup_position = Some(position);
+                    library.settings.set_custom_popup_position(position);
                     Ok(())
                 });
                 self.report(result, "");
             }
-            let _ = session.window.hide();
+            if !session.window.get_dismissing() {
+                let _ = session.window.hide();
+            }
         }
         self.arm_reminder();
         self.resume_ready_update();

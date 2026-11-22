@@ -1,7 +1,7 @@
 import { DesktopButton, SelectionMenu } from "desktop_controls.slint";
 import { Theme } from "theme.slint";
 import { LineEdit, ScrollView, SpinBox } from "std-widgets.slint";
-import { IconButton, SettingsCheck } from "controls.slint";
+import { EntranceMotion, IconButton, SettingsCheck } from "controls.slint";
 
 component TimeSetting inherits Rectangle {
     in property <string> label;
@@ -14,12 +14,18 @@ component TimeSetting inherits Rectangle {
     in property <[string]> options;
     in property <int> selection;
     private property <int> draft;
+    private property <bool> animate-details;
     out property <string> display-value: time-menu.display-value;
     callback choose(int);
     callback apply-value(int);
     callback resume();
     height: 48px;
-    public function show-details() { root.draft = root.value; details.show(); }
+    public function show-details() { root.open-details(false); }
+    function open-details(animated: bool) {
+        root.animate-details = animated;
+        root.draft = root.value;
+        details.show();
+    }
     HorizontalLayout {
         padding-left: 14px; padding-right: 14px; spacing: 10px;
         Rectangle {
@@ -57,7 +63,7 @@ component TimeSetting inherits Rectangle {
                 glyph: @image-url("../assets/adjustments.svg");
                 label: @tr("精细配置") + root.label; borderless: true;
                 ink: Theme.muted;
-                activated => { root.show-details(); }
+                activated => { root.open-details(self.pointer-activation); }
             }
         }
     }
@@ -69,7 +75,9 @@ component TimeSetting inherits Rectangle {
         height: root.hint == "" ? 124px : 160px;
         close-policy: close-on-click-outside;
         forward-focus: precise-input;
+        opening := EntranceMotion { play-on-init: root.animate-details; }
         Rectangle {
+            opacity: opening.alpha;
             background: Theme.soft; border-radius: 12px;
             border-width: 1px; border-color: Theme.border;
             FocusScope {
@@ -120,9 +128,15 @@ export component SettingsPage inherits Rectangle {
     in-out property <string> quiet-end;
     in property <string> quiet-summary;
     in property <string> quiet-time-error;
+    in property <bool> quiet-time-dirty;
     in property <int> popup-corner;
-    in property <bool> remember-position;
+    in property <bool> has-custom-position;
+    in property <bool> card-resize-available;
+    in property <bool> card-locked;
+    in property <bool> has-custom-card-size;
     in property <bool> show-pack-tags;
+    in property <bool> show-practice-hints;
+    in property <bool> interface-animations;
     in property <bool> focus-on-reminder;
     in property <bool> auto-check-updates;
     in property <int> interface-language;
@@ -151,36 +165,80 @@ export component SettingsPage inherits Rectangle {
     callback set-autostart(bool);
     callback set-quiet-enabled(bool);
     callback set-quiet-range(string, string);
+    callback edit-quiet-range(string, string);
     callback set-corner(int);
-    callback set-remember-position(bool);
+    callback set-card-locked(bool);
+    callback reset-card-size();
     callback set-show-pack-tags(bool);
+    callback set-show-practice-hints(bool);
+    callback set-interface-animations(bool);
     callback set-focus-on-reminder(bool);
     callback set-auto-check-updates(bool);
     callback choose-language(int);
     callback choose-appearance(int);
     in-out property <int> section: 0;
-    public function show-pause-details() { root.section = 0; pause-setting.show-details(); }
+    private property <int> section-focus-request;
+    private property <length> incoming-offset;
+    function select-section(index: int, animated: bool) {
+        if root.section == index { return; }
+        root.incoming-offset = index > root.section ? 8px : -8px;
+        content-entrance.play(animated);
+        root.section = index;
+    }
+    public function reveal(animated: bool) {
+        root.incoming-offset = 0px;
+        content-entrance.play(animated);
+    }
+    public function show-pause-details() {
+        root.reveal(false);
+        root.section = 0;
+        pause-setting.show-details();
+    }
+    changed visible => { if !root.visible { root.reveal(false); } }
     background: transparent;
+    content-entrance := EntranceMotion {}
     VerticalLayout {
         spacing: 16px;
-        HorizontalLayout {
-            height: 32px; spacing: 4px;
-            for title[index] in [@tr("练习"), @tr("卡片"), @tr("通用")] : DesktopButton {
-                text: title; selected: root.section == index;
-                activated => { root.section = index; }
+        FocusScope {
+            height: 32px; focus-on-click: false; focus-on-tab-navigation: false;
+            accessible-role: tab-list; accessible-label: @tr("设置");
+            capture-key-pressed(event) => {
+                if event.text == Key.LeftArrow { root.select-section(mod(root.section + 2, 3), false); }
+                else if event.text == Key.RightArrow { root.select-section(mod(root.section + 1, 3), false); }
+                else if event.text == Key.Home { root.select-section(0, false); }
+                else if event.text == Key.End { root.select-section(2, false); }
+                else { return reject; }
+                root.section-focus-request += 1;
+                return accept;
             }
-            Rectangle { horizontal-stretch: 1; }
+            HorizontalLayout {
+                spacing: 4px;
+                for title[index] in [@tr("练习"), @tr("卡片"), @tr("通用")] : DesktopButton {
+                    text: title; selected: root.section == index;
+                    tab-stop: self.selected;
+                    accessible-role: tab;
+                    private property <int> focus-request: root.section-focus-request;
+                    changed focus-request => { if self.selected { self.focus(); } }
+                    activated => {
+                        root.select-section(index, self.pointer-activation);
+                        if self.pointer-activation { self.focus-from-pointer(); }
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
         }
         settings-scroll := ScrollView {
+            opacity: content-entrance.alpha;
             horizontal-scrollbar-policy: always-off; content-width: self.visible-width;
             VerticalLayout {
+                x: root.incoming-offset * content-entrance.remaining;
                 spacing: 0px; alignment: start;
                 Rectangle {
                     visible: root.section == 0; height: self.visible ? 188px : 0px;
                     interval-setting := TimeSetting { y: 0px; width: parent.width; label: @tr("出题间隔"); value: root.interval-minutes; options: root.interval-options; selection: root.interval-selection; choose(index) => { root.choose-interval(index); } apply-value(value) => { root.set-interval(value); } }
                     feedback-setting := TimeSetting { y: 48px; width: parent.width; label: @tr("答对后停留"); value: root.feedback-seconds; options: root.feedback-options; selection: root.feedback-selection; maximum: 60; unit: @tr("秒"); hint: @tr("答对后开始计时，随后自动收起"); choose(index) => { root.choose-feedback(index); } apply-value(value) => { root.set-feedback(value); } }
                     knowledge-setting := TimeSetting { y: 96px; width: parent.width; label: @tr("知识展示停留"); value: root.knowledge-seconds; options: root.knowledge-options; selection: root.knowledge-selection; maximum: 60; unit: @tr("秒"); hint: @tr("展示答案后开始计时，随后自动收起"); choose(index) => { root.choose-knowledge-duration(index); } apply-value(value) => { root.set-knowledge-duration(value); } }
-                    Text { x: 14px; y: 152px; width: parent.width - 28px; text: @tr("答错后按 Enter 确认，不自动收起"); color: Theme.muted; font-size: 11px; wrap: word-wrap; }
+                    Text { x: 14px; y: 152px; width: parent.width - 28px; text: @tr("答错后可点击收起图标或按 Enter"); color: Theme.muted; font-size: 11px; wrap: word-wrap; }
                 }
                 Rectangle { visible: root.section == 0; height: self.visible ? 1px : 0px; background: Theme.soft-border; }
                 Rectangle {
@@ -189,15 +247,34 @@ export component SettingsPage inherits Rectangle {
                 }
                 Rectangle {
                     visible: root.section == 0;
-                    height: self.visible ? (root.quiet-hours-enabled ? 100px : 48px) + (root.quiet-time-error != "" ? 32px : 0px) : 0px;
+                    height: self.visible ? (root.quiet-hours-enabled ? 120px : 48px) : 0px;
                     SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("每日免打扰"); checked: root.quiet-hours-enabled; checkbox-right: true; toggled(enabled) => { root.set-quiet-enabled(enabled); } }
                     if root.quiet-hours-enabled : HorizontalLayout {
                         x: 14px; y: 52px; width: parent.width - 28px; height: 36px; spacing: 10px;
-                        LineEdit { text <=> root.quiet-start; accessible-label: @tr("免打扰开始时间"); edited(value) => { root.set-quiet-range(root.quiet-start, root.quiet-end); } }
+                        LineEdit {
+                            text <=> root.quiet-start; accessible-label: @tr("免打扰开始时间");
+                            edited(value) => { root.edit-quiet-range(value, root.quiet-end); }
+                            accepted(value) => { root.set-quiet-range(value, root.quiet-end); }
+                            changed has-focus => {
+                                if !self.has-focus && root.quiet-time-dirty { root.set-quiet-range(self.text, root.quiet-end); }
+                            }
+                        }
                         Text { text: "—"; color: Theme.muted; vertical-alignment: center; }
-                        LineEdit { text <=> root.quiet-end; accessible-label: @tr("免打扰结束时间"); edited(value) => { root.set-quiet-range(root.quiet-start, root.quiet-end); } }
+                        LineEdit {
+                            text <=> root.quiet-end; accessible-label: @tr("免打扰结束时间");
+                            edited(value) => { root.edit-quiet-range(root.quiet-start, value); }
+                            accepted(value) => { root.set-quiet-range(root.quiet-start, value); }
+                            changed has-focus => {
+                                if !self.has-focus && root.quiet-time-dirty { root.set-quiet-range(root.quiet-start, self.text); }
+                            }
+                        }
                     }
-                    if root.quiet-time-error != "" : Text { x: 14px; y: parent.height - 30px; width: parent.width - 28px; text: root.quiet-time-error; color: Theme.wrong-ink; font-size: 11px; wrap: word-wrap; }
+                    if root.quiet-hours-enabled : Text {
+                        x: 14px; y: 92px; width: parent.width - 28px; height: 28px;
+                        text: root.quiet-time-error; color: Theme.wrong-ink; font-size: 11px; overflow: elide;
+                        accessible-role: text; accessible-label: self.text; accessible-live-region: polite;
+                        if root.quiet-time-error != "" : Tooltip { text: @markdown("\{root.quiet-time-error}"); }
+                    }
                 }
                 Rectangle {
                     visible: root.section == 1; height: self.visible ? 48px : 0px;
@@ -205,16 +282,41 @@ export component SettingsPage inherits Rectangle {
                         padding-left: 14px; padding-right: 14px; spacing: 14px;
                         Text { text: @tr("卡片位置"); color: Theme.ink; font-size: 13px; vertical-alignment: center; }
                         Rectangle { horizontal-stretch: 1; }
-                        Rectangle { width: 164px; height: 48px; SelectionMenu { y: 6px; options: [@tr("右下角"), @tr("左下角"), @tr("右上角"), @tr("左上角")]; selection: root.popup-corner; label: @tr("卡片初始位置"); choose(index) => { root.set-corner(index); } } }
+                        Rectangle {
+                            width: 164px; height: 48px;
+                            SelectionMenu {
+                                y: 6px; label: @tr("卡片位置");
+                                options: root.has-custom-position
+                                    ? [@tr("右下角"), @tr("左下角"), @tr("右上角"), @tr("左上角"), @tr("自定义位置")]
+                                    : [@tr("右下角"), @tr("左下角"), @tr("右上角"), @tr("左上角")];
+                                selection: root.has-custom-position ? 4 : root.popup-corner;
+                                choose(index) => { if index < 4 { root.set-corner(index); } }
+                            }
+                        }
                     }
                 }
                 Rectangle {
                     visible: root.section == 1; height: self.visible ? 48px : 0px;
-                    SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("记住位置"); hint: @tr("记住拖动后的卡片位置"); checked: root.remember-position; checkbox-right: true; toggled(enabled) => { root.set-remember-position(enabled); } }
+                    SettingsCheck {
+                        x: 14px; y: 6px; width: parent.width - 28px;
+                        text: @tr("锁定卡片");
+                        hint: root.card-resize-available ? @tr("锁定后禁止拖动和缩放") : @tr("锁定后固定卡片位置");
+                        checked: root.card-locked; checkbox-right: true;
+                        toggled(locked) => { root.set-card-locked(locked); }
+                    }
                 }
                 Rectangle {
                     visible: root.section == 1; height: self.visible ? 48px : 0px;
                     SettingsCheck { x: 14px; y: 6px; width: parent.width - 28px; text: @tr("显示知识包标签"); hint: @tr("标签随卡片位置自动换边"); checked: root.show-pack-tags; checkbox-right: true; toggled(enabled) => { root.set-show-pack-tags(enabled); } }
+                }
+                Rectangle {
+                    visible: root.section == 1; height: self.visible ? 48px : 0px;
+                    SettingsCheck {
+                        x: 14px; y: 6px; width: parent.width - 28px;
+                        text: @tr("显示操作提示"); hint: @tr("提示如何作答和收起卡片");
+                        checked: root.show-practice-hints; checkbox-right: true;
+                        toggled(enabled) => { root.set-show-practice-hints(enabled); }
+                    }
                 }
                 Rectangle { visible: root.section == 1; height: self.visible ? 1px : 0px; background: Theme.soft-border; }
                 Rectangle {
@@ -223,12 +325,35 @@ export component SettingsPage inherits Rectangle {
                     Text { x: 14px; y: 46px; width: parent.width - 28px; text: @tr("关闭后不切换当前窗口，点击题板再作答"); color: Theme.muted; font-size: 11px; wrap: word-wrap; }
                 }
                 Rectangle {
+                    visible: root.section == 1 && root.card-resize-available && root.has-custom-card-size;
+                    height: self.visible ? 48px : 0px;
+                    DesktopButton {
+                        x: 14px; y: 6px; height: 36px;
+                        text: @tr("恢复自动尺寸");
+                        activated => { root.reset-card-size(); }
+                    }
+                }
+                Rectangle {
                     visible: root.section == 2; height: self.visible ? 48px : 0px;
                     HorizontalLayout {
                         padding-left: 14px; padding-right: 14px; spacing: 14px;
                         Text { text: @tr("外观"); color: Theme.ink; font-size: 13px; vertical-alignment: center; }
                         Rectangle { horizontal-stretch: 1; }
                         Rectangle { width: 164px; height: 48px; appearance-menu := SelectionMenu { y: 6px; options: [@tr("浅色"), @tr("深色"), @tr("跟随系统")]; selection: root.appearance; label: @tr("外观"); choose(index) => { root.choose-appearance(index); } } }
+                    }
+                }
+                animation-setting := Rectangle {
+                    private property <bool> system-motion-off: root.interface-animations && Theme.tint-duration == 0ms;
+                    visible: root.section == 2; height: self.visible ? (self.system-motion-off ? 66px : 48px) : 0px;
+                    SettingsCheck {
+                        x: 14px; y: 6px; width: parent.width - 28px;
+                        text: @tr("界面动效"); hint: @tr("模式切换、卡片缩放和答题反馈");
+                        checked: root.interface-animations; checkbox-right: true;
+                        toggled(enabled) => { root.set-interface-animations(enabled); }
+                    }
+                    if animation-setting.system-motion-off : Text {
+                        x: 14px; y: 40px; width: parent.width - 28px; height: 18px;
+                        text: @tr("系统已关闭动画"); color: Theme.muted; font-size: 11px;
                     }
                 }
                 Rectangle {
