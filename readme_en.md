@@ -14,13 +14,13 @@ For active recall, type an answer, pick an option or mark a statement true or fa
 
 ## Download
 
-Download the asset for your platform from the [v0.10.0 preview release](https://github.com/Ethan-decoy/Try/releases/tag/v0.10.0). The development source is preparing 1.0.0 for release review.
+Download the app for your platform from the [v1.0.0 stable release](https://github.com/Ethan-decoy/Try/releases/tag/v1.0.0).
 
 | Platform | Download | Status |
 | --- | --- | --- |
-| Windows x64 | `try.exe` | Single-file portable app |
-| macOS arm64 | `try_macos_arm64_<version>.zip` | Experimental, not notarized |
-| Linux x64 | `try_linux_x64_<version>.AppImage` | Experimental |
+| Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/download/v1.0.0/try.exe) | Single-file portable app |
+| macOS arm64 | [try_macos_arm64_1.0.0.zip](https://github.com/Ethan-decoy/Try/releases/download/v1.0.0/try_macos_arm64_1.0.0.zip) | Experimental, not notarized |
+| Linux x64 | [try_linux_x64_1.0.0.AppImage](https://github.com/Ethan-decoy/Try/releases/download/v1.0.0/try_linux_x64_1.0.0.AppImage) | Experimental |
 
 On Windows, put `try.exe` in a writable folder and open it. Your decks, settings and review history live in the adjacent `data/` folder. Keep it with the executable when moving the app. To install a newer stable release, choose **Update & restart** in About.
 

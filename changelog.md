@@ -4,7 +4,9 @@ Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
-These changes are planned for **1.0.0**, the first stable release. Back up your data directory before upgrading from a 0.x preview. Try reuses data it can read, with no guaranteed migration from previews.
+## [1.0.0] - 2026-11-22
+
+**1.0.0** is the first stable release. Back up your data directory before upgrading from a 0.x preview. Try reuses data it can read, with no guaranteed migration from previews.
 
 ### Added
 
@@ -258,7 +260,8 @@ These changes are planned for **1.0.0**, the first stable release. Back up your 
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/c54ae2170a9ede713720d2df68dfd8ca936777f5...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Ethan-decoy/Try/compare/v0.10.0...v1.0.0
 [0.10.0]: https://github.com/Ethan-decoy/Try/compare/e067294199e559e5c09121641f5e01e429b830e8...c54ae2170a9ede713720d2df68dfd8ca936777f5
 [0.9.3]: https://github.com/Ethan-decoy/Try/compare/19a9c2a4d147f9b63be85f7289b2050d4b559425...e067294199e559e5c09121641f5e01e429b830e8
 [0.9.2]: https://github.com/Ethan-decoy/Try/compare/dcadbe986423058c8a4157f9ac07d30d49558061...19a9c2a4d147f9b63be85f7289b2050d4b559425

@@ -1,6 +1,6 @@
 # 发布与平台范围
 
-首个正式版的目标版本为 `1.0.0`。已开放的下载及附件以 [GitHub Releases](https://github.com/Ethan-decoy/Try/releases) 为准。
+Try 的首个正式版为 [v1.0.0](https://github.com/Ethan-decoy/Try/releases/tag/v1.0.0)。
 
 | 平台 | 分发文件 | 范围 |
 | --- | --- | --- |
