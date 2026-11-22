@@ -2,7 +2,11 @@
 mod support;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Key, Platform, PlatformError, WindowAdapter};
+use slint::private_unstable_api::re_exports::{
+    AccessibleRole, AccessibleStringProperty, ItemRc, WindowInner,
+};
 use slint::{ComponentHandle, ModelRc, PhysicalSize, Rgb8Pixel, SharedPixelBuffer, VecModel};
+use std::ops::ControlFlow;
 use std::time::Duration;
 use std::{cell::Cell, rc::Rc};
 use support::{click, key, paint, software_window};
@@ -330,6 +334,7 @@ fn editor_mode_indicator_slides_only_for_accepted_pointer_switches() {
 fn pointer_switch_follows_settings_tab_order() {
     let (adapter, elapsed_ms) = timed_window();
     let main = MainWindow::new().unwrap();
+    slint::select_bundled_translation("en").unwrap();
     let theme = main.global::<Theme>();
     theme.set_motion(MotionPreference::Full);
     main.set_current_tab(1);
@@ -338,15 +343,29 @@ fn pointer_switch_follows_settings_tab_order() {
     adapter.set_size(PhysicalSize::new(880, 640));
     paint(&adapter);
 
-    let tab_x = main.get_settings_left();
-    let tab_y = main.get_settings_top() + 16.0;
     let content_top = main.get_settings_content_top();
     let settled_left = main.get_reminder_focus_left();
     let settled_top = main.get_reminder_focus_top();
-    let select_tab = |offset| click(&main, &adapter, tab_x + offset, tab_y);
+    let click_control = |role, label: &str| {
+        let root = ItemRc::new_root(WindowInner::from_pub(main.window()).component());
+        let center = root
+            .visit_descendants(|item| {
+                if item.accessible_role() == role
+                    && item
+                        .accessible_string_property(AccessibleStringProperty::Label)
+                        .is_some_and(|text| text.as_str() == label)
+                {
+                    return ControlFlow::Break(item.map_to_window(item.geometry().center()));
+                }
+                ControlFlow::Continue(())
+            })
+            .unwrap_or_else(|| panic!("missing settings control {label}"));
+        click(&main, &adapter, center.x, center.y);
+    };
+    let select_tab = |label| click_control(AccessibleRole::Tab, label);
     main.set_settings_section(0);
     paint(&adapter);
-    select_tab(76.0);
+    select_tab("Card");
     assert_eq!(main.get_settings_section(), 1);
     assert!(main.window().has_active_animations());
     let from_right = main.get_reminder_focus_left();
@@ -356,16 +375,16 @@ fn pointer_switch_follows_settings_tab_order() {
     paint(&adapter);
     let during = main.get_reminder_focus_left();
     assert!(from_right > during && during - settled_left >= 1.0);
-    select_tab(76.0);
+    select_tab("Card");
     assert_eq!(main.get_reminder_focus_left(), during);
     elapsed_ms.set(1230);
     paint(&adapter);
     assert_eq!(main.get_reminder_focus_left(), settled_left);
     assert_eq!(main.get_settings_content_top(), content_top);
 
-    select_tab(130.0);
+    select_tab("General");
     assert_eq!(main.get_settings_section(), 2);
-    select_tab(76.0);
+    select_tab("Card");
     assert_eq!(main.get_settings_section(), 1);
     assert!(settled_left - main.get_reminder_focus_left() >= 5.0);
     assert_eq!(main.get_reminder_focus_top(), settled_top);
@@ -376,17 +395,12 @@ fn pointer_switch_follows_settings_tab_order() {
     theme.set_motion(MotionPreference::Full);
     main.set_current_tab(0);
     paint(&adapter);
-    click(
-        &main,
-        &adapter,
-        main.get_about_icon_center_x() - 38.0,
-        main.get_about_icon_center_y(),
-    );
+    click_control(AccessibleRole::Button, "Settings");
     assert_eq!(main.get_current_tab(), 1);
     assert_eq!(main.get_reminder_focus_left(), settled_left);
     assert_eq!(main.get_reminder_focus_top(), settled_top);
 
-    select_tab(76.0);
+    select_tab("Card");
     key(&main, &adapter, Key::End);
     assert_eq!(main.get_settings_section(), 2);
     key(&main, &adapter, Key::LeftArrow);
@@ -887,15 +901,15 @@ fn resized_practice_card_centers_short_answers_and_keeps_long_content_reachable(
     card.set_answer_mode(1);
     card.set_options(ModelRc::new(VecModel::from(vec![
         AnswerOption {
-            label: "协调世界时".into(),
+            label: "Universal".into(),
             ..Default::default()
         },
         AnswerOption {
-            label: "当地时".into(),
+            label: "Local time".into(),
             ..Default::default()
         },
         AnswerOption {
-            label: "时区".into(),
+            label: "Time zone".into(),
             ..Default::default()
         },
     ])));
@@ -964,11 +978,13 @@ fn hiding_card_hints_keeps_shortcuts_and_corrections_available() {
 
     let adapter = software_window();
     let card = PracticeWindow::new().unwrap();
+    // The software fixture also runs on images without CJK fonts.
+    slint::select_bundled_translation("en").unwrap();
     card.global::<WindowFrame>().set_enabled(true);
     card.set_prompt("hesitate".into());
-    card.set_standard_answer("犹豫".into());
-    card.set_answer_text("犹豫".into());
-    card.set_pack_tag("英语".into());
+    card.set_standard_answer("pause".into());
+    card.set_answer_text("pause".into());
+    card.set_pack_tag("English".into());
     card.global::<Theme>().set_motion(MotionPreference::Reduced);
     card.show().unwrap();
     adapter.set_size(PhysicalSize::new(320, 226));
@@ -1011,7 +1027,7 @@ fn hiding_card_hints_keeps_shortcuts_and_corrections_available() {
     check_hint_visibility();
     card.set_awaiting_interaction(false);
 
-    card.set_input_error("请补全分母".into());
+    card.set_input_error("Complete the denominator".into());
     assert!(footer_has_text(&card, &paint(&adapter)));
     card.set_input_error("".into());
     let weak = card.as_weak();
@@ -1085,7 +1101,7 @@ fn hiding_card_hints_keeps_shortcuts_and_corrections_available() {
         "the wrong-answer card can close without hints"
     );
     card.set_answer_mode(0);
-    card.set_answer_text("匆忙".into());
+    card.set_answer_text("hurry".into());
     assert!(
         footer_has_text(&card, &paint(&adapter)),
         "the submitted answer stays visible below the correction"

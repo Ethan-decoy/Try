@@ -215,6 +215,36 @@ fn right_click_menu_routes_commands_once_and_escape_keeps_the_card() {
     assert!(card.get_context_menu_height() > 150.0);
     key(&card, &adapter, Key::Escape);
     assert_eq!(actions.borrow().len(), 5);
+
+    card.invoke_open_context_menu(300.0, 278.0);
+    paint(&adapter);
+    click(
+        &card,
+        &adapter,
+        card.get_context_menu_left() + 24.0,
+        card.get_context_menu_top() + 85.0,
+    );
+    assert!(!card.get_context_menu_open());
+    assert_eq!(
+        &actions.borrow()[5..],
+        &[(PracticeAction::ToggleCardLock, 0)]
+    );
+
+    card.set_card_locked(true);
+    card.invoke_open_context_menu(300.0, 278.0);
+    paint(&adapter);
+    key(&card, &adapter, Key::End);
+    key(&card, &adapter, Key::UpArrow);
+    key(&card, &adapter, Key::Return);
+    assert!(!card.get_context_menu_open());
+    assert_eq!(
+        &actions.borrow()[5..],
+        &[
+            (PracticeAction::ToggleCardLock, 0),
+            (PracticeAction::ToggleCardLock, 0)
+        ]
+    );
+    assert_eq!(card.get_answer_text(), "draft");
     card.hide().unwrap();
 }
 

@@ -423,7 +423,10 @@ mod tests {
         assert!(app.practice.borrow().is_none() && app.outgoing_practice.borrow().is_none());
     }
 
+    // AppKit requires a native tray on the process main thread. The card-only
+    // menu test and preference round trip still run on every platform.
     #[test]
+    #[cfg(not(target_os = "macos"))]
     fn practice_menu_locks_and_unlocks_the_open_card_and_saves_the_setting() {
         let adapter = software_window();
         let directory = tempfile::tempdir().unwrap();
