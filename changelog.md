@@ -4,6 +4,10 @@ Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep the download links in the Chinese and English READMEs usable from source archives after older releases are retired.
+
 ## [1.0.1] - 2026-11-24
 
 ### Fixed
