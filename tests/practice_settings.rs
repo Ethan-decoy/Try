@@ -589,20 +589,14 @@ fn minimum_card_size_leaves_the_first_formula_keys_reachable() {
     card.set_pack_tag("数学".into());
     card.set_prompt("sin(2x) = ?".into());
     card.global::<Theme>().set_motion(MotionPreference::Reduced);
-    let weak = card.as_weak();
-    card.on_open_structured_entry(move || {
-        let card = weak.unwrap();
-        let math = card.global::<MathInputState>();
-        math.set_practice(true);
-        math.set_common_keys(ModelRc::new(VecModel::from(vec![MathKey {
-            label: "分式".into(),
-            token: "frac".into(),
-            ..Default::default()
-        }])));
-        math.set_keypad_expanded(true);
-        math.set_open(true);
-        card.invoke_focus_answer();
-    });
+    let math = card.global::<MathInputState>();
+    math.set_practice(true);
+    math.set_open(true);
+    math.set_common_keys(ModelRc::new(VecModel::from(vec![MathKey {
+        label: "分式".into(),
+        token: "frac".into(),
+        ..Default::default()
+    }])));
     let pressed = Rc::new(Cell::new(false));
     let pressed_on_keypad = pressed.clone();
     card.global::<MathInputState>()

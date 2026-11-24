@@ -21,7 +21,6 @@ use r#try::knowledge::{
     AnswerContent, AnswerMode, AppResult, Appearance, KnowledgePack, Library, Settings,
 };
 use r#try::learning::{Learner, Origin as LearningOrigin, ReviewToken};
-use r#try::math_answer;
 use r#try::math_editor::Field;
 use r#try::practice::{self, PreparedQuestion, Question, QuestionKey};
 use r#try::reminder_schedule::{PracticePause, QuietHours, format_time};

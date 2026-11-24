@@ -238,32 +238,21 @@ mod tests {
     #[test]
     fn direct_typing_enters_log_base_before_it_is_filled() {
         use slint::platform::Key;
-        for hint in [false, true] {
-            let mut text = String::new();
-            let mut session: Option<Session> = None;
-            for ch in "log_".chars() {
-                if let Some(session) = &mut session {
-                    session.insert(&ch.to_string());
-                } else {
-                    text.push(ch);
-                    if r#try::math_answer::starts_structured_edit(&text, hint) {
-                        session = Some(Session::new(Seed::Typing(text.clone())).unwrap());
-                    }
-                }
-            }
-            let mut session = session.expect("log_ opens its base before the next character");
-            assert!(session.complete().is_err(), "the base is still empty");
-            let base = session.controller.editor.cursor().row;
-            for ch in "n+1".chars() {
-                session.insert(&ch.to_string());
-            }
-            assert_eq!(session.controller.editor.cursor().row, base);
-            session.key(&char::from(Key::Tab).to_string(), false, false, false);
-            for ch in "(x)".chars() {
-                session.insert(&ch.to_string());
-            }
-            assert_eq!(session.complete().unwrap(), r"\log_{n+1}\left(x\right)");
+        let mut session = Session::new(Seed::Typing(String::new())).unwrap();
+        for ch in "log_".chars() {
+            session.insert(&ch.to_string());
         }
+        assert!(session.complete().is_err(), "the base is still empty");
+        let base = session.controller.editor.cursor().row;
+        for ch in "n+1".chars() {
+            session.insert(&ch.to_string());
+        }
+        assert_eq!(session.controller.editor.cursor().row, base);
+        session.key(&char::from(Key::Tab).to_string(), false, false, false);
+        for ch in "(x)".chars() {
+            session.insert(&ch.to_string());
+        }
+        assert_eq!(session.complete().unwrap(), r"\log_{n+1}\left(x\right)");
     }
 
     #[test]
@@ -558,13 +547,13 @@ mod tests {
     }
 
     #[test]
-    fn native_practice_typing_hands_over_to_the_same_collapsed_or_expanded_editor() {
+    fn practice_formula_typing_uses_the_same_collapsed_or_expanded_editor() {
         use crate::{MathInputState, PracticeWindow};
         use slint::{
             ComponentHandle, PhysicalSize,
             platform::{Key, WindowEvent},
         };
-        use test_support::{key, paint, software_window};
+        use test_support::{click, key, paint, software_window};
         let adapter = software_window();
         let window = PracticeWindow::new().unwrap();
         let active: Rc<RefCell<Option<Session>>> = Rc::default();
@@ -579,26 +568,33 @@ mod tests {
                 .global::<MathInputState>()
                 .set_formula(session.view(1.0, true).unwrap());
         };
-        {
-            let weak = window.as_weak();
-            let active = active.clone();
-            window.on_answer_edited(move |text| {
-                let window = weak.unwrap();
-                window.set_answer_text(text.clone());
-                if r#try::math_answer::starts_structured_edit(&text, true) {
-                    let session = Session::with_clipboard(
-                        Seed::Typing(text.into()),
-                        TestClipboard(Rc::default()),
-                    )
+        let matches_answer = |session: &Session, expected: &str| {
+            let card = r#try::knowledge::Card {
+                prompt_image: None,
+                id: None,
+                prompt: "Formula".into(),
+                answer: expected.into(),
+                prompt_latex: None,
+                answer_latex: Some(expected.into()),
+                aliases: vec![],
+                distractors: vec![],
+                true_false: None,
+            };
+            session
+                .complete()
+                .is_ok_and(|latex| card.accepts_edited_formula(&latex))
+        };
+        let reset = |expanded| {
+            let session =
+                Session::with_clipboard(Seed::Typing(String::new()), TestClipboard(Rc::default()))
                     .unwrap();
-                    refresh(&window, &session);
-                    *active.borrow_mut() = Some(session);
-                    let ui = window.global::<MathInputState>();
-                    ui.set_open(true);
-                    ui.set_focus_request(ui.get_focus_request() + 1);
-                }
-            });
-        }
+            refresh(&window, &session);
+            *active.borrow_mut() = Some(session);
+            ui.set_open(true);
+            ui.set_keypad_expanded(expanded);
+            window.invoke_focus_answer();
+            paint(&adapter);
+        };
         {
             let weak = window.as_weak();
             let active = active.clone();
@@ -637,6 +633,22 @@ mod tests {
             }
         };
         for expanded in [false, true] {
+            reset(expanded);
+            type_text("123");
+            key(&window, &adapter, Key::LeftArrow);
+            key(&window, &adapter, Key::LeftArrow);
+            click(
+                &window,
+                &adapter,
+                window.get_formula_button_center_x(),
+                window.get_formula_button_center_y(),
+            );
+            assert_eq!(ui.get_keypad_expanded(), !expanded);
+            type_text("0");
+            assert_eq!(
+                active.borrow().as_ref().unwrap().complete().unwrap(),
+                "1023"
+            );
             for (typed, expected) in [
                 ("sqrt(3)/2", r"\frac{\sqrt{3}}{2}"),
                 ("P^n+m", "P^{n+m}"),
@@ -649,24 +661,17 @@ mod tests {
                 ("2ln(x)", r"2\ln \left(x\right)"),
                 ("abcln(x)", r"abc\ln \left(x\right)"),
             ] {
-                window.set_answer_text("".into());
-                ui.set_open(false);
-                *active.borrow_mut() = None;
-                ui.set_keypad_expanded(expanded);
-                window.invoke_focus_answer();
-                paint(&adapter);
+                reset(expanded);
                 type_text(typed);
-                assert_eq!(
-                    active.borrow().as_ref().unwrap().complete().unwrap(),
-                    expected,
-                    "{typed}, expanded={expanded}"
-                );
-                let answer = active.borrow().as_ref().unwrap().source();
-                assert!(
-                    r#try::math_answer::incomplete_error(&answer, true).is_none(),
-                    "{typed} must reach feedback after conversion, expanded={expanded}"
-                );
-                assert!(r#try::math_answer::matches_formula(&answer, expected, &[]));
+                {
+                    let active = active.borrow();
+                    let session = active.as_ref().unwrap();
+                    assert!(
+                        matches_answer(session, expected),
+                        "{typed}: {} != {expected}, expanded={expanded}",
+                        session.latex_source()
+                    );
+                }
                 let before = submissions.get();
                 key(&window, &adapter, Key::Return);
                 assert_eq!(submissions.get(), before + 1, "Enter: {typed}");
@@ -678,12 +683,7 @@ mod tests {
                 ("sinx", r"\sin(x)"),
                 ("ysqrt(x)", r"y\sqrt{x}"),
             ] {
-                window.set_answer_text("".into());
-                ui.set_open(false);
-                *active.borrow_mut() = None;
-                ui.set_keypad_expanded(expanded);
-                window.invoke_focus_answer();
-                paint(&adapter);
+                reset(expanded);
                 window
                     .window()
                     .dispatch_event(WindowEvent::KeyPressed { text: text.into() });
@@ -691,13 +691,8 @@ mod tests {
                     .window()
                     .dispatch_event(WindowEvent::KeyReleased { text: text.into() });
                 paint(&adapter);
-                let answer = active
-                    .borrow()
-                    .as_ref()
-                    .expect("native commit enters structural editing")
-                    .source();
                 assert!(
-                    r#try::math_answer::matches_formula(&answer, expected, &[]),
+                    matches_answer(active.borrow().as_ref().unwrap(), expected),
                     "native commit: {text}"
                 );
                 let before = submissions.get();
@@ -708,25 +703,17 @@ mod tests {
                     "Enter after native commit: {text}"
                 );
             }
-            window.set_answer_text("".into());
-            ui.set_open(false);
-            *active.borrow_mut() = None;
-            ui.set_keypad_expanded(expanded);
-            window.invoke_focus_answer();
-            paint(&adapter);
+            reset(expanded);
             type_text("u'a^u");
             key(&window, &adapter, Key::RightArrow);
             type_text("lnu");
-            let answer = active.borrow().as_ref().unwrap().source();
-            assert!(r#try::math_answer::matches_formula(
-                &answer,
-                r"u'a^{u}\ln u",
-                &[]
+            assert!(matches_answer(
+                active.borrow().as_ref().unwrap(),
+                r"u'a^{u}\ln u"
             ));
-            assert!(!r#try::math_answer::matches_formula(
-                &answer,
-                r"u'a^{u\ln u}",
-                &[]
+            assert!(!matches_answer(
+                active.borrow().as_ref().unwrap(),
+                r"u'a^{u\ln u}"
             ));
             let before = submissions.get();
             key(&window, &adapter, Key::Return);
@@ -748,10 +735,7 @@ mod tests {
                     TestClipboard(Rc::default()),
                 )
                 .unwrap();
-                let answer = session.source();
-                assert!(!answer.trim().is_empty());
-                assert!(r#try::math_answer::incomplete_error(&answer, true).is_none());
-                assert!(r#try::math_answer::matches_formula(&answer, latex, &[]));
+                assert!(matches_answer(&session, latex), "grade: {latex}");
                 refresh(&window, &session);
                 *active.borrow_mut() = Some(session);
                 ui.set_open(true);
@@ -766,12 +750,7 @@ mod tests {
                     "Enter: {latex}, expanded={expanded}"
                 );
             }
-            window.set_answer_text("".into());
-            ui.set_open(false);
-            *active.borrow_mut() = None;
-            ui.set_keypad_expanded(expanded);
-            window.invoke_focus_answer();
-            paint(&adapter);
+            reset(expanded);
             type_text("log2");
             let cursor = active.borrow().as_ref().unwrap().controller.editor.cursor();
             ui.set_keypad_expanded(!expanded);
@@ -806,8 +785,7 @@ mod tests {
                 active.borrow().as_ref().unwrap().complete().unwrap(),
                 expected
             );
-            let answer = active.borrow().as_ref().unwrap().source();
-            assert!(r#try::math_answer::matches_formula(&answer, expected, &[]));
+            assert!(matches_answer(active.borrow().as_ref().unwrap(), expected));
             let before = submissions.get();
             key(&window, &adapter, Key::Return);
             assert_eq!(

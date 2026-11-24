@@ -85,15 +85,6 @@ pub(crate) fn numeric_variable(input: &str) -> bool {
     variable.len() == 1 && number.trim().parse::<f64>().is_ok()
 }
 
-pub(crate) fn typing_command(input: &str, math_hint: bool) -> bool {
-    let word = input.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.');
-    let number = &input[..input.len() - word.len()];
-    (number.is_empty() || number.parse::<f64>().is_ok())
-        && (slint_math_input::catalog::is_typing_command(word)
-            || prefixed_function(word)
-                .is_some_and(|(coefficient, _)| math_hint || coefficient.len() <= 2))
-}
-
 const SYMBOLS: &[(&str, char)] = &[
     ("pi", 'π'),
     ("theta", 'θ'),

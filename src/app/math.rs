@@ -140,7 +140,7 @@ impl App {
                         ui.set_focus_request(ui.get_focus_request() + 1);
                     });
                 } else {
-                    app.apply_current_math();
+                    app.apply_content_math();
                 }
             }
         });
@@ -194,37 +194,20 @@ impl App {
     }
 
     pub(super) fn apply_content_math(&self) -> bool {
-        if self
-            .structured_math
-            .borrow()
-            .as_ref()
-            .is_some_and(|(target, _)| matches!(target, MathTarget::Practice(_)))
-        {
-            return true;
-        }
-        self.apply_current_math()
-    }
-
-    pub(super) fn apply_current_math(&self) -> bool {
         let result = self
             .structured_math
             .borrow()
             .as_ref()
+            .filter(|(target, _)| matches!(target, MathTarget::Content { .. }))
             .map(|(_, session)| session.complete());
         let Some(result) = result else {
             return true;
         };
-        match result.and_then(|latex| self.apply_structured_math(&latex)) {
-            Ok(()) => true,
-            Err(error) => {
-                if let Some((target, _)) = self.structured_math.borrow().as_ref() {
-                    self.with_math_ui(matches!(target, MathTarget::Practice(_)), |ui, _| {
-                        ui.set_error(error.into())
-                    });
-                }
-                false
-            }
+        if let Err(error) = result.and_then(|latex| self.apply_structured_math(&latex)) {
+            self.with_math_ui(false, |ui, _| ui.set_error(error.into()));
+            return false;
         }
+        true
     }
 
     pub(super) fn open_content_math(self: &Rc<Self>) {
@@ -264,11 +247,7 @@ impl App {
         }
     }
 
-    pub(super) fn open_practice_math(self: &Rc<Self>) {
-        self.start_practice_math(true);
-    }
-
-    pub(super) fn start_practice_math(&self, expanded: bool) {
+    pub(super) fn prepare_practice_math(&self) {
         let target = self
             .practice
             .borrow()
@@ -279,17 +258,13 @@ impl App {
                     && session.prepared.mode == AnswerMode::Input
                     && session.prepared.allows_formula_input()
             })
-            .map(|session| {
-                let input = session.window.get_answer_text().to_string();
-                let seed = if input.contains('\\') {
-                    crate::structured_math::Seed::Latex(input)
-                } else {
-                    crate::structured_math::Seed::Typing(input)
-                };
-                (MathTarget::Practice(session.diagnostic_id), seed)
-            });
-        if let Some((target, seed)) = target {
-            self.open_structured_math(target, seed, expanded);
+            .map(|session| MathTarget::Practice(session.diagnostic_id));
+        if let Some(target) = target {
+            self.open_structured_math(
+                target,
+                crate::structured_math::Seed::Typing(String::new()),
+                false,
+            );
         }
     }
 
@@ -322,7 +297,9 @@ impl App {
                     ui.set_practice(practice);
                     ui.set_keypad_expanded(expanded);
                     ui.set_open(true);
-                    ui.set_focus_request(ui.get_focus_request() + 1);
+                    if expanded {
+                        ui.set_focus_request(ui.get_focus_request() + 1);
+                    }
                 });
             }
             Err(error) => {
@@ -339,49 +316,32 @@ impl App {
 
     pub(super) fn apply_structured_math(&self, latex: &str) -> AppResult<()> {
         let active = self.structured_math.borrow();
-        let Some((target, _)) = active.as_ref() else {
-            return Err(tr!("窗口已关闭。").into());
-        };
-        let practice_target = matches!(target, MathTarget::Practice(_));
-        match target {
+        let Some((
             MathTarget::Content {
                 index,
                 original,
                 input,
                 path,
-            } => {
-                let mut fields = self.math_fields.borrow_mut();
-                let field = fields
-                    .get_mut(*index)
-                    .filter(|field| {
-                        field.root == *original
-                            && field.input() == *input
-                            && field.selection == *path
-                    })
-                    .ok_or_else(|| tr!("原内容已改变，请关闭公式输入后重新打开。").to_owned())?;
-                field.select(path.clone());
-                field.replace_formula(latex)?;
-                self.math_pending.set(false);
-            }
-            MathTarget::Practice(id) => {
-                let mut practice = self.practice.borrow_mut();
-                let session = practice
-                    .as_mut()
-                    .filter(|session| session.diagnostic_id == *id && !session.answered)
-                    .ok_or_else(|| tr!("原内容已改变，请关闭公式输入后重新打开。").to_owned())?;
-                let input = crate::structured_math::answer_input(latex);
-                session.input_history.borrow_mut().record(&input);
-                session.window.set_answer_text(input.into());
-                session.window.set_input_error("".into());
-            }
-        }
+            },
+            _,
+        )) = active.as_ref()
+        else {
+            return Err(tr!("窗口已关闭。").into());
+        };
+        let mut fields = self.math_fields.borrow_mut();
+        let field = fields
+            .get_mut(*index)
+            .filter(|field| {
+                field.root == *original && field.input() == *input && field.selection == *path
+            })
+            .ok_or_else(|| tr!("原内容已改变，请关闭公式输入后重新打开。").to_owned())?;
+        field.select(path.clone());
+        field.replace_formula(latex)?;
+        self.math_pending.set(false);
+        drop(fields);
         drop(active);
         self.close_structured_math();
         self.refresh_math(true);
-        self.refresh_answer_preview();
-        if practice_target && let Some(session) = self.practice.borrow().as_ref() {
-            session.window.invoke_focus_answer();
-        }
         Ok(())
     }
 }

@@ -242,14 +242,8 @@ impl App {
                 app.edit_answer_input(input.as_str());
             }
         });
-        let weak = Rc::downgrade(self);
         self.bind_structured_math(window.global::<crate::MathInputState>());
         self.bind_practice_menu(window, diagnostic_id);
-        window.on_open_structured_entry(move || {
-            if let Some(app) = weak.upgrade() {
-                app.open_practice_math();
-            }
-        });
         let weak = Rc::downgrade(self);
         window.on_answer_position_changed(move |input, anchor, caret| {
             if let Some(app) = weak.upgrade()

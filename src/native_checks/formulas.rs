@@ -454,7 +454,7 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                     snapshot(card.window(), checks.output.join("practice_correct.png"));
                     app.close_practice();
                     app.show_practice().unwrap();
-                    practice_window(app).invoke_open_structured_entry();
+                    click_structured_formula_button(&practice_window(app));
                 }
                 15 => {
                     let card = practice_window(app);
@@ -473,7 +473,7 @@ fn structured_math_phase(checks: Rc<AnswerChecks>, bottom: Rc<Cell<i32>>, phase:
                     let card = practice_window(app);
                     card.set_prompt("公式工具".into());
                     card.set_prompt_formula_width(0.0);
-                    card.invoke_open_structured_entry();
+                    click_structured_formula_button(&card);
                 }
                 16 => {
                     let card = practice_window(app);
@@ -1063,10 +1063,8 @@ fn check_inline_answers(start_phase: u8) {
     let mut library = store.load().unwrap();
     library.settings.pause = PracticePause::UntilResumed;
     library.settings.feedback_seconds = 2;
-    if start_phase == 20 {
-        library.packs[0].cards[2].answer = "p^n+m".into();
-        library.packs[0].cards[2].answer_latex = None;
-    }
+    library.packs[0].cards[2].answer = if start_phase == 20 { "p^n+m" } else { "Paris" }.into();
+    library.packs[0].cards[2].answer_latex = None;
     library.set_pack_enabled("test_pack", false).unwrap();
     let card_id = library.packs[0].cards[2].id.clone().unwrap();
     library
@@ -1124,8 +1122,17 @@ fn inline_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                     assert_eq!(card.get_answer_text(), "Paris");
                     modified_key(card.window(), Key::Control, "y".into());
                     assert_eq!(card.get_answer_text(), "犹豫");
-                    modified_key(card.window(), Key::Control, "a".into());
-                    key(card.window(), "sqrt(3)/2".into());
+                    app.close_practice();
+                    {
+                        let mut library = app.library.borrow_mut();
+                        let question = &mut library.packs[0].cards[2];
+                        question.answer = "√3/2".into();
+                        question.answer_latex = Some(r"\frac{\sqrt{3}}{2}".into());
+                    }
+                    app.show_practice().unwrap();
+                    let formula_card = practice_window(app);
+                    assert!(formula_card.global::<crate::MathInputState>().get_open());
+                    key(formula_card.window(), "sqrt(3)/2".into());
                 }
                 3 => {
                     assert!(ui.get_open());
@@ -1280,7 +1287,7 @@ fn inline_answers_phase(checks: Rc<AnswerChecks>, phase: u8) {
                             .complete()
                             .unwrap(),
                         "p^{n+m}",
-                        "typing from the empty native answer must retain exponent scope; phase={phase}"
+                        "typing from the empty formula answer must retain exponent scope; phase={phase}"
                     );
                     app.close_practice();
                     {

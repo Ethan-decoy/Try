@@ -91,9 +91,9 @@ Export still produces one JSON file, with the pictures included. Importing it on
 
 In the question editor, select a prompt, answer, or choice, then choose **Text** or **Formula** to the right of its heading. New fields start as text. For code, paths, and vocabulary, Try compares the typed answer with the expected spelling or aliases after trimming leading and trailing whitespace. Switching to Formula and back to Text preserves the original spelling and spaces when you make no edits in between.
 
-Older answers without `answer_latex` follow text matching rules. To keep accepting different spellings of the same formula, switch the answer to **Formula** and save, or add the accepted spellings as aliases.
+Fill-in cards use the format saved for the answer. You can set the prompt to **Formula** and keep an answer such as `m/s` in **Text**. Older answers without `answer_latex` use text matching. To enable formula entry and matching for an older card, switch its answer to **Formula** and save.
 
-For formula answers, type expressions such as `sin(pi/3)` or `sqrt(3)/2`, or paste supported LaTeX. Recognized structures are edited in their typeset layout. Use ƒ to show or hide the keypad. If you submit an unfinished fraction or root, the card brings the message below the answer field into view.
+Formula answers use the formula editor from the first keystroke. Type expressions such as `sin(pi/3)` or `sqrt(3)/2`, or paste supported LaTeX. Press `/` after the numerator to build a stacked fraction and move the caret into the denominator. Use ƒ to show or hide the keypad. If you submit an unfinished fraction or root, the card brings the message below the answer field into view.
 
 In math questions, paste compact forms such as `lnx` and `sinx`, or enter coefficient expressions such as `yln(x)` and `ysqrt(x)` using the math editor's recognition. Answer matching accepts implicit multiplication and redundant scalar parentheses, for example `2x`, `2*x` and `2*(x)`, while retaining function-argument and exponent boundaries.
 

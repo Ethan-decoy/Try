@@ -5,7 +5,12 @@ pub(super) fn expression_latex(text: &str) -> Option<String> {
     if text.chars().count() <= 1 {
         return None;
     }
-    r#try::math_answer::recognize_inline(text, false).map(|node| node.tex())
+    let node = r#try::math_answer::recognize_inline(text, true)?;
+    // A bare name is still a command. Let the live editor create its slots.
+    if node.kind == r#try::math_editor::Kind::Operator && !text.contains('\\') {
+        return None;
+    }
+    Some(node.tex())
 }
 
 pub(super) fn normalize(access: impl ClipboardAccess) -> impl ClipboardAccess {

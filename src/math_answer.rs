@@ -61,57 +61,6 @@ pub fn recognize_inline(input: &str, math_hint: bool) -> Option<Node> {
         .flatten()
 }
 
-/// Start structural editing as soon as notation needs it. Plain words and
-/// source-code answers retain native text/IME editing rather than a math overlay.
-pub fn starts_structured_edit(input: &str, math_hint: bool) -> bool {
-    if !math_hint && math_editor::is_code_identifier(input) {
-        return false;
-    }
-    // Importing a completed script places the caret outside it. Enter the
-    // empty slot while its base and ^ / _ are still being typed.
-    let entering_script = input
-        .trim_end()
-        .strip_suffix(['^', '_'])
-        .is_some_and(|base| recognize_inline(base, true).is_some());
-    // Hand commands to SMI before their slots are filled. Its own vocabulary
-    // covers functions and structures, including log, sqrt and limits.
-    // Bare words outside mathematical questions retain native text editing.
-    let command = |word: &str| crate::math_vocabulary::typing_command(word, math_hint);
-    if math_hint && command(input) || input.strip_suffix(['_', '(']).is_some_and(command) {
-        return true;
-    }
-    // Unrecognized partly written calls stay native; supported structural
-    // commands above already handle their own opening/closing delimiters.
-    if !input.contains('\\') && input.contains('(') && recognize_inline(input, math_hint).is_none()
-    {
-        return false;
-    }
-    // A trailing operator without mathematical context is ambiguous (C++,
-    // command flags, word fragments). Wait for a complete expression instead.
-    if !math_hint
-        && !entering_script
-        && input
-            .trim_end()
-            .ends_with(['+', '-', '*', '×', '/', '^', '_', '='])
-    {
-        return false;
-    }
-    if input.chars().any(|c| {
-        matches!(c, '\u{3040}'..='\u{30ff}' | '\u{3400}'..='\u{9fff}' | '\u{ac00}'..='\u{d7af}')
-    }) {
-        return false;
-    }
-    let notation = math_editor::looks_mathematical(input)
-        || input.starts_with('\\')
-        || input.contains(['+', '-', '−', '*', '×'])
-        || math_hint && function_notation(input).is_some();
-    notation
-        && (math_hint
-            || entering_script
-            || recognize_inline(input, false).is_some()
-            || input.starts_with('\\'))
-}
-
 /// A partially typed formula stays a draft when Enter is pressed. Ordinary
 /// words still go through answer comparison, even in a mathematical question.
 pub fn incomplete_error(input: &str, math_hint: bool) -> Option<String> {
@@ -147,6 +96,83 @@ pub fn matches_formula(input: &str, latex: &str, aliases: &[String]) -> bool {
     std::iter::once(expected)
         .chain(alternatives)
         .any(|node| notation(&node) == supplied)
+}
+
+pub(crate) fn matches_edited_formula<'a>(
+    latex: &str,
+    reference: &str,
+    allowed: impl Iterator<Item = &'a str>,
+) -> bool {
+    if latex.trim().is_empty() {
+        return false;
+    }
+    let key = edited_notation(latex);
+    if let Some(key) = &key
+        && edited_notation(reference).as_ref() == Some(key)
+    {
+        return true;
+    }
+    allowed.map(str::trim).any(|spelling| {
+        if key.is_some() && latex.trim() == spelling {
+            return true;
+        }
+        match recognize_inline(spelling, true) {
+            Some(alias) => key.as_ref().is_some_and(|key| {
+                notation(&alias) == *key
+                    || named_atomic_script(&alias) && crate::math_structure::same(latex, spelling)
+            }),
+            None => literal_editor_spelling(latex, spelling),
+        }
+    })
+}
+
+fn edited_notation(latex: &str) -> Option<String> {
+    let node = math_editor::from_latex(latex).ok()?;
+    (node.complete() && node.validate().is_ok()).then(|| notation(&node))
+}
+
+// A term such as sp^3 is also written as a flat LaTeX letter run with a
+// one-character script. Compare that spelling only for a declared alias.
+fn named_atomic_script(alias: &Node) -> bool {
+    matches!(alias.kind, Kind::Power | Kind::Subscript | Kind::SubSup)
+        && alias.children.first().is_some_and(|base| {
+            base.kind == Kind::Literal
+                && base.value.len() > 1
+                && base.value.bytes().all(|c| c.is_ascii_alphabetic())
+        })
+        && alias.children.iter().skip(1).all(|script| {
+            script.kind == Kind::Literal
+                && script.value.len() == 1
+                && script.value.bytes().all(|c| c.is_ascii_alphanumeric())
+        })
+}
+
+pub(crate) fn matches_edited_literal(latex: &str, spelling: &str) -> bool {
+    recognize_inline(spelling, true).is_none() && literal_editor_spelling(latex, spelling)
+}
+
+fn literal_editor_spelling(latex: &str, spelling: &str) -> bool {
+    use slint_math_input::{Action, Editor};
+    if spelling.is_empty() || latex.trim().is_empty() {
+        return false;
+    }
+    if latex.trim() == spelling
+        || math_editor::from_latex(latex).is_ok_and(|node| node.is_text() && node.value == spelling)
+    {
+        return true;
+    }
+    let mut editor = Editor::new();
+    editor.structured_typing = true;
+    // Complete text aliases may be displayed as something else by the
+    // formula editor, e.g. transpose() becomes an upright function name.
+    // Compare the exact preview, including closed delimiters. An empty pair
+    // of parentheses in a literal spelling does not need a formula argument.
+    if editor.apply(Action::Insert(spelling.into())).is_ok() && editor.latex_preview() == latex {
+        return true;
+    }
+    editor.apply(Action::Clear).is_ok()
+        && editor.paste(spelling).is_ok()
+        && editor.latex_preview() == latex
 }
 
 fn notation_expression(input: &str) -> Result<Node, String> {
@@ -359,16 +385,29 @@ fn normalize(mut node: Node, grouped_slot: bool) -> Node {
         let mut children = vec![];
         let mut source = node.children.into_iter().peekable();
         while let Some(mut child) = source.next() {
-            if child.kind == Kind::Literal
-                && child.value == "°"
-                && let Some(base) = children.pop()
+            if child.kind == Kind::Operator
+                && child.value == "abs"
+                && source.peek().is_some_and(is_parentheses)
             {
-                children.push(Node {
-                    kind: Kind::Power,
-                    value: String::new(),
-                    children: vec![base, Node::leaf(Kind::Symbol, "circ")],
-                });
-                continue;
+                child = source.next().unwrap();
+                child.kind = Kind::Group("|".into(), "|".into());
+            }
+            if child.kind == Kind::Literal {
+                let exponent = match child.value.as_str() {
+                    "°" => Some(Node::leaf(Kind::Symbol, "circ")),
+                    "²" => Some(Node::leaf(Kind::Literal, "2")),
+                    "³" => Some(Node::leaf(Kind::Literal, "3")),
+                    _ => None,
+                };
+                if let Some(exponent) = exponent
+                    && let Some(base) = children.pop()
+                {
+                    child = Node {
+                        kind: Kind::Power,
+                        value: String::new(),
+                        children: vec![base, exponent],
+                    };
+                }
             }
             // sin²(x) and (sin(x))² are the same function notation. Keep
             // algebraic simplification and inverse-function inference out.
@@ -478,6 +517,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn edited_answers_preserve_declared_aliases_and_actual_script_scope() {
+        for (input, reference, alias, expected) in [
+            (
+                r"\operatorname{transpose}\left(\right)",
+                "x",
+                "transpose()",
+                true,
+            ),
+            (
+                r"\operatorname{transpose}\left(\right.",
+                "x",
+                "transpose()",
+                false,
+            ),
+            (r"\frac{u}{二}", r"\frac{u}{2}", "u/二", true),
+            (r"sp^{3}", r"\mathrm{sp}^{3}", "sp^3", true),
+            (r"sp^{2}", r"\mathrm{sp}^{3}", "sp^3", false),
+            (
+                r"\ln \left(\operatorname{abs}\left(x\right)\right)+C",
+                r"\ln\left|x\right|+C",
+                "ln(abs(x))+C",
+                true,
+            ),
+            (r"u'v+uv'", r"u'v+uv'", "u'v+uv'", true),
+            (r"u'\cdot v+u\cdot v'", r"u'v+uv'", "u'*v+u*v'", true),
+            (
+                r"\cos ²\left(x\right)-\sin ²\left(x\right)",
+                r"\cos^{2}(x)-\sin^{2}(x)",
+                "cos²(x) − sin²(x)",
+                true,
+            ),
+            (r"e^{x}+c", r"e^{x}+C", "e^x+c", true),
+            (r"e^{x+c}", r"e^{x}+C", "e^x+c", false),
+            (r"\frac{u}{}", r"\frac{u}{2}", "u/2", false),
+        ] {
+            assert_eq!(
+                matches_edited_formula(input, reference, [alias].into_iter()),
+                expected,
+                "grading {input} against {reference} and {alias}"
+            );
+        }
+    }
+
+    #[test]
     fn notation_entry_recognizes_compact_functions_in_math_context() {
         for (input, latex) in [
             ("lnx", r"\ln(x)"),
@@ -491,10 +574,6 @@ mod tests {
         ] {
             assert!(matches_formula(input, latex, &[]), "{input}: {latex}");
             assert!(recognize_inline(input, true).is_some(), "inline: {input}");
-            assert!(starts_structured_edit(input, true), "entry: {input}");
-        }
-        for input in ["2ln", "2yln", "2sqrt", "ysqrt", "yabs", "ynorm"] {
-            assert!(starts_structured_edit(input, true), "command: {input}");
         }
         for text in [
             "Paris",
@@ -509,7 +588,6 @@ mod tests {
             "1 海里",
         ] {
             assert!(recognize_inline(text, false).is_none(), "text: {text}");
-            assert!(!starts_structured_edit(text, false), "native text: {text}");
         }
         for text in [
             "lnx",
@@ -625,18 +703,12 @@ mod tests {
 
     #[test]
     fn adjacent_function_entry_preserves_prose_and_reserved_names() {
-        for word in ["yln", "xsin", "xyln", "xarcsin"] {
-            assert!(starts_structured_edit(word, true), "math command: {word}");
-            assert!(!starts_structured_edit(word, false), "plain word: {word}");
-        }
-        assert!(starts_structured_edit("yln(", false));
         assert!(recognize_inline("yln(x)", true).is_some());
         for word in ["println(x)", "sinister(x)", "catalog(x)", "hello world"] {
             assert!(
                 recognize_inline(word, false).is_none(),
                 "plain/code: {word}"
             );
-            assert!(!starts_structured_edit(word, false), "plain/code: {word}");
         }
         assert!(matches_formula("asin(x)", r"\arcsin(x)", &[]));
         assert!(!matches_formula("asin(x)", r"a\sin(x)", &[]));
@@ -696,29 +768,6 @@ mod tests {
     }
 
     #[test]
-    fn structural_editing_starts_without_a_keypad_and_preserves_plain_answers() {
-        for text in [
-            "Paris",
-            "犹豫",
-            "1 海里",
-            "well-being",
-            "&mut T",
-            "C++",
-            "Vec<T>",
-            "123",
-        ] {
-            assert!(!starts_structured_edit(text, false), "{text}");
-        }
-        for text in ["1/2", "sqrt(3)/2", "x+y", "x^2", r"\frac{1}{2}"] {
-            assert!(starts_structured_edit(text, false), "{text}");
-        }
-        assert!(!starts_structured_edit("sqrt(3", true));
-        for text in ["1/", "x^", r"\frac{1}{"] {
-            assert!(starts_structured_edit(text, true), "{text}");
-        }
-    }
-
-    #[test]
     fn code_identifiers_stay_literal_during_typing_and_authoring() {
         for input in [
             "std::unique_ptr",
@@ -727,10 +776,6 @@ mod tests {
             ".as_ref()",
             "map_err",
         ] {
-            for end in 1..=input.len() {
-                let prefix = &input[..end];
-                assert!(!starts_structured_edit(prefix, false), "{prefix}: {input}");
-            }
             assert!(recognize_inline(input, false).is_none(), "{input}");
             let mut field = math_editor::Field::new("", "");
             field.update(input).unwrap();
@@ -784,39 +829,6 @@ mod tests {
         }
         assert!(incomplete_error("literal/", false).is_none());
         assert!(incomplete_error("p^n⋅", true).is_some());
-    }
-
-    #[test]
-    fn typed_power_enters_its_slot_before_the_exponent_is_complete() {
-        for prefix in ["p^", "P^", "42^"] {
-            assert!(starts_structured_edit(prefix, false), "{prefix}");
-            assert!(starts_structured_edit(prefix, true), "{prefix}");
-        }
-        for text in ["C+", "C++", "--help", "snake_", "汉字^"] {
-            assert!(!starts_structured_edit(text, false), "{text}");
-        }
-    }
-
-    #[test]
-    fn live_functions_and_subscripts_enter_before_their_content_is_complete() {
-        for prefix in [
-            "log", "ln", "sin", "cos", "exp", "sqrt", "frac", "sum", "int", "lim", "pi", "theta",
-        ] {
-            assert!(starts_structured_edit(prefix, true), "{prefix}");
-            assert!(!starts_structured_edit(prefix, false), "word: {prefix}");
-            assert!(
-                starts_structured_edit(&format!("{prefix}("), false),
-                "call: {prefix}"
-            );
-        }
-        for prefix in ["log_", "x_", "a_"] {
-            assert!(starts_structured_edit(prefix, false), "{prefix}");
-        }
-        for text in [
-            "logger", "sinister", "catalog", "snake_", "Vec<T>", "&mut T",
-        ] {
-            assert!(!starts_structured_edit(text, false), "{text}");
-        }
     }
 
     #[test]

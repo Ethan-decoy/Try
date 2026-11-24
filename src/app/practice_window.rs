@@ -197,7 +197,9 @@ impl App {
             last_attempt: None,
             close_countdown: CloseCountdown::default(),
         }));
+        self.prepare_practice_math();
         if let Err(error) = window.show() {
+            self.close_structured_math_for(true);
             self.practice.borrow_mut().take();
             self.arm_reminder();
             return Err(error.to_string());
@@ -259,6 +261,14 @@ impl App {
                 Ok(())
             });
             if let Err(error) = result {
+                if app
+                    .practice
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|session| session.diagnostic_id == diagnostic_id)
+                {
+                    app.close_structured_math_for(true);
+                }
                 let Some(session) = app
                     .practice
                     .borrow_mut()
@@ -276,6 +286,7 @@ impl App {
             }
         })
         .map_err(|error| {
+            self.close_structured_math_for(true);
             let _ = window.hide();
             self.practice
                 .borrow_mut()

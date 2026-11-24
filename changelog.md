@@ -4,6 +4,11 @@ Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- Use the formula editor from the first keystroke in formula answers. Pressing `/` after a numerator creates a fraction immediately and moves the caret into the denominator.
+- Keep the caret when opening or closing the formula keypad. Grade the submitted formula structure, preserving exponent and argument boundaries and the accepted spellings declared by the deck.
+
 ## [1.0.0] - 2026-11-22
 
 **1.0.0** is the first stable release. Back up your data directory before upgrading from a 0.x preview. Try reuses data it can read, with no guaranteed migration from previews.

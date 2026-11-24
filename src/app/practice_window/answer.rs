@@ -1,5 +1,6 @@
 //! Answer input, grading, feedback and frozen problem evidence.
 use super::*;
+use r#try::problem_report::AnswerAttempt;
 
 impl App {
     pub(in crate::app) fn begin_practice_interaction(&self, id: u64, origin: LearningOrigin) {
@@ -23,28 +24,19 @@ impl App {
         session.window.invoke_focus_practice();
     }
 
-    pub(in crate::app) fn edit_answer_input(self: &Rc<Self>, input: &str) {
-        self.close_structured_math_for(true);
-        let structure_input = {
-            let mut practice = self.practice.borrow_mut();
-            let Some(session) = practice.as_mut().filter(|session| {
-                !session.answered
-                    && session.prepared.mode == AnswerMode::Input
-                    && !session.prepared.knowledge_only
-            }) else {
-                return;
-            };
-            session.input_history.borrow_mut().record(input);
-            session.window.set_input_error("".into());
-            session.window.set_answer_text(input.into());
-            session.window.set_input_preview(Default::default());
-            session.prepared.allows_formula_input()
-                && math_answer::starts_structured_edit(input, true)
-                && !starts_literal_spelling(&session.question.card, input)
+    pub(in crate::app) fn edit_answer_input(&self, input: &str) {
+        let practice = self.practice.borrow();
+        let Some(session) = practice.as_ref().filter(|session| {
+            !session.answered
+                && session.prepared.mode == AnswerMode::Input
+                && !session.prepared.knowledge_only
+                && !session.prepared.allows_formula_input()
+        }) else {
+            return;
         };
-        if structure_input {
-            self.start_practice_math(false);
-        }
+        session.input_history.borrow_mut().record(input);
+        session.window.set_input_error("".into());
+        session.window.set_answer_text(input.into());
     }
 
     pub(in crate::app) fn inline_answer_command(&self, command: &str) {
@@ -67,7 +59,6 @@ impl App {
             selection
         };
 
-        self.refresh_answer_preview();
         if let Some(session) = self.practice.borrow().as_ref() {
             sync_answer_position(
                 session,
@@ -81,71 +72,65 @@ impl App {
 
     pub(in crate::app) fn refresh_answer_preview(&self) {
         let practice = self.practice.borrow();
-        let Some(session) = practice.as_ref().filter(|session| {
-            session.prepared.mode == AnswerMode::Input
-                && !session.prepared.knowledge_only
-                && session.prepared.allows_formula_input()
-        }) else {
+        let Some(session) = practice.as_ref() else {
             return;
         };
+        let Some(latex) = session
+            .last_attempt
+            .as_ref()
+            .and_then(|attempt| attempt.math_latex.as_deref())
+        else {
+            return;
+        };
+        // A declared text alias may have an otherwise empty formula slot.
+        // Its literal label is already on the card.
+        if !r#try::math_editor::from_latex(latex).is_ok_and(|node| node.complete()) {
+            return;
+        }
         let window = &session.window;
-        let text = window.get_answer_text();
-        let preview = math_answer::recognize_inline(text.as_str(), true)
-            .filter(|_| !starts_literal_spelling(&session.question.card, text.as_str()))
-            .and_then(|node| {
-                formula::render_node(&node, 22, window.get_pixel_scale(), (232, 232, 232)).ok()
-            })
+        let preview = formula::render(latex, 22, window.get_pixel_scale(), (232, 232, 232))
             .map(|rendered| formula_presentation::option(window.get_answer_text(), rendered))
             .unwrap_or_default();
         window.set_input_preview(preview);
     }
 
     pub(in crate::app) fn submit_answer(self: &Rc<Self>, input: &str) {
-        let structured = self
-            .structured_math
-            .borrow()
-            .as_ref()
-            .filter(|(target, _)| matches!(target, MathTarget::Practice(_)))
-            .map(|(_, edit)| edit.latex_source());
-        if let Some(latex) = structured {
-            let expanded = self.practice.borrow().as_ref().is_some_and(|session| {
-                session
-                    .window
-                    .global::<crate::MathInputState>()
-                    .get_keypad_expanded()
-            });
-            if self.apply_current_math() {
-                let answer = self
-                    .practice
-                    .borrow()
-                    .as_ref()
-                    .map(|session| session.window.get_answer_text().to_string());
-                if let Some(answer) = answer {
-                    self.check_answer_input(&answer, Some(latex), expanded);
+        let correct = {
+            let mut practice = self.practice.borrow_mut();
+            let Some(session) = practice
+                .as_mut()
+                .filter(|session| !session.answered && !session.awaiting_interaction)
+            else {
+                return;
+            };
+            let attempt = if session.prepared.allows_formula_input() {
+                let active = self.structured_math.borrow();
+                let Some((MathTarget::Practice(id), edit)) = active.as_ref() else {
+                    return;
+                };
+                if *id != session.diagnostic_id {
+                    return;
                 }
-            }
-            return;
-        }
-        self.check_answer_input(input, None, false);
-    }
-
-    fn check_answer_input(
-        self: &Rc<Self>,
-        input: &str,
-        math_latex: Option<String>,
-        keypad_expanded: bool,
-    ) {
-        let correct = self.practice.borrow_mut().as_mut().and_then(|session| {
-            assess_input(
-                session,
-                r#try::problem_report::AnswerAttempt {
+                let Some(attempt) = prepare_formula_attempt(session, edit) else {
+                    return;
+                };
+                attempt
+            } else {
+                AnswerAttempt {
                     input: input.to_owned(),
-                    math_latex,
-                    keypad_expanded,
-                },
-            )
-        });
+                    math_latex: None,
+                    keypad_expanded: false,
+                }
+            };
+            let input_text = attempt.input.clone();
+            let result = assess_input(session, attempt);
+            if result.is_some() {
+                session.window.set_answer_text(input_text.into());
+            }
+            result
+        };
         if let Some(correct) = correct {
+            self.close_structured_math_for(true);
             self.finish_answer(correct, None);
         }
     }
@@ -174,7 +159,6 @@ impl App {
             return;
         }
 
-        // Render static answer feedback only when it is needed.
         self.refresh_answer_preview();
         let review_token = {
             let mut session = self.practice.borrow_mut();
@@ -203,6 +187,35 @@ impl App {
             }
         }
     }
+}
+
+fn prepare_formula_attempt(
+    session: &PracticeSession,
+    edit: &crate::structured_math::Session,
+) -> Option<AnswerAttempt> {
+    let draft = edit.latex_source();
+    if draft.trim().is_empty() {
+        return None;
+    }
+    let ui = session.window.global::<crate::MathInputState>();
+    let (latex, input) = match edit.complete() {
+        Ok(latex) => {
+            let input = crate::structured_math::answer_input(&latex);
+            (latex, input)
+        }
+        Err(error) => {
+            let Some(spelling) = session.question.card.edited_literal_spelling(&draft) else {
+                ui.set_error(error.into());
+                return None;
+            };
+            (draft, spelling.to_owned())
+        }
+    };
+    Some(AnswerAttempt {
+        input,
+        math_latex: Some(latex),
+        keypad_expanded: ui.get_keypad_expanded(),
+    })
 }
 
 pub(super) fn sync_answer_position(
@@ -235,10 +248,7 @@ pub(super) fn sync_answer_position(
 }
 
 // Assessment is shared by the application and offscreen record regressions.
-fn assess_input(
-    session: &mut PracticeSession,
-    attempt: r#try::problem_report::AnswerAttempt,
-) -> Option<bool> {
+fn assess_input(session: &mut PracticeSession, attempt: AnswerAttempt) -> Option<bool> {
     if attempt.input.trim().is_empty()
         || session.answered
         || session.prepared.knowledge_only
@@ -246,31 +256,14 @@ fn assess_input(
     {
         return None;
     }
-    let correct = session.question.card.accepts(&attempt.input);
-    let error = (!correct && session.prepared.allows_formula_input())
-        .then(|| math_answer::incomplete_error(&attempt.input, true))
-        .flatten();
-    session.last_attempt = Some(attempt);
-    if let Some(error) = error {
-        session.window.set_input_error(error.into());
-        return None;
-    }
-    Some(correct)
-}
-
-// Let an explicitly accepted spelling reach the grader even when one of its
-// prefixes happens to be an SMI command.
-fn starts_literal_spelling(card: &r#try::knowledge::Card, input: &str) -> bool {
-    let Some(latex) = card.answer_latex.as_deref() else {
-        return false;
+    let card = &session.question.card;
+    let correct = if session.prepared.allows_formula_input() {
+        card.accepts_edited_formula(attempt.math_latex.as_deref()?)
+    } else {
+        card.accepts(&attempt.input)
     };
-    let input = input.trim_start();
-    std::iter::once(card.answer.as_str())
-        .chain(card.aliases.iter().map(String::as_str))
-        .map(str::trim)
-        .any(|spelling| {
-            spelling.starts_with(input) && !math_answer::matches_formula(spelling, latex, &[])
-        })
+    session.last_attempt = Some(attempt);
+    Some(correct)
 }
 
 impl PracticeSession {
@@ -341,7 +334,9 @@ mod tests {
     use crate::{PracticeAction, ProblemRecordStatus};
     use slint::PhysicalSize;
     use slint::platform::Key;
-    use r#try::problem_report::{self, AnswerAttempt, Outcome};
+    #[cfg(target_os = "windows")]
+    use r#try::math_answer;
+    use r#try::problem_report::{self, Outcome};
     use r#try::window_position::PracticeCardSize;
 
     const MIN_CARD_SIZE: PhysicalSize =
@@ -577,14 +572,47 @@ mod tests {
             .iter()
             .find(|card| card.id.as_deref() == Some("option_transpose"))
             .unwrap();
+        let hybridization = library
+            .packs
+            .iter()
+            .flat_map(|pack| &pack.cards)
+            .find(|card| card.id.as_deref() == Some("methane_hybridization"))
+            .unwrap()
+            .clone();
+        let calculus = r#try::knowledge::KnowledgePack::from_json(include_bytes!(
+            "../../../knowledge_packs/authoring_template.json"
+        ))
+        .unwrap();
+        let reciprocal = calculus
+            .cards
+            .iter()
+            .find(|card| card.id.as_deref() == Some("reciprocal_antiderivative"))
+            .unwrap();
+        let product_rule = calculus
+            .cards
+            .iter()
+            .find(|card| card.id.as_deref() == Some("product_rule"))
+            .unwrap();
         let mut literal = code.clone();
         literal.answer = "x_i".into();
         literal.aliases.clear();
         let mut formula = literal.clone();
         formula.answer_latex = Some("x_{i}".into());
         formula.aliases = vec!["transpose()".into()];
+        let mut power = formula.clone();
+        power.answer = "(u)^(n+m)".into();
+        power.answer_latex = Some(r"\left(u\right)^{n+m}".into());
+        power.aliases.clear();
+        let mut subscript = power.clone();
+        subscript.answer = "(u)_(i+1)".into();
+        subscript.answer_latex = Some(r"\left(u\right)_{i+1}".into());
         let mut path = literal.clone();
         path.answer = r"src\main.rs".into();
+        let mut path_with_formula_prompt = literal.clone();
+        path_with_formula_prompt.prompt_latex = Some(r"f(x)=?".into());
+        path_with_formula_prompt.answer = "src/main.rs".into();
+        let mut literal_ratio = path_with_formula_prompt.clone();
+        literal_ratio.answer = "m/s".into();
         let floating = Rc::new(FloatingWindow::new(&library.settings));
         let app = App::new(store, library, floating).unwrap();
 
@@ -598,9 +626,19 @@ mod tests {
             (&literal, "x_{i}", true, false, 2),
             (&literal, "sqrt(", false, false, 2),
             (&path, r"src\main.rs", false, false, 1),
+            (&path_with_formula_prompt, "src/main.rs", false, false, 1),
+            (&literal_ratio, "m/s", false, false, 1),
             (&formula, "x_i", false, true, 1),
             (&formula, "x_{i}", true, true, 1),
-            (&formula, "transpose()", false, false, 1),
+            (&formula, "transpose()", false, true, 1),
+            (&formula, "transpose()", true, true, 1),
+            (&power, "(u)^n+m", false, true, 1),
+            (&subscript, "(u)_i+1", false, true, 1),
+            (&hybridization, "sp^3", false, true, 1),
+            (&hybridization, "sp^3", true, true, 1),
+            (reciprocal, "ln(abs(x))+C", false, true, 1),
+            (reciprocal, "ln(abs(x))+C", true, true, 1),
+            (product_rule, "u'v+uv'", false, true, 1),
         ] {
             let window = PracticeWindow::new().unwrap();
             let mut scene = session(&window);
@@ -612,13 +650,15 @@ mod tests {
             window.set_standard_answer(card.answer.clone().into());
             app.bind_practice_window(&window, scene.diagnostic_id, false);
             app.practice.replace(Some(scene));
+            app.prepare_practice_math();
             window.show().unwrap();
             adapter.set_size(MIN_CARD_SIZE);
             window.invoke_focus_answer();
-            if card.answer_latex.is_none() {
-                window.invoke_open_structured_entry();
-                assert!(!window.get_input_math_mode());
-            }
+            assert_eq!(
+                window.get_input_math_mode(),
+                structured,
+                "before typing {input}"
+            );
             let enter_text = |text: slint::SharedString| {
                 window
                     .window()
@@ -642,6 +682,102 @@ mod tests {
                 assert_eq!(window.get_answer_text(), input, "submitted text: {input}");
                 assert_eq!(window.get_input_preview().formula_width, 0.0);
             }
+            app.cancel_card_close();
+            window.hide().unwrap();
+            app.practice.borrow_mut().take();
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn practice_slash_opens_a_fraction_before_typing_the_denominator() {
+        use slint::platform::WindowEvent;
+
+        let adapter = software_window();
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().to_owned()).unwrap();
+        let library = Library::default();
+        let floating = Rc::new(FloatingWindow::new(&library.settings));
+        let app = App::new(store, library, floating).unwrap();
+
+        let card = serde_json::from_value::<r#try::knowledge::Card>(serde_json::json!({
+            "prompt": "sin(pi/6) = ?",
+            "prompt_latex": r"\sin(\pi/6)=?",
+            "answer": "1/2",
+            "answer_latex": r"\frac{1}{2}",
+        }))
+        .unwrap();
+        let mut with_alias = card.clone();
+        with_alias.prompt = "Half of u?".into();
+        with_alias.prompt_latex = None;
+        with_alias.answer = "0.5u".into();
+        with_alias.answer_latex = Some(r"\frac{1}{2}u".into());
+        with_alias.aliases = vec!["u/2".into(), "u/二".into()];
+        for (card, numerator, expected) in [
+            (&card, "1", r"\frac{1}{2}"),
+            (&with_alias, "u ", r"\frac{u}{2}"),
+            (&with_alias, "u", r"\frac{u}{2}"),
+            (&card, "(1)", r"\frac{1}{2}"),
+        ] {
+            let window = PracticeWindow::new().unwrap();
+            let mut scene = session(&window);
+            scene.prepared =
+                PreparedQuestion::new(card, AnswerMode::Input, &mut rand::rng()).unwrap();
+            scene.question.card = card.clone();
+            window.set_formula_input_allowed(scene.prepared.allows_formula_input());
+            formula_presentation::apply_practice(&window, &scene.prepared, 1.0);
+            app.bind_practice_window(&window, scene.diagnostic_id, false);
+            app.practice.replace(Some(scene));
+            app.prepare_practice_math();
+            window.show().unwrap();
+            adapter.set_size(MIN_CARD_SIZE);
+            window.invoke_focus_answer();
+            let type_key = |text: &str| {
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyPressed { text: text.into() });
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::KeyReleased { text: text.into() });
+                paint(&adapter);
+            };
+
+            for character in numerator.chars() {
+                type_key(&character.to_string());
+            }
+            type_key("/");
+            assert!(
+                window.get_input_math_mode(),
+                "the first slash after {numerator} stayed in the text field: {}",
+                window.get_answer_text()
+            );
+            let math = window.global::<crate::MathInputState>();
+            assert!(!math.get_keypad_expanded());
+            {
+                let active = app.structured_math.borrow();
+                let (_, edit) = active.as_ref().unwrap();
+                let draft = edit.latex_source();
+                assert!(draft.starts_with(r"\frac"), "{draft}");
+                assert!(edit.complete().is_err(), "the denominator is still blank");
+            }
+            key(&window, &adapter, Key::Return);
+            assert_eq!(window.get_feedback(), 0);
+            assert!(!math.get_error().is_empty());
+            type_key("2");
+            let completed = app
+                .structured_math
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .1
+                .complete()
+                .unwrap();
+            assert!(
+                math_answer::matches_formula(&completed, expected, &[]),
+                "{numerator}/2: {completed}"
+            );
+            key(&window, &adapter, Key::Return);
+            assert_eq!(window.get_feedback(), 1);
             app.cancel_card_close();
             window.hide().unwrap();
             app.practice.borrow_mut().take();

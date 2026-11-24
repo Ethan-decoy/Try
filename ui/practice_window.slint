@@ -309,7 +309,6 @@ export component PracticeWindow inherits Window {
     callback answer-edited(string);
     callback answer-position-changed(string, int, int);
     callback input-command(string);
-    callback open-structured-entry();
     callback submit-answer(string);
     callback choose-answer(int);
     callback dismiss();
@@ -577,16 +576,14 @@ export component PracticeWindow inherits Window {
                             texts: root.answer-texts; font-size: 22px;
                         }
                         formula-toggle := ToolButton {
-                            visible: root.feedback == 0 && root.formula-input-allowed;
+                            visible: root.feedback == 0 && MathInputState.open;
                             x: parent.width - 38px; y: (parent.height - 32px) / 2;
                             width: 32px; height: 32px;
                             label: "ƒ"; name: MathInputState.open && MathInputState.keypad-expanded ? @tr("收起公式输入") : @tr("公式输入");
                             enabled: self.visible;
                             activated => {
-                                if MathInputState.open {
-                                    MathInputState.keypad-expanded = !MathInputState.keypad-expanded;
-                                    MathInputState.focus-request += 1;
-                                } else { root.open-structured-entry(); }
+                                MathInputState.keypad-expanded = !MathInputState.keypad-expanded;
+                                MathInputState.focus-request += 1;
                             }
                         }
                     }

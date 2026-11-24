@@ -181,6 +181,27 @@ impl Card {
                 }))
     }
 
+    /// Check the completed document from the formula editor in its original notation.
+    pub fn accepts_edited_formula(&self, latex: &str) -> bool {
+        self.answer_latex.as_deref().is_some_and(|reference| {
+            crate::math_answer::matches_edited_formula(
+                latex,
+                reference,
+                std::iter::once(self.answer.as_str())
+                    .chain(self.aliases.iter().map(String::as_str)),
+            )
+        })
+    }
+
+    /// A written text alias can include closed, empty delimiters such as transpose().
+    pub fn edited_literal_spelling(&self, draft: &str) -> Option<&str> {
+        self.answer_latex.as_ref()?;
+        std::iter::once(self.answer.as_str())
+            .chain(self.aliases.iter().map(String::as_str))
+            .map(str::trim)
+            .find(|spelling| crate::math_answer::matches_edited_literal(draft, spelling))
+    }
+
     pub(crate) fn choice_matches_answer(
         &self,
         option: &AnswerContent,
