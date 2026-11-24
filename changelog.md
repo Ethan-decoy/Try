@@ -267,9 +267,9 @@ Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v1.0.1...HEAD
-[1.0.1]: https://github.com/Ethan-decoy/Try/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/Ethan-decoy/Try/compare/v0.10.0...v1.0.0
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/1a61e770ec4daee6cd432840acdc3f1972795699...HEAD
+[1.0.1]: https://github.com/Ethan-decoy/Try/compare/6f6524a91239b906ad74b17bb50c9e9473d75bc3...1a61e770ec4daee6cd432840acdc3f1972795699
+[1.0.0]: https://github.com/Ethan-decoy/Try/compare/c54ae2170a9ede713720d2df68dfd8ca936777f5...6f6524a91239b906ad74b17bb50c9e9473d75bc3
 [0.10.0]: https://github.com/Ethan-decoy/Try/compare/e067294199e559e5c09121641f5e01e429b830e8...c54ae2170a9ede713720d2df68dfd8ca936777f5
 [0.9.3]: https://github.com/Ethan-decoy/Try/compare/19a9c2a4d147f9b63be85f7289b2050d4b559425...e067294199e559e5c09121641f5e01e429b830e8
 [0.9.2]: https://github.com/Ethan-decoy/Try/compare/dcadbe986423058c8a4157f9ac07d30d49558061...19a9c2a4d147f9b63be85f7289b2050d4b559425
