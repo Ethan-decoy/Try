@@ -2,7 +2,7 @@
 
 把本文件完整交给负责整理内容的 AI，并填写下面的制作要求。AI 输出的 JSON 保存为 UTF-8 `.json` 文件，再从 Try 主窗口知识包列表上方的导入入口选择该文件。无需修改 Try 的本地 `state.json`。
 
-本模板按 Try 1.0.0 的导入与作答规则编写，知识包格式为 `schema_version: 1`。下方公式示例与 [微积分模板](../knowledge_packs/authoring_template.json) 内容相同。另有 [高阶英语词汇模板](../knowledge_packs/vocabulary_template.json) 和 [Rust 模板](../knowledge_packs/rust_template.json)，每份 12 题。制作新包时替换示例内容，使用新的知识包 id。更新已有包时沿用原知识包和题目 id，未要求修改的标签也保持原值。
+知识包格式版本为 `schema_version: 1`。制作新包时使用新的知识包 id。更新已有包时沿用原知识包和题目 id，并保留用户未要求更改的标签。
 
 ## 本次制作要求
 
@@ -88,175 +88,40 @@ JSON 中每个反斜线必须转义：实际 LaTeX `\frac{1}{2}` 在输出 JSON 
 
 同图题目可复用同一资源；导出文件必须完整携带所有引用，不能附带无用资源。限制及结构见 [知识包格式](knowledge_pack_format.md#题面图片与可携带资源)。图片只扩展题面，答案、别名、选择内容与判断内容仍遵守本模板的原有规则。只有用户明确要求制作含图包时才添加这些字段。
 
-## 完整示例：公式 · 微积分
+## 可导入示例
 
-12 道题覆盖求导规则、常用原函数、分部积分、微积分基本定理和基本极限，其中三题还提供选择与判断内容。普通文字写法见 [英语 · 进阶单词模板](../knowledge_packs/vocabulary_template.json) 与 [Rust · 常用写法模板](../knowledge_packs/rust_template.json)。
-
-按题保留分母非零、定义域等必要条件；三角函数使用弧度，求原函数的答案保留常数 C。分部积分式两侧已使用不定积分，模板沿用通常省略显式 C 的写法，并允许补写 C。
+这道题同时提供填空、选择和判断。完整题包见[知识包标签](#知识包标签)一节的下载表。
 
 ```json
 {
   "format": "try",
   "schema_version": 1,
-  "id": "calculus_template",
-  "name": "微积分",
+  "id": "calculus_example",
+  "name": "微积分示例",
   "tag": "公式",
-  "description": "常用求导、积分与极限公式。变量取实数，n 为实常数，三角函数使用弧度；u、v、f、g 在所需区间可微。求原函数时保留任意常数 C；分部积分按两侧不定积分的恒等关系书写。",
   "cards": [
     {
-      "id": "power_derivative",
-      "prompt": "(xⁿ)′ = ?（x > 0）",
-      "answer": "nx^(n-1)",
-      "prompt_latex": "\\frac{d}{dx}x^{n}=?\\quad(x>0)",
-      "answer_latex": "nx^{n-1}",
+      "id": "log_composition_derivative",
+      "prompt": "(ln(1+x²))′ = ?",
+      "answer": "2x/(1+x^2)",
+      "prompt_latex": "\\frac{d}{dx}\\ln(1+x^{2})=?",
+      "answer_latex": "\\frac{2x}{1+x^{2}}",
       "aliases": [
-        "n*x^(n-1)"
-      ]
-    },
-    {
-      "id": "product_rule",
-      "prompt": "(uv)′ = ?",
-      "answer": "u'v+uv'",
-      "prompt_latex": "(uv)'=?",
-      "answer_latex": "u'v+uv'",
-      "aliases": [
-        "u'*v+u*v'",
-        "uv'+u'v"
-      ]
-    },
-    {
-      "id": "quotient_rule",
-      "prompt": "(u/v)′ = ?（v ≠ 0）",
-      "answer": "(u'v-uv')/v^2",
-      "prompt_latex": "\\left(\\frac{u}{v}\\right)'=?\\quad(v\\ne0)",
-      "answer_latex": "\\frac{u'v-uv'}{v^{2}}",
-      "aliases": [
-        "(u'*v-u*v')/v^2"
-      ]
-    },
-    {
-      "id": "chain_rule",
-      "prompt": "(f(g(x)))′ = ?",
-      "answer": "f'(g(x))g'(x)",
-      "prompt_latex": "\\frac{d}{dx}f(g(x))=?",
-      "answer_latex": "f'(g(x))g'(x)",
-      "aliases": [
-        "f'(g(x))*g'(x)"
-      ]
-    },
-    {
-      "id": "log_absolute_derivative",
-      "prompt": "(ln|x|)′ = ?（x ≠ 0）",
-      "answer": "1/x",
-      "prompt_latex": "\\frac{d}{dx}\\ln\\left|x\\right|=?\\quad(x\\ne0)",
-      "answer_latex": "\\frac{1}{x}",
-      "distractors": [
-        {
-          "text": "1/|x|",
-          "latex": "\\frac{1}{\\left|x\\right|}"
-        },
-        {
-          "text": "x",
-          "latex": "x"
-        }
+        "2x/(x^2+1)"
       ],
-      "true_false": {
-        "statement": "x ≠ 0 时，(ln|x|)′ = 1/|x|",
-        "statement_latex": "\\frac{d}{dx}\\ln\\left|x\\right|=\\frac{1}{\\left|x\\right|}\\quad(x\\ne0)",
-        "is_true": false,
-        "correction": "✕"
-      }
-    },
-    {
-      "id": "arcsine_derivative",
-      "prompt": "(arcsin x)′ = ?（|x| < 1）",
-      "answer": "1/sqrt(1-x^2)",
-      "prompt_latex": "\\frac{d}{dx}\\arcsin(x)=?\\quad(\\left|x\\right|<1)",
-      "answer_latex": "\\frac{1}{\\sqrt{1-x^{2}}}",
       "distractors": [
-        {
-          "text": "−1/sqrt(1-x^2)",
-          "latex": "-\\frac{1}{\\sqrt{1-x^{2}}}"
-        },
         {
           "text": "1/(1+x^2)",
           "latex": "\\frac{1}{1+x^{2}}"
-        }
-      ],
-      "true_false": {
-        "statement": "|x| < 1 时，(arcsin x)′ = 1/√(1-x²)",
-        "statement_latex": "\\frac{d}{dx}\\arcsin(x)=\\frac{1}{\\sqrt{1-x^{2}}}\\quad(\\left|x\\right|<1)",
-        "is_true": true,
-        "correction": "✓"
-      }
-    },
-    {
-      "id": "arctangent_derivative",
-      "prompt": "(arctan x)′ = ?",
-      "answer": "1/(1+x^2)",
-      "prompt_latex": "\\frac{d}{dx}\\arctan(x)=?",
-      "answer_latex": "\\frac{1}{1+x^{2}}"
-    },
-    {
-      "id": "power_antiderivative",
-      "prompt": "∫ xⁿ dx = ?（n ≠ −1，x > 0）",
-      "answer": "x^(n+1)/(n+1)+C",
-      "prompt_latex": "\\int x^{n}\\,dx=?\\quad(n\\ne-1,\\ x>0)",
-      "answer_latex": "\\frac{x^{n+1}}{n+1}+C",
-      "aliases": [
-        "x^(n+1)/(n+1)+c"
-      ]
-    },
-    {
-      "id": "reciprocal_antiderivative",
-      "prompt": "∫ 1/x dx = ?（x ≠ 0）",
-      "answer": "ln|x|+C",
-      "prompt_latex": "\\int\\frac{1}{x}\\,dx=?\\quad(x\\ne0)",
-      "answer_latex": "\\ln\\left|x\\right|+C",
-      "aliases": [
-        "ln(abs(x))+C",
-        "ln|x|+c",
-        "ln(abs(x))+c"
-      ]
-    },
-    {
-      "id": "integration_by_parts",
-      "prompt": "∫ u dv = ?",
-      "answer": "uv-∫ v du",
-      "prompt_latex": "\\int u\\,dv=?",
-      "answer_latex": "uv-\\int v\\,du",
-      "aliases": [
-        "uv-∫vdu",
-        "uv-∫ v du+C",
-        "uv-∫vdu+C"
-      ]
-    },
-    {
-      "id": "fundamental_theorem_derivative",
-      "prompt": "f 连续，(∫ₐˣ f(t) dt)′ = ?",
-      "answer": "f(x)",
-      "prompt_latex": "\\text{f 连续：}\\frac{d}{dx}\\int_{a}^{x}f(t)\\,dt=?",
-      "answer_latex": "f(x)"
-    },
-    {
-      "id": "sine_limit",
-      "prompt": "lim(x→0) sin(x)/x = ?",
-      "answer": "1",
-      "prompt_latex": "\\lim_{x\\to0}\\frac{\\sin(x)}{x}=?",
-      "answer_latex": "1",
-      "distractors": [
-        {
-          "text": "0",
-          "latex": "0"
         },
         {
-          "text": "∞",
-          "latex": "\\infty"
+          "text": "2x/(1+x^2)^2",
+          "latex": "\\frac{2x}{(1+x^{2})^{2}}"
         }
       ],
       "true_false": {
-        "statement": "lim(x→0) sin(x)/x = 0",
-        "statement_latex": "\\lim_{x\\to0}\\frac{\\sin(x)}{x}=0",
+        "statement": "(ln(1+x²))′ = 1/(1+x²)",
+        "statement_latex": "\\frac{d}{dx}\\ln(1+x^{2})=\\frac{1}{1+x^{2}}",
         "is_true": false,
         "correction": "✕"
       }

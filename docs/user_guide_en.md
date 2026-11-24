@@ -2,7 +2,7 @@
 
 [简体中文](user_guide.md) · [Home](../readme_en.md)
 
-This guide covers Try 1.0.0 for Windows x64, macOS arm64 and Linux x64. Published downloads and platform scope are in the [release record](release_checklist.md).
+See [Download](../readme_en.md#download) for the current packages and platform support.
 
 ## Practice
 
@@ -10,7 +10,7 @@ Place the Windows executable in a writable folder and open `try.exe`. The main w
 
 On Windows, the main window and image preview have a thin frame that follows Try’s appearance. Drag the title bar to move the window, double-click it to maximize or restore, or drag an edge or corner to resize. Esc also closes the image preview.
 
-Click the tray icon on Windows/Linux to start a card. On macOS, choose Practice from the menu-bar icon. The menu also opens Settings or About, pauses automatic practice, resumes it, or quits. Mac/Linux remain experimental; complete tray, focus and file-dialog behavior needs desktop testing.
+Click the tray icon on Windows or Linux to start a card. On macOS, choose **Practice** from the Try menu in the menu bar. The tray and menu-bar menus also let you open Try, Settings or About, pause or resume practice, or quit.
 
 Press Enter to submit a typed answer. For multiple choice, click an option or press 1, 2, or 3. For true/false, click ✓ or ✕ or press 1 or 2. The card turns green for a correct answer. After a mistake, it turns red. A fill-in shows the expected answer where you typed, with your attempt underneath. Choice and true/false cards outline the correct option in place. Press Enter or click the close icon in the lower-right corner to close a missed card. Esc closes unanswered or correct cards, and Enter can also dismiss correct feedback early. Closing without submitting leaves the question ungraded.
 

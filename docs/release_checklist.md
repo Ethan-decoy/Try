@@ -1,16 +1,6 @@
-# 发布与平台范围
+# 分发与验证
 
-各平台的当前下载见 [Try 最新正式版](https://github.com/Ethan-decoy/Try/releases/latest)。
-
-| 平台 | 分发文件 | 范围 |
-| --- | --- | --- |
-| Windows x64 | `try.exe` | 单文件便携版，运行后在旁边创建 `data/` |
-| macOS arm64 | `try_macos_arm64_<版本>.zip` | 实验性，待实际桌面验收 |
-| Linux x64 | `try_linux_x64_<版本>.AppImage` | 实验性，待实际桌面验收 |
-
-macOS 仅支持 arm64，尚未完成 Developer ID 签名与公证。Linux 的托盘、Wayland、FUSE 挂载和登录自启需要在实际桌面环境验收。缺少当前源码的验证包时，不以历史附件代替。
-
-正式版通过应用内更新下载、校验、替换程序，重启后沿用原数据目录。各平台打包均需验证实际替换、数据保留和失败恢复。从预发布版升级的支持范围见[发布规范](release_policy.md#版本)。
+下载文件及各平台的支持状态见 [README 的下载说明](../README.md#下载)。
 
 ## 构建来源
 
@@ -39,6 +29,7 @@ python scripts/check_in_app_update.py --executable ./local_artifacts/releases/wi
 - 核对 `Cargo.toml`、锁文件中的本项目版本、标签和内嵌版本。
 - 从干净源码构建，运行相关测试，核对软件包的架构、许可声明与校验和。
 - 在隔离数据目录中验证启动、升级和失败回退，核对设置、题库、图片和学习记录。
+- macOS 和 Linux 的托盘、焦点和文件对话框仍待实际桌面验收。Linux 还需核对 Wayland、FUSE 挂载和登录自启。
 - 软件包包含程序和必要分发内容。第三方许可详见[许可说明](licensing.md)。
 
 公开仓库的 GitHub Actions 检查 `main` 和 Pull Request，也支持从固定版本标签手动验证三平台构建。

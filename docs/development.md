@@ -26,7 +26,7 @@ Windows 辅助脚本会定位工具链、MSVC 和 SDK，并将产物留在 `loca
 
 ## 分发与检查
 
-正式分发启用 `distribution`，先收集与最终 `Cargo.lock` 一致的许可原文，再生成内嵌声明。Windows 使用静态 C 运行库，macOS 打包为 arm64 ZIP，Linux 打包为 AppImage 并附运行时源码。命令与来源规则见 [发布说明](release_checklist.md) 和 [许可说明](licensing.md)。
+正式分发启用 `distribution`，先收集与最终 `Cargo.lock` 一致的许可原文，再生成内嵌声明。Windows 分发版使用静态 C 运行库，Linux AppImage 随发行提供运行时源码。构建命令和来源规则见 [分发清单](release_checklist.md) 和 [许可说明](licensing.md)。
 
 Windows 的两种准备入口按用途区分：
 
@@ -109,11 +109,11 @@ Windows 窗口激活直接调用 [SetForegroundWindow](https://learn.microsoft.c
 | 产品介绍、下载入口、使用说明、AI 制作知识包说明、JSON 格式和公开模板 | Git 仓库；README 保持简洁，详细内容链接到对应文档 |
 | 源码、界面、图标源文件、翻译、工具链配置和依赖锁文件 | Git 仓库 |
 | 可重复的测试、独立测试数据、构建与打包脚本、CI 配置 | Git 仓库；生成的输出另行保存 |
-| 构建与验证方法、贡献说明、版本变化 | Git 仓库，供使用者和贡献者查阅 |
+| 构建与验证方法、贡献说明 | Git 仓库，供使用者和贡献者查阅 |
 | 项目许可、第三方许可原文和必要声明 | Git 仓库，并按许可要求随程序分发 |
 | 本地 AI 配置、私下产品设计与讨论、原始研究、AI 对话、历史方案、临时脚本、截图、单次验证结果、日志、缓存和 Git 备份 | 本地 AI 配置保持在 Git 忽略范围，其他资料存入 `local_artifacts/`；CI 结果也可保存为工作流附件 |
 | 私人知识包、用户设置、学习记录、更新缓存和凭据 | 本地数据目录或 `local_artifacts/`，保持在跟踪范围之外 |
-| 可下载程序、校验和及必要分发文件 | Release 附件；本地候选保存在 `local_artifacts/` |
+| 发布说明、可下载程序、校验和及必要分发文件 | GitHub Release。本地候选保存在 `local_artifacts/` |
 
 需要公开的维护规则、必要实现理由与来源写入开发说明或相关代码注释；私下产品设计、未定方案与调查过程保存在本地。个人题库独立保存；测试数据须为测试目的单独构造，不能用私人题库替代。
 
@@ -129,7 +129,7 @@ Windows 窗口激活直接调用 [SetForegroundWindow](https://learn.microsoft.c
 ./scripts/setup_git.ps1
 ```
 
-macOS/Linux 或 Git Bash 使用 `sh scripts/setup_git.sh`。提交、版本选择与变更日志统一按[提交与发布规范](release_policy.md)执行。新路径使用小写 ASCII snake_case。
+macOS/Linux 或 Git Bash 使用 `sh scripts/setup_git.sh`。提交、版本选择与发布说明见[提交与发布规范](release_policy.md)。新路径使用小写 ASCII snake_case。
 
 提交前运行与改动有关的检查：文档修改检查链接与一致性，代码修改执行相关测试、Clippy 和格式检查。单次生成记录按[仓库内容](#仓库内容)保存。
 

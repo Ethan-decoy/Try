@@ -1,6 +1,6 @@
-# 提交、版本与变更日志
+# 提交、版本与发布说明
 
-Try 采用 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)、[SemVer 2.0.0](https://semver.org/spec/v2.0.0.html) 和 [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/)。本文约定后续提交、版本和发布的维护方式。
+Try 采用 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) 和 [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html)。
 
 ## 提交
 
@@ -55,18 +55,12 @@ docs: 统一提交与发布规范
 
 每个正式版本对应固定的构建提交。更正程序或必要分发内容时发布新版本，说明勘误可直接在文档中修正。
 
-## 变更日志
+## 发布说明
 
-[changelog.md](../changelog.md) 是人工整理的版本变化记录；GitHub Release 正文从对应版本条目提炼，保持简短，标题使用版本标签。更新说明写实际交付的变化与必要升级提示，产品介绍与使用说明留在 README 和指南中。
+版本说明集中写在对应的 GitHub Release 正文。标题使用版本标签，正文简要说明本版实际交付的用户可见变化和必要的升级提示。不兼容变化、弃用或移除需要说明影响，涉及迁移时写明处理方法。内容较多时，分类可参考 [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/)。
 
-- 顶部保留 `[Unreleased]`，开发期间将值得用户或贡献者了解的变化放在这里。
-- 依变化使用 `Added`、`Changed`、`Deprecated`、`Removed`、`Fixed`、`Security` 分类，只保留有内容的分类。
-- 每个公开发布的版本有独立条目，最新版本在前，标题使用 `## [版本] - YYYY-MM-DD`，日期按实际 GitHub 发布时间的 UTC 日期记录。
-- 版本链接指向与上一个公开版本的比较，首版链接到对应提交。`Unreleased` 比较最近公开版本与主分支。
-- 写清结果和影响，同类变化合并表述；调试步骤、逐条 commit 日志与单次测试输出留在维护记录中。不兼容变化、弃用、移除与迁移方式必须可见。
-
-仅维护流程或文字勘误不必占用用户更新条目。发布时将本版 `Unreleased` 内容归入带版本和日期的条目，继续保留空的 `Unreleased`，更新比较链接。首次整理旧条目时可改善格式和补充遗漏，保留已核实的版本事实。
+[历史变更记录](../changelog.md) 收录至 `v1.0.2`。
 
 ## 分发版本核对
 
-公开版本的标签、程序包和变更记录使用同一版本号。固定来源、三平台软件包、许可和更新行为的核对方法见[分发验证](release_checklist.md#分发验证)。
+公开版本的标签、程序包和 Release 标题使用同一版本号。固定来源、三平台软件包、许可和更新行为的核对方法见[分发验证](release_checklist.md#分发验证)。

@@ -19,7 +19,7 @@ Choose your platform's file from the assets on the [latest stable release](https
 | Platform | Download | Status |
 | --- | --- | --- |
 | Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/latest/download/try.exe) | Single-file portable app |
-| macOS arm64 | `try_macos_arm64_<version>.zip` | Experimental, not notarized |
+| macOS arm64 | `try_macos_arm64_<version>.zip` | Experimental, no Developer ID signature or notarization |
 | Linux x64 | `try_linux_x64_<version>.AppImage` | Experimental |
 
 On Windows, put `try.exe` in a writable folder and open it. Your decks, settings and review history live in the adjacent `data/` folder. Keep it with the executable when moving the app. To install a newer stable release, choose **Update & restart** in About.

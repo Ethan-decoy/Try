@@ -21,7 +21,7 @@ Try 是一款轻量、开源的桌面闪卡工具。它常驻系统托盘，按�
 | 平台 | 下载文件 | 状态 |
 | --- | --- | --- |
 | Windows x64 | [try.exe](https://github.com/Ethan-decoy/Try/releases/latest/download/try.exe) | 单文件便携版 |
-| macOS arm64 | `try_macos_arm64_<版本>.zip` | 实验性，尚未公证 |
+| macOS arm64 | `try_macos_arm64_<版本>.zip` | 实验性，暂无 Developer ID 签名和公证 |
 | Linux x64 | `try_linux_x64_<版本>.AppImage` | 实验性 |
 
 Windows 将 `try.exe` 放在可写文件夹中双击运行。题库、设置和练习记录存放在旁边的 `data/` 中，移动程序时请一起保留。后续正式版可在「关于」中下载并重启更新。

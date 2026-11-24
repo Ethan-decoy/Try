@@ -14,7 +14,7 @@ Windows uses `scripts/build_windows.ps1` to configure MSVC/SDK. Native GUI check
 
 Run `scripts/setup_git.ps1` on Windows or `sh scripts/setup_git.sh` elsewhere after cloning. Commit titles follow `type(scope): 中文描述`, for example `fix(ui): 修复英文菜单宽度`. Use Chinese descriptions as the project’s established policy. Do not commit generated artifacts, user data or logs. New project paths use lowercase ASCII snake_case.
 
-Follow the [commit and release policy](docs/release_policy.md) for coherent batches, Conventional Commits, SemVer version selection and Keep a Changelog entries. Add notable changes under `Unreleased` in [changelog.md](changelog.md). Published releases use a fixed tag; later documentation changes can continue on the main branch without rebuilding existing release assets.
+See the [commit and release policy](docs/release_policy.md) for commit conventions, version selection and release notes.
 
 UI translations use one [English catalog](translations/en.json). Add matching entries with new `@tr` / `tr!` messages. Keep placeholders unchanged and preserve authored questions/answers. See [translation guidance](docs/development.md#翻译).
 
