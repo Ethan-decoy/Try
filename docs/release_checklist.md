@@ -1,6 +1,6 @@
 # 发布与平台范围
 
-Try 的首个正式版为 [v1.0.0](https://github.com/Ethan-decoy/Try/releases/tag/v1.0.0)。
+各平台的当前下载见 [Try 最新正式版](https://github.com/Ethan-decoy/Try/releases/latest)。
 
 | 平台 | 分发文件 | 范围 |
 | --- | --- | --- |

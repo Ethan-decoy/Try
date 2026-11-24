@@ -4,6 +4,8 @@ Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-24
+
 ### Fixed
 
 - Use the formula editor from the first keystroke in formula answers. Pressing `/` after a numerator creates a fraction immediately and moves the caret into the denominator.
@@ -265,7 +267,8 @@ Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/Ethan-decoy/Try/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Ethan-decoy/Try/compare/v0.10.0...v1.0.0
 [0.10.0]: https://github.com/Ethan-decoy/Try/compare/e067294199e559e5c09121641f5e01e429b830e8...c54ae2170a9ede713720d2df68dfd8ca936777f5
 [0.9.3]: https://github.com/Ethan-decoy/Try/compare/19a9c2a4d147f9b63be85f7289b2050d4b559425...e067294199e559e5c09121641f5e01e429b830e8
