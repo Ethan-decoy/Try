@@ -4,6 +4,8 @@ Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-24
+
 ### Fixed
 
 - Keep the download links in the Chinese and English READMEs usable from source archives after older releases are retired.
@@ -271,7 +273,8 @@ Notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 Windows x64 is provided as a single executable. macOS arm64 and Linux x64 remain experimental; available downloads and platform limitations are listed in the [release notes](docs/release_checklist.md).
 
-[Unreleased]: https://github.com/Ethan-decoy/Try/compare/1a61e770ec4daee6cd432840acdc3f1972795699...HEAD
+[Unreleased]: https://github.com/Ethan-decoy/Try/compare/e46aa5f40a0f984fc7a61617c801b1da0f2a55d4...HEAD
+[1.0.2]: https://github.com/Ethan-decoy/Try/compare/1a61e770ec4daee6cd432840acdc3f1972795699...e46aa5f40a0f984fc7a61617c801b1da0f2a55d4
 [1.0.1]: https://github.com/Ethan-decoy/Try/compare/6f6524a91239b906ad74b17bb50c9e9473d75bc3...1a61e770ec4daee6cd432840acdc3f1972795699
 [1.0.0]: https://github.com/Ethan-decoy/Try/compare/c54ae2170a9ede713720d2df68dfd8ca936777f5...6f6524a91239b906ad74b17bb50c9e9473d75bc3
 [0.10.0]: https://github.com/Ethan-decoy/Try/compare/e067294199e559e5c09121641f5e01e429b830e8...c54ae2170a9ede713720d2df68dfd8ca936777f5
